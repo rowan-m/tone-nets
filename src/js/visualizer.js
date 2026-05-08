@@ -39,7 +39,11 @@ export class NetworkVisualizer {
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.container.appendChild(this.renderer.domElement);
 
-        this.camera.position.z = 800;
+        // Initial dummy camera setup for the empty scene. 
+        // This will be completely overridden by fitCameraToGraph() once a MIDI is loaded.
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(0, -800, 800);
+        this.camera.lookAt(0, 0, 0);
 
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
@@ -288,36 +292,48 @@ export class NetworkVisualizer {
             this.edgeMap.set(`${link.fromId}->${link.toId}`, edgeData);
             });
 
-            // Auto-fit camera to the graph's bounding box
-            const box = new THREE.Box3().setFromObject(this.graphGroup);
-            const center = box.getCenter(new THREE.Vector3());
-            const size = box.getSize(new THREE.Vector3());
-
-            // For OrthographicCamera, the view size must encapsulate the bounding box
-            const maxDim = Math.max(size.x, size.y, size.z);
-            let frustumSize = maxDim * 1.4; // Add padding
-
-            const aspect = this.container.clientWidth / this.container.clientHeight;
-
-            // Adjust for aspect ratio if window is taller than it is wide
-            if (aspect < 1) {
-                frustumSize /= aspect;
+            // Auto-fit camera to the graph's bounding sphere
+            this.fitCameraToGraph();
             }
 
-            // Update camera frustum to fit the graph
-            this.baseFrustumSize = frustumSize;
-            const d = frustumSize / 2;
-            this.camera.left = -d * aspect;
-            this.camera.right = d * aspect;
-            this.camera.top = d;
-            this.camera.bottom = -d;
-            this.camera.updateProjectionMatrix();
+            fitCameraToGraph() {
+                if (this.graphGroup.children.length === 0) return;
 
-            // Set camera to an isometric angle
-            const isoDist = maxDim * 2; // Move far enough back to not clip near plane
-            this.camera.position.set(center.x + isoDist, center.y - isoDist, center.z + isoDist);
-            this.camera.lookAt(center);
-            this.controls.target.copy(center);
+                const box = new THREE.Box3().setFromObject(this.graphGroup);
+                const center = new THREE.Vector3();
+                box.getCenter(center);
+
+                // Use bounding sphere to ensure the graph never clips when rotated
+                const sphere = new THREE.Sphere();
+                box.getBoundingSphere(sphere);
+                
+                const radius = sphere.radius;
+                let frustumSize = (radius * 2) * 1.05; // Add 5% padding
+
+                const aspect = this.container.clientWidth / this.container.clientHeight;
+
+                // Adjust for aspect ratio if window is taller than it is wide
+                if (aspect < 1) {
+                    frustumSize /= aspect;
+                }
+
+                // Update camera frustum and reset zoom
+                this.baseFrustumSize = frustumSize;
+                const d = frustumSize / 2;
+                this.camera.left = -d * aspect;
+                this.camera.right = d * aspect;
+                this.camera.top = d;
+                this.camera.bottom = -d;
+                this.camera.zoom = 1; // Reset zoom from any previous user interaction
+                this.camera.updateProjectionMatrix();
+
+                // Set camera to an isometric angle
+                const isoDist = radius * 3; // Move far enough back to avoid near-plane clipping
+                this.camera.position.set(center.x + isoDist, center.y - isoDist, center.z + isoDist);
+                this.camera.lookAt(center);
+                
+                this.controls.target.copy(center);
+                this.controls.update();
             }
 
             animate() {

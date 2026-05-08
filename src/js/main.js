@@ -3,7 +3,7 @@ import { NetworkVisualizer } from './visualizer.js';
 import { MidiPlayer } from './audioPlayer.js';
 import * as Tone from 'tone';
 
-console.log("Music Analysis Visualizer Initialized");
+console.log("Tone Nets Initialized");
 
 // Setup Web Worker
 const parserWorker = new Worker(new URL('./parser.worker.js', import.meta.url), { type: 'module' });

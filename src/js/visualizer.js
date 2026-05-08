@@ -7,7 +7,10 @@ export class NetworkVisualizer {
     constructor(containerId) {
         this.container = document.getElementById(containerId);
         this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(75, this.container.clientWidth / this.container.clientHeight, 0.1, 10000);
+        const aspect = this.container.clientWidth / this.container.clientHeight;
+        const d = 1000;
+        this.camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 1, 10000);
+        this.baseFrustumSize = d * 2;
         this.renderer = new THREE.WebGLRenderer({ powerPreference: "high-performance", antialias: false, stencil: false, depth: false });
         
         this.nodes = new Map();
@@ -49,7 +52,12 @@ export class NetworkVisualizer {
         this.scene.add(directionalLight);
 
         window.addEventListener('resize', () => {
-            this.camera.aspect = this.container.clientWidth / this.container.clientHeight;
+            const aspect = this.container.clientWidth / this.container.clientHeight;
+            const d = this.baseFrustumSize / 2;
+            this.camera.left = -d * aspect;
+            this.camera.right = d * aspect;
+            this.camera.top = d;
+            this.camera.bottom = -d;
             this.camera.updateProjectionMatrix();
             this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
             this.composer.setSize(this.container.clientWidth, this.container.clientHeight);
@@ -281,19 +289,29 @@ export class NetworkVisualizer {
             const center = box.getCenter(new THREE.Vector3());
             const size = box.getSize(new THREE.Vector3());
 
-            const maxDim = Math.max(size.x, size.y);
-            const fov = this.camera.fov * (Math.PI / 180);
-            let cameraDistance = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+            // For OrthographicCamera, the view size must encapsulate the bounding box
+            const maxDim = Math.max(size.x, size.y, size.z);
+            let frustumSize = maxDim * 1.4; // Add padding
+
+            const aspect = this.container.clientWidth / this.container.clientHeight;
 
             // Adjust for aspect ratio if window is taller than it is wide
-            if (this.camera.aspect < 1) {
-            cameraDistance /= this.camera.aspect;
+            if (aspect < 1) {
+                frustumSize /= aspect;
             }
 
-            cameraDistance *= 1.2; // Add 20% padding
+            // Update camera frustum to fit the graph
+            this.baseFrustumSize = frustumSize;
+            const d = frustumSize / 2;
+            this.camera.left = -d * aspect;
+            this.camera.right = d * aspect;
+            this.camera.top = d;
+            this.camera.bottom = -d;
+            this.camera.updateProjectionMatrix();
 
-            // Set camera to a slight angle to show the Z-depth, scaled by the required distance
-            this.camera.position.set(center.x, center.y - (cameraDistance * 0.4), center.z + (cameraDistance * 0.9));
+            // Set camera to an isometric angle
+            const isoDist = maxDim * 2; // Move far enough back to not clip near plane
+            this.camera.position.set(center.x + isoDist, center.y - isoDist, center.z + isoDist);
             this.camera.lookAt(center);
             this.controls.target.copy(center);
             }

@@ -35,6 +35,10 @@ const init = () => {
     const visualizer = new NetworkVisualizer('canvas-container');
     const player = new MidiPlayer();
 
+    player.onNotePlay = (nodeId, prevNodeId) => visualizer.highlightPlayingElement(nodeId, prevNodeId);
+    player.onNoteRelease = (nodeId, prevNodeId) => visualizer.releasePlayingElement(nodeId, prevNodeId);
+    player.onStop = () => visualizer.resetPlayingHighlights();
+
     visualizer.onHover = (data) => {
         if (!data) {
             hoverPanel.classList.add('hidden');

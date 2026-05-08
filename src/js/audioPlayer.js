@@ -7,6 +7,11 @@ export class MidiPlayer {
         this.isPlaying = false;
         this.isMuted = false;
         this.scheduledEvents = [];
+        
+        // Hooks for visualization
+        this.onNotePlay = null;
+        this.onNoteRelease = null;
+        this.onStop = null;
     }
 
     async initialize() {
@@ -32,13 +37,30 @@ export class MidiPlayer {
             // Ignore percussion for this simple synth
             if (track.channel === 9) return;
 
-            track.notes.forEach(note => {
+            track.notes.forEach((note, index) => {
+                const prevNote = index > 0 ? track.notes[index - 1] : null;
+                
                 const scheduledEvent = Tone.Transport.schedule((time) => {
                     if (!this.isMuted && this.synth) {
                         this.synth.triggerAttackRelease(note.name, note.duration, time, note.velocity);
                     }
+                    
+                    if (this.onNotePlay) {
+                        Tone.Draw.schedule(() => {
+                            this.onNotePlay(note.name, prevNote ? prevNote.name : null);
+                        }, time);
+                    }
                 }, note.time + startDelay);
                 this.scheduledEvents.push(scheduledEvent);
+                
+                const releaseEvent = Tone.Transport.schedule((time) => {
+                    if (this.onNoteRelease) {
+                        Tone.Draw.schedule(() => {
+                            this.onNoteRelease(note.name, prevNote ? prevNote.name : null);
+                        }, time);
+                    }
+                }, note.time + startDelay + note.duration);
+                this.scheduledEvents.push(releaseEvent);
             });
         });
 
@@ -54,6 +76,9 @@ export class MidiPlayer {
         this.scheduledEvents = [];
         if (this.synth) {
             this.synth.releaseAll();
+        }
+        if (this.onStop) {
+            this.onStop();
         }
         this.isPlaying = false;
     }

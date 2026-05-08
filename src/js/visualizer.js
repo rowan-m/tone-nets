@@ -15,6 +15,7 @@ export class NetworkVisualizer {
         
         this.nodes = new Map();
         this.edges = [];
+        this.edgeMap = new Map();
         this.pickableObjects = [];
         this.hoveredObject = null;
         this.layout = null;
@@ -92,6 +93,7 @@ export class NetworkVisualizer {
         }
         this.nodes.clear();
         this.edges = [];
+        this.edgeMap.clear();
         if (this.layout) {
             this.layout.dispose();
             this.layout = null;
@@ -276,12 +278,14 @@ export class NetworkVisualizer {
             // STORE CONE IN LINE USERDATA FOR HIGHLIGHT SYNC
             line.userData.cone = cone;
 
-            this.edges.push({
+            const edgeData = {
                 line: line,
                 cone: cone,
                 sourceId: link.fromId,
                 targetId: link.toId
-            });
+            };
+            this.edges.push(edgeData);
+            this.edgeMap.set(`${link.fromId}->${link.toId}`, edgeData);
             });
 
             // Auto-fit camera to the graph's bounding box
@@ -363,5 +367,85 @@ export class NetworkVisualizer {
             }
             this.controls.update();
             this.composer.render();
+            }
+
+            highlightPlayingElement(nodeId, prevNodeId) {
+                const highlightColor = 0xffe600; // Electric Yellow
+
+                const nodeData = this.nodes.get(nodeId);
+                if (nodeData) {
+                    if (!nodeData.playCount) nodeData.playCount = 0;
+                    nodeData.playCount++;
+                    if (nodeData.playCount === 1 && this.hoveredObject !== nodeData.mesh) {
+                        nodeData.mesh.material.emissiveIntensity = 1.0;
+                        nodeData.mesh.material.emissive.setHex(highlightColor);
+                    }
+                }
+
+                if (prevNodeId) {
+                    const edgeId = `${prevNodeId}->${nodeId}`;
+                    const edgeData = this.edgeMap.get(edgeId);
+                    if (edgeData) {
+                        if (!edgeData.playCount) edgeData.playCount = 0;
+                        edgeData.playCount++;
+                        if (edgeData.playCount === 1 && this.hoveredObject !== edgeData.line) {
+                            edgeData.line.material.opacity = 1.0;
+                            edgeData.line.material.color.setHex(highlightColor);
+                            if (edgeData.cone) {
+                                edgeData.cone.material.opacity = 1.0;
+                                edgeData.cone.material.color.setHex(highlightColor);
+                            }
+                        }
+                    }
+                }
+            }
+
+            releasePlayingElement(nodeId, prevNodeId) {
+                const nodeData = this.nodes.get(nodeId);
+                if (nodeData && nodeData.playCount > 0) {
+                    nodeData.playCount--;
+                    if (nodeData.playCount === 0 && this.hoveredObject !== nodeData.mesh) {
+                        nodeData.mesh.material.emissiveIntensity = nodeData.mesh.userData.origEmissiveIntensity;
+                        nodeData.mesh.material.emissive.setHex(nodeData.mesh.userData.origEmissive);
+                    }
+                }
+
+                if (prevNodeId) {
+                    const edgeId = `${prevNodeId}->${nodeId}`;
+                    const edgeData = this.edgeMap.get(edgeId);
+                    if (edgeData && edgeData.playCount > 0) {
+                        edgeData.playCount--;
+                        if (edgeData.playCount === 0 && this.hoveredObject !== edgeData.line) {
+                            edgeData.line.material.opacity = edgeData.line.userData.origOpacity;
+                            edgeData.line.material.color.setHex(edgeData.line.userData.origColor);
+                            if (edgeData.cone) {
+                                edgeData.cone.material.opacity = Math.max(0.4, edgeData.line.userData.origOpacity);
+                                edgeData.cone.material.color.setHex(edgeData.line.userData.origColor);
+                            }
+                        }
+                    }
+                }
+            }
+
+            resetPlayingHighlights() {
+                this.nodes.forEach(nodeData => {
+                    nodeData.playCount = 0;
+                    if (this.hoveredObject !== nodeData.mesh) {
+                        nodeData.mesh.material.emissiveIntensity = nodeData.mesh.userData.origEmissiveIntensity;
+                        nodeData.mesh.material.emissive.setHex(nodeData.mesh.userData.origEmissive);
+                    }
+                });
+
+                this.edgeMap.forEach(edgeData => {
+                    edgeData.playCount = 0;
+                    if (this.hoveredObject !== edgeData.line) {
+                        edgeData.line.material.opacity = edgeData.line.userData.origOpacity;
+                        edgeData.line.material.color.setHex(edgeData.line.userData.origColor);
+                        if (edgeData.cone) {
+                            edgeData.cone.material.opacity = Math.max(0.4, edgeData.line.userData.origOpacity);
+                            edgeData.cone.material.color.setHex(edgeData.line.userData.origColor);
+                        }
+                    }
+                });
             }
             }

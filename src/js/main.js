@@ -63,7 +63,9 @@ const init = () => {
     muteToggle.addEventListener('click', () => {
         const isMuted = player.toggleMute();
         muteToggle.innerText = isMuted ? "Unmute" : "Mute";
-        muteToggle.style.backgroundColor = isMuted ? "#ff4500" : "#1a1a1f";
+        muteToggle.style.backgroundColor = isMuted ? "rgba(0, 255, 255, 0.2)" : "";
+        muteToggle.style.borderColor = isMuted ? "var(--accent-text)" : "";
+        muteToggle.style.color = isMuted ? "var(--accent-text)" : "white";
     });
 
     uploadInput.addEventListener('change', async (e) => {

@@ -1,8 +1,11 @@
 :root {
     --bg-color: #0a0a0c;
     --text-color: #e0e0e0;
-    --accent-color: #ff4500;
-    --panel-bg: rgba(20, 20, 25, 0.8);
+    --accent-color: #00ffff; /* Neon Cyan to match 3D nodes */
+    --accent-text: #66d9d9; /* Softer, desaturated cyan for text readability */
+    --accent-secondary: #ff00ff; /* Neon Magenta */
+    --panel-bg: rgba(15, 15, 20, 0.75);
+    --panel-border: rgba(255, 255, 255, 0.1);
 }
 
 body, html {
@@ -34,11 +37,10 @@ header {
 
 h1 {
     margin: 0;
-    font-size: 1.1rem;
-    font-weight: 400;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: var(--accent-color);
+    font-size: 1.2rem;
+    font-weight: 300;
+    letter-spacing: 0.5px;
+    color: var(--accent-text);
 }
 
 .controls {
@@ -48,16 +50,24 @@ h1 {
 }
 
 #midi-upload {
-    background: #1a1a1f;
-    border: 1px solid #333;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--panel-border);
     color: white;
-    padding: 5px;
+    padding: 6px;
     border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+#midi-upload:hover {
+    border-color: var(--accent-color);
 }
 
 #mute-toggle {
-    background: #1a1a1f;
-    border: 1px solid #333;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--panel-border);
     color: white;
     padding: 8px 16px;
     border-radius: 4px;
@@ -66,7 +76,8 @@ h1 {
 }
 
 #mute-toggle:hover:not(:disabled) {
-    background: #333;
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--accent-color);
 }
 
 #mute-toggle:disabled {
@@ -97,7 +108,7 @@ h1 {
     background: var(--panel-bg);
     padding: 1.5rem;
     border-radius: 8px;
-    border: 1px solid #333;
+    border: 1px solid var(--panel-border);
     backdrop-filter: blur(10px);
     width: 240px;
     transition: opacity 0.5s;
@@ -110,7 +121,7 @@ h1 {
     background: var(--panel-bg);
     padding: 1.5rem;
     border-radius: 8px;
-    border: 1px solid #555;
+    border: 1px solid var(--panel-border);
     backdrop-filter: blur(10px);
     width: 240px;
     transition: opacity 0.2s;
@@ -132,13 +143,13 @@ h1 {
 
 .metric span {
     font-family: monospace;
-    color: var(--accent-color);
+    color: var(--accent-text);
     font-weight: bold;
 }
 
 hr {
     border: 0;
-    border-top: 1px solid #444;
+    border-top: 1px solid var(--panel-border);
     margin: 1rem 0;
 }
 
@@ -149,17 +160,18 @@ hr {
 
 h2 {
     margin-top: 0;
-    font-size: 1rem;
-    text-transform: uppercase;
-    border-bottom: 1px solid #444;
+    font-size: 1.1rem;
+    font-weight: 400;
+    border-bottom: 1px solid var(--panel-border);
     padding-bottom: 0.5rem;
     margin-bottom: 1rem;
+    color: var(--text-color);
 }
 
 h3 {
-    font-size: 0.8rem;
-    color: #888;
-    text-transform: uppercase;
+    font-size: 0.9rem;
+    font-weight: 400;
+    color: #aaa;
     margin-bottom: 0.5rem;
 }
 
@@ -172,7 +184,8 @@ h3 {
 
 .bar {
     flex-grow: 1;
-    background: var(--accent-color);
+    background: linear-gradient(to top, var(--accent-secondary), var(--accent-color));
     min-height: 1px;
-    transition: height 0.3s;
+    transition: height 0.3s ease;
+    border-radius: 2px 2px 0 0;
 }

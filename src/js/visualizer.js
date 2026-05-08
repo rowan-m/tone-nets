@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import createLayout from 'ngraph.forcelayout';
 import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocessing';
+import { noteToSemitone } from './utils.js';
 
 export class NetworkVisualizer {
     constructor(containerId) {
@@ -138,9 +139,6 @@ export class NetworkVisualizer {
         const layoutScale = 4.0;
         const zDepthScale = 300; // How much the 3D effect pops out
 
-        const color1 = new THREE.Color(0x00ffff); // Neon Cyan
-        const color2 = new THREE.Color(0xff00ff); // Neon Magenta
-        
         let maxDegree = 1;
         graph.forEachNode(node => {
             if (node.data.degree > maxDegree) maxDegree = node.data.degree;
@@ -159,7 +157,12 @@ export class NetworkVisualizer {
             const degree = node.data.degree || 1;
             
             const normDegree = Math.min(1, degree / maxDegree);
-            const nodeColor = color1.clone().lerp(color2, normDegree);
+            
+            // Color based on pitch class (0-11)
+            const pitchClass = noteToSemitone(node.id) % 12;
+            const hue = pitchClass / 12;
+            const nodeColor = new THREE.Color().setHSL(hue, 1.0, 0.6); // Vibrant color
+
             
             const material = new THREE.MeshStandardMaterial({ 
                 color: nodeColor,

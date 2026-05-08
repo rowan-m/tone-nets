@@ -1,5 +1,6 @@
 import { Midi } from '@tonejs/midi';
 import createGraph from 'ngraph.graph';
+import { noteToSemitone, getInterval } from './utils.js';
 
 /**
  * Parses a MIDI file buffer and constructs a directed graph
@@ -166,21 +167,9 @@ export async function buildMidiNetwork(midiBuffer) {
     // 5. Scale-interval Embedding (Interval Signature)
     // We calculate a 12D vector representing the distribution of interval classes (0-11 semitones)
     const intervalVector = new Array(12).fill(0);
-    const noteToSemitone = (note) => {
-        const notes = { 'C':0, 'C#':1, 'D':2, 'D#':3, 'E':4, 'F':5, 'F#':6, 'G':7, 'G#':8, 'A':9, 'A#':10, 'B':11 };
-        const match = note.toUpperCase().match(/([A-G]#?B?)(-?\d+)?/);
-        if (!match) return 0;
-        const pcMap = { 'CB':11, 'DB':1, 'EB':3, 'FB':4, 'GB':6, 'AB':8, 'BB':10 };
-        const val = notes[match[1]] !== undefined ? notes[match[1]] : pcMap[match[1]];
-        const oct = match[2] ? parseInt(match[2]) : 4;
-        return (oct * 12) + (val || 0);
-    };
 
     graph.forEachLink(link => {
-        const s = noteToSemitone(link.fromId);
-        const t = noteToSemitone(link.toId);
-        // Directed Pitch Class Interval: (target - source) modulo 12
-        const interval = ((t - s) % 12 + 12) % 12;
+        const interval = getInterval(link.fromId, link.toId);
         intervalVector[interval] += link.data.weight;
     });
 

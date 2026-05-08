@@ -8,17 +8,7 @@ console.log("Music Analysis Visualizer Initialized");
 // Setup Web Worker
 const parserWorker = new Worker(new URL('./parser.worker.js', import.meta.url), { type: 'module' });
 
-const INTERVAL_NAMES = ["Perfect Unison", "Minor Second", "Major Second", "Minor Third", "Major Third", "Perfect Fourth", "Tritone", "Perfect Fifth", "Minor Sixth", "Major Sixth", "Minor Seventh", "Major Seventh"];
-
-function getIntervalName(n1, n2) {
-    const notes = { 'C':0, 'C#':1, 'DB':1, 'D':2, 'D#':3, 'EB':3, 'E':4, 'F':5, 'F#':6, 'GB':6, 'G':7, 'G#':8, 'AB':8, 'A':9, 'A#':10, 'BB':10, 'B':11 };
-    const parsePitch = (n) => {
-        const match = n.toUpperCase().match(/([A-G]#?B?)/);
-        return match ? notes[match[1]] : 0;
-    };
-    const diff = (parsePitch(n2) - parsePitch(n1) + 12) % 12;
-    return INTERVAL_NAMES[diff];
-}
+import { INTERVAL_NAMES, getIntervalName } from './utils.js';
 
 const init = () => {
     const uploadInput = document.getElementById('midi-upload');

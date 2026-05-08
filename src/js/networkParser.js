@@ -85,44 +85,52 @@ export async function buildMidiNetwork(midiBuffer) {
     const density = n > 1 ? edgeCount / (n * (n - 1)) : 0;
 
     // 2. Reciprocity (r and rho)
-    // - Weighted Reciprocity (r): W_recip / W_total
-    // - Normalized Reciprocity (rho): (r - density) / (1 - density)
+    // - Binary Reciprocity (r_binary): fraction of edges that are reciprocated
+    // - Weighted Reciprocity (r_weighted): sum(min(w_ij, w_ji)) / sum(w_ij)
+    // - Normalized Reciprocity (rho): (r_binary - density) / (1 - density)
     let totalWeight = 0;
-    let reciprocatedWeight = 0;
+    let sumMinWeights = 0;
+    let reciprocatedEdges = 0;
+
     graph.forEachLink(link => {
         totalWeight += link.data.weight;
         const reverseLink = graph.getLink(link.toId, link.fromId);
         if (reverseLink) {
-            reciprocatedWeight += link.data.weight;
+            reciprocatedEdges++;
+            // For weighted reciprocity, we only want to count the minimum weight of the pair once per pair,
+            // but since we iterate over all directed edges, we sum min(w_ij, w_ji) for each edge.
+            // This is equivalent to summing the mutual portion twice and then dividing? 
+            // No, the formula is sum_{i!=j} min(w_ij, w_ji) / sum_{i!=j} w_{ij}.
+            // So we just add min(w_ij, w_ji) for every directed link.
+            sumMinWeights += Math.min(link.data.weight, reverseLink.data.weight);
         }
     });
-    const weightedReciprocity = totalWeight > 0 ? (reciprocatedWeight / totalWeight) : 0;
-    const reciprocityRho = (1 - density) > 0 ? (weightedReciprocity - density) / (1 - density) : 0;
+
+    const binaryReciprocity = edgeCount > 0 ? (reciprocatedEdges / edgeCount) : 0;
+    const weightedReciprocity = totalWeight > 0 ? (sumMinWeights / totalWeight) : 0;
+    const reciprocityRho = (1 - density) > 0 ? (binaryReciprocity - density) / (1 - density) : 0;
 
     // 3. Mean Node Entropy (H)
     let totalEntropy = 0;
     graph.forEachNode(node => {
         let nodeOutWeight = 0;
-        const outEdges = [];
+        const outWeights = [];
         graph.forEachLinkedNode(node.id, (linkedNode, link) => {
             if (link.fromId === node.id) {
                 nodeOutWeight += link.data.weight;
-                outEdges.push(link.data.weight);
+                outWeights.push(link.data.weight);
             }
         });
 
-        if (nodeOutWeight > 0 && outEdges.length > 1) {
+        if (nodeOutWeight > 0) {
             let nodeEntropy = 0;
-            outEdges.forEach(w => {
+            outWeights.forEach(w => {
                 const p = w / nodeOutWeight;
-                nodeEntropy -= p * Math.log2(p);
+                if (p > 0) {
+                    nodeEntropy -= p * Math.log2(p);
+                }
             });
-            // Normalize by max possible entropy log2(out-degree)
-            const maxH = Math.log2(outEdges.length);
-            totalEntropy += (nodeEntropy / maxH);
-        } else if (outEdges.length === 1) {
-            // Entropy is 0 if only one transition exists
-            totalEntropy += 0;
+            totalEntropy += nodeEntropy;
         }
     });
     const meanNodeEntropy = totalEntropy / n;
@@ -145,10 +153,10 @@ export async function buildMidiNetwork(midiBuffer) {
             if (i === j) continue;
             
             const ud = uDistances[nodes[j]];
-            if (ud && ud > 0) unweightedEfficiencySum += (1 / ud);
+            if (ud !== undefined && ud > 0) unweightedEfficiencySum += (1 / ud);
             
             const wd = wDistances[nodes[j]];
-            if (wd && wd > 0) weightedEfficiencySum += (1 / wd);
+            if (wd !== undefined && wd > 0) weightedEfficiencySum += (1 / wd);
         }
     }
     
@@ -162,8 +170,6 @@ export async function buildMidiNetwork(midiBuffer) {
         const notes = { 'C':0, 'C#':1, 'D':2, 'D#':3, 'E':4, 'F':5, 'F#':6, 'G':7, 'G#':8, 'A':9, 'A#':10, 'B':11 };
         const match = note.toUpperCase().match(/([A-G]#?B?)(-?\d+)?/);
         if (!match) return 0;
-        const pc = match[1].replace('B', 'b'); // Handle flats if any
-        // Simple mapping for flats
         const pcMap = { 'CB':11, 'DB':1, 'EB':3, 'FB':4, 'GB':6, 'AB':8, 'BB':10 };
         const val = notes[match[1]] !== undefined ? notes[match[1]] : pcMap[match[1]];
         const oct = match[2] ? parseInt(match[2]) : 4;
@@ -173,8 +179,8 @@ export async function buildMidiNetwork(midiBuffer) {
     graph.forEachLink(link => {
         const s = noteToSemitone(link.fromId);
         const t = noteToSemitone(link.toId);
-        // Interval Class: absolute difference modulo 12
-        const interval = Math.abs(t - s) % 12;
+        // Directed Pitch Class Interval: (target - source) modulo 12
+        const interval = ((t - s) % 12 + 12) % 12;
         intervalVector[interval] += link.data.weight;
     });
 
@@ -193,6 +199,7 @@ export async function buildMidiNetwork(midiBuffer) {
             edges: edgeCount,
             density: density.toFixed(4),
             reciprocity: weightedReciprocity.toFixed(4),
+            binaryReciprocity: binaryReciprocity.toFixed(4),
             reciprocityRho: reciprocityRho.toFixed(4),
             entropy: meanNodeEntropy.toFixed(4),
             efficiency: unweightedEfficiency.toFixed(4),

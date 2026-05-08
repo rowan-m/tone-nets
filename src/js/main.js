@@ -104,6 +104,7 @@ const init = () => {
                     document.getElementById('metric-efficiency').innerText = summary.efficiency;
                     document.getElementById('metric-weighted-efficiency').innerText = summary.weightedEfficiency;
                     document.getElementById('metric-entropy').innerText = summary.entropy;
+                    document.getElementById('metric-binary-reciprocity').innerText = summary.binaryReciprocity;
                     document.getElementById('metric-reciprocity').innerText = summary.reciprocity;
                     document.getElementById('metric-reciprocity-rho').innerText = summary.reciprocityRho;
                     document.getElementById('metric-density').innerText = summary.density;

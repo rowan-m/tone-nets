@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Analysis Visualizer</title>
+    <link rel="stylesheet" href="./src/css/style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1 id="app-title">Music Analysis Visualizer</h1>
+            <div class="controls">
+                <input type="file" id="midi-upload" accept=".mid,.midi">
+                <button id="mute-toggle" disabled>Mute</button>
+            </div>
+        </header>
+        
+        <main id="canvas-container">
+            <!-- Three.js canvas will be injected here -->
+            <div id="welcome-msg">
+                <p>Upload a MIDI file to begin the visualization</p>
+            </div>
+        </main>
+
+        <aside id="info-panel" class="hidden">
+            <section id="network-summary">
+                <h2>Musical Complexity</h2>
+                <div class="metric">
+                    <label>Global Efficiency</label>
+                    <span id="metric-efficiency">-</span>
+                </div>
+                <div class="metric">
+                    <label>Mean Node Entropy</label>
+                    <span id="metric-entropy">-</span>
+                </div>
+                <div class="metric">
+                    <label>Weighted Reciprocity</label>
+                    <span id="metric-reciprocity">-</span>
+                </div>
+                <div class="metric">
+                    <label>Network Density</label>
+                    <span id="metric-density">-</span>
+                </div>
+                <hr>
+                <div class="metric">
+                    <label>Vertices / Edges</label>
+                    <span><span id="v-count">-</span> / <span id="e-count">-</span></span>
+                </div>
+                <hr>
+                <section id="embedding-viz">
+                    <h3>Interval Signature</h3>
+                    <div class="bar-chart" id="interval-bars">
+                        <!-- 12 bars will be injected here -->
+                    </div>
+                </section>
+            </section>
+        </aside>
+
+        <aside id="hover-panel" class="hidden">
+            <section id="hover-content">
+                <!-- Dynamically populated on hover -->
+            </section>
+        </aside>
+    </div>
+    <script type="module" src="./src/js/main.js"></script>
+</body>
+</html>

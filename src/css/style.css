@@ -1,0 +1,178 @@
+:root {
+    --bg-color: #0a0a0c;
+    --text-color: #e0e0e0;
+    --accent-color: #ff4500;
+    --panel-bg: rgba(20, 20, 25, 0.8);
+}
+
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+#app {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100vh;
+}
+
+header {
+    padding: 1rem 2rem;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+    z-index: 10;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+h1 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 400;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--accent-color);
+}
+
+.controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+#midi-upload {
+    background: #1a1a1f;
+    border: 1px solid #333;
+    color: white;
+    padding: 5px;
+    border-radius: 4px;
+}
+
+#mute-toggle {
+    background: #1a1a1f;
+    border: 1px solid #333;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+#mute-toggle:hover:not(:disabled) {
+    background: #333;
+}
+
+#mute-toggle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#canvas-container {
+    flex-grow: 1;
+    position: relative;
+    width: 100%;
+}
+
+#welcome-msg {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    font-size: 1.2rem;
+    opacity: 0.7;
+}
+
+#info-panel {
+    position: absolute;
+    bottom: 2rem;
+    right: 2rem;
+    background: var(--panel-bg);
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid #333;
+    backdrop-filter: blur(10px);
+    width: 240px;
+    transition: opacity 0.5s;
+}
+
+#hover-panel {
+    position: absolute;
+    top: 6rem; /* Below header */
+    left: 2rem;
+    background: var(--panel-bg);
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid #555;
+    backdrop-filter: blur(10px);
+    width: 240px;
+    transition: opacity 0.2s;
+    pointer-events: none; /* Let mouse pass through to canvas */
+    z-index: 5;
+}
+
+.metric {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.8rem;
+    font-size: 0.9rem;
+}
+
+.metric label {
+    color: #999;
+    font-weight: 300;
+}
+
+.metric span {
+    font-family: monospace;
+    color: var(--accent-color);
+    font-weight: bold;
+}
+
+hr {
+    border: 0;
+    border-top: 1px solid #444;
+    margin: 1rem 0;
+}
+
+.hidden {
+    display: none;
+    opacity: 0;
+}
+
+h2 {
+    margin-top: 0;
+    font-size: 1rem;
+    text-transform: uppercase;
+    border-bottom: 1px solid #444;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+h3 {
+    font-size: 0.8rem;
+    color: #888;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+}
+
+.bar-chart {
+    display: flex;
+    align-items: flex-end;
+    height: 40px;
+    gap: 2px;
+}
+
+.bar {
+    flex-grow: 1;
+    background: var(--accent-color);
+    min-height: 1px;
+    transition: height 0.3s;
+}

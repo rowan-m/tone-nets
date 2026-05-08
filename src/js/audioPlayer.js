@@ -26,7 +26,7 @@ export class MidiPlayer {
         await this.initialize();
 
         const midi = new Midi(midiBuffer);
-        const now = Tone.now() + 0.5; // Start half a second from now
+        const startDelay = 0.5; // Start half a second from the beginning of Transport
 
         midi.tracks.forEach(track => {
             // Ignore percussion for this simple synth
@@ -37,11 +37,13 @@ export class MidiPlayer {
                     if (!this.isMuted && this.synth) {
                         this.synth.triggerAttackRelease(note.name, note.duration, time, note.velocity);
                     }
-                }, note.time + now);
+                }, note.time + startDelay);
                 this.scheduledEvents.push(scheduledEvent);
             });
         });
 
+        // Ensure transport starts from the beginning
+        Tone.Transport.position = 0;
         Tone.Transport.start();
         this.isPlaying = true;
     }

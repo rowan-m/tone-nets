@@ -13,6 +13,8 @@ import { INTERVAL_NAMES, getIntervalName } from './utils.js';
 const init = () => {
     const uploadInput = document.getElementById('midi-upload');
     const muteToggle = document.getElementById('mute-toggle');
+    const toggleInfo = document.getElementById('toggle-info');
+    const closeInfo = document.getElementById('close-info');
     const vCountEl = document.getElementById('v-count');
     const eCountEl = document.getElementById('e-count');
     const infoPanel = document.getElementById('info-panel');
@@ -60,6 +62,15 @@ const init = () => {
         muteToggle.style.backgroundColor = isMuted ? "rgba(0, 255, 255, 0.2)" : "";
         muteToggle.style.borderColor = isMuted ? "var(--accent-text)" : "";
         muteToggle.style.color = isMuted ? "var(--accent-text)" : "white";
+    });
+
+    // Setup Info Panel Toggle
+    toggleInfo.addEventListener('click', () => {
+        infoPanel.classList.toggle('hidden');
+    });
+
+    closeInfo.addEventListener('click', () => {
+        infoPanel.classList.add('hidden');
     });
 
     uploadInput.addEventListener('change', async (e) => {
@@ -116,7 +127,12 @@ const init = () => {
                         barContainer.appendChild(bar);
                     });
 
-                    infoPanel.classList.remove('hidden');
+                    if (window.innerWidth <= 768) {
+                        infoPanel.classList.add('hidden');
+                    } else {
+                        infoPanel.classList.remove('hidden');
+                    }
+                    toggleInfo.classList.remove('hidden');
                     welcomeMsg.classList.add('hidden');
                     muteToggle.disabled = false;
 

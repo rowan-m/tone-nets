@@ -11,8 +11,12 @@
         <header>
             <h1 id="app-title">Music analysis visualizer</h1>
             <div class="controls">
-                <input type="file" id="midi-upload" accept=".mid,.midi">
-                <button id="mute-toggle" disabled>Mute</button>
+                <label for="midi-upload" class="custom-file-upload btn">
+                    Load MIDI
+                </label>
+                <input type="file" id="midi-upload" accept=".mid,.midi" class="hidden-input">
+                <button id="mute-toggle" class="btn" disabled>Mute</button>
+                <button id="toggle-info" class="btn hidden">Stats</button>
             </div>
         </header>
         
@@ -24,6 +28,7 @@
         </main>
 
         <aside id="info-panel" class="hidden">
+            <button id="close-info" class="close-btn" aria-label="Close">×</button>
             <section id="network-summary">
                 <h2>Musical complexity</h2>
                 <div class="metric">

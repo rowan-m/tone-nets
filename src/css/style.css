@@ -49,40 +49,57 @@ h1 {
     align-items: center;
 }
 
-#midi-upload {
+.hidden-input {
+    display: none;
+}
+
+.btn {
     background: rgba(0, 0, 0, 0.5);
     border: 1px solid var(--panel-border);
     color: white;
-    padding: 6px;
+    padding: 0 16px;
     border-radius: 4px;
+    cursor: pointer;
     font-family: inherit;
     font-size: 0.9rem;
-    cursor: pointer;
-    transition: border-color 0.2s;
+    transition: background 0.2s, border-color 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 44px; /* Minimum touch target size */
+    box-sizing: border-box;
 }
 
-#midi-upload:hover {
-    border-color: var(--accent-color);
-}
-
-#mute-toggle {
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--panel-border);
-    color: white;
-    padding: 8px 16px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-
-#mute-toggle:hover:not(:disabled) {
+.btn:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.1);
     border-color: var(--accent-color);
 }
 
-#mute-toggle:disabled {
+.btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+.close-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: transparent;
+    border: none;
+    color: #999;
+    font-size: 1.8rem;
+    cursor: pointer;
+    width: 44px;
+    height: 44px;
+    display: none; /* Hidden on desktop by default */
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: color 0.2s;
+}
+
+.close-btn:hover {
+    color: white;
 }
 
 #canvas-container {
@@ -188,4 +205,54 @@ h3 {
     min-height: 1px;
     transition: height 0.3s ease;
     border-radius: 2px 2px 0 0;
+}
+
+/* Mobile Media Queries */
+@media (max-width: 768px) {
+    header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+        padding: 1rem;
+    }
+
+    .controls {
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .btn {
+        flex: 1;
+        min-width: 80px;
+        padding: 0 8px;
+    }
+
+    #info-panel {
+        bottom: 0;
+        right: 0;
+        left: 0;
+        width: 100%;
+        border-radius: 16px 16px 0 0;
+        padding: 1.5rem 1rem;
+        box-sizing: border-box;
+        border-bottom: none;
+        border-left: none;
+        border-right: none;
+        max-height: 80vh;
+        overflow-y: auto;
+        z-index: 20;
+    }
+
+    .close-btn {
+        display: flex; /* Show close button on mobile */
+    }
+
+    #hover-panel {
+        top: 7rem;
+        left: 1rem;
+        right: 1rem;
+        width: auto;
+    }
 }

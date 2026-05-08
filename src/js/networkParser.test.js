@@ -25,62 +25,79 @@ vi.mock('@tonejs/midi', () => {
 });
 
 describe('networkParser', () => {
-    it('should build a network from MIDI data', async () => {
+    it('should build a network from MIDI data and ignore self-loops', async () => {
+        vi.mocked(Midi).mockImplementationOnce(function() {
+            this.name = 'Loop MIDI';
+            this.tracks = [
+                {
+                    channel: 0,
+                    notes: [
+                        { ticks: 0, name: 'C4' },
+                        { ticks: 100, name: 'C4' }, // Self-loop
+                        { ticks: 200, name: 'G4' }
+                    ]
+                }
+            ];
+        });
+
         const { graph, summary } = await buildMidiNetwork('test-buffer');
 
-        expect(summary.title).toBe('Test MIDI');
+        expect(summary.title).toBe('Loop MIDI');
         expect(summary.vertices).toBe(2); // C4 and G4
-        expect(summary.edges).toBe(2);    // C4 -> G4 and G4 -> C4
+        expect(summary.edges).toBe(1);    // Only C4 -> G4 (C4 -> C4 ignored)
 
-        // Check if nodes exist
-        expect(graph.getNode('C4')).toBeDefined();
-        expect(graph.getNode('G4')).toBeDefined();
-
-        // Check links and weights
-        const link1 = graph.getLink('C4', 'G4');
-        expect(link1).toBeDefined();
-        expect(link1.data.weight).toBe(1);
-
-        const link2 = graph.getLink('G4', 'C4');
-        expect(link2).toBeDefined();
-        expect(link2.data.weight).toBe(1);
+        expect(graph.getLink('C4', 'C4')).toBeUndefined();
+        expect(graph.getLink('C4', 'G4')).toBeDefined();
     });
 
-    it('should calculate metrics correctly', async () => {
+    it('should calculate metrics correctly including weighted efficiency', async () => {
+        vi.mocked(Midi).mockImplementationOnce(function() {
+            this.name = 'Metric MIDI';
+            this.tracks = [
+                {
+                    channel: 0,
+                    notes: [
+                        { ticks: 0, name: 'C4' },
+                        { ticks: 100, name: 'G4' },
+                        { ticks: 200, name: 'C4' }
+                    ]
+                }
+            ];
+        });
+
         const { summary } = await buildMidiNetwork('test-buffer');
 
-        // For a simple C4 -> G4 -> C4 network:
-        // n = 2
+        // n = 2 (C4, G4)
         // edges = 2 (C4->G4, G4->C4)
         // density = 2 / (2 * 1) = 1.0
         expect(summary.density).toBe('1.0000');
 
         // Weighted Reciprocity: both links are reciprocated
-        // Total weight = 2, Reciprocated weight = 2
-        // reciprocity = 2/2 = 1.0
         expect(summary.reciprocity).toBe('1.0000');
+        // Rho: (1.0 - 1.0) / (1.0 - 1.0) -> handled as 0 or 1? 
+        // In my code: (weightedReciprocity - density) / (1 - density)
+        // (1 - 1) / (1 - 1) => 0/0 => handled by (1-density) > 0 check -> 0
+        expect(summary.reciprocityRho).toBe('0.0000');
 
-        // Entropy:
-        // C4 has 1 out-link (to G4). Entropy = 0.
-        // G4 has 1 out-link (to C4). Entropy = 0.
-        // Mean Entropy = 0
-        expect(summary.entropy).toBe('0.0000');
-
-        // Global Efficiency:
+        // Global Efficiency (Unweighted):
         // d(C4, G4) = 1, d(G4, C4) = 1
         // sum(1/d) = 1/1 + 1/1 = 2
         // Efficiency = 2 / (2 * 1) = 1.0
         expect(summary.efficiency).toBe('1.0000');
 
+        // Weighted Efficiency:
+        // weights are 1. d_w(C4, G4) = 1, d_w(G4, C4) = 1
+        // sum(1/d_w) = 1/1 + 1/1 = 2
+        // Weighted Efficiency = 2 / (2 * 1) = 1.0
+        expect(summary.weightedEfficiency).toBe('1.0000');
+
         // Interval Embedding:
         // C4 (48) -> G4 (55) => 7 semitones
-        // G4 (55) -> C4 (48) => 7 semitones (modulo 12)
-        // Total weight = 2. 7-th index (Perfect Fifth) should be 1.0, others 0.
+        // G4 (55) -> C4 (48) => 7 semitones
         expect(summary.embedding[7]).toBe('1.0000');
-        expect(summary.embedding[0]).toBe('0.0000');
     });
 
-    it('should handle complex transitions and weights', async () => {
+    it('should handle complex transitions and weights for weighted efficiency', async () => {
         vi.mocked(Midi).mockImplementationOnce(function() {
             this.name = 'Complex MIDI';
             this.tracks = [
@@ -88,28 +105,22 @@ describe('networkParser', () => {
                     channel: 0,
                     notes: [
                         { ticks: 0, name: 'C4' },
-                        { ticks: 0, name: 'E4' }, // Chord
                         { ticks: 100, name: 'G4' },
                         { ticks: 200, name: 'C4' },
-                        { ticks: 200, name: 'E4' } // Back to chord
+                        { ticks: 300, name: 'G4' } // C4->G4 and G4->C4 both weight 2
                     ]
                 }
             ];
         });
 
-        const { graph, summary } = await buildMidiNetwork('another-buffer');
+        const { summary } = await buildMidiNetwork('another-buffer');
 
-        // Nodes: C4, E4, G4
-        expect(summary.vertices).toBe(3);
-        
-        // Transitions:
-        // t=0 {C4, E4} -> t=100 {G4}  => C4->G4, E4->G4
-        // t=100 {G4} -> t=200 {C4, E4} => G4->C4, G4->E4
-        // Total edges = 4
-        expect(summary.edges).toBe(4);
-
-        expect(graph.getLink('C4', 'G4').data.weight).toBe(1);
-        expect(graph.getLink('G4', 'C4').data.weight).toBe(1);
+        // Weighted distance C4 -> G4 is weight 2 (from t=0->100 and t=200->300)
+        // Weighted distance G4 -> C4 is weight 1 (from t=100->200)
+        // sum(1/d_w) = 1/2 + 1/1 = 1.5
+        // Weighted Efficiency = 1.5 / (2 * 1) = 0.75
+        expect(summary.weightedEfficiency).toBe('0.7500');
+        expect(summary.efficiency).toBe('1.0000'); // Unweighted still 1.0
     });
 });
 

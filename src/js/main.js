@@ -102,8 +102,10 @@ const init = () => {
                     vCountEl.innerText = summary.vertices;
                     eCountEl.innerText = summary.edges;
                     document.getElementById('metric-efficiency').innerText = summary.efficiency;
+                    document.getElementById('metric-weighted-efficiency').innerText = summary.weightedEfficiency;
                     document.getElementById('metric-entropy').innerText = summary.entropy;
                     document.getElementById('metric-reciprocity').innerText = summary.reciprocity;
+                    document.getElementById('metric-reciprocity-rho').innerText = summary.reciprocityRho;
                     document.getElementById('metric-density').innerText = summary.density;
                     
                     // Render Interval Signature

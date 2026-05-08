@@ -50,6 +50,9 @@ export async function buildMidiNetwork(midiBuffer) {
                 graph.addNode(source, { name: source });
                 
                 targetNotes.forEach(target => {
+                    // Scientific Parity: Skip self-loops (w_xx = 0) as per paper section "Network construction"
+                    if (source === target) return;
+
                     graph.addNode(target, { name: target });
                     
                     const linkId = `${source}->${target}`;
@@ -79,20 +82,22 @@ export async function buildMidiNetwork(midiBuffer) {
     
     // 1. Density (d)
     const n = graph.getNodesCount();
-    const density = edgeCount / (n * (n - 1));
+    const density = n > 1 ? edgeCount / (n * (n - 1)) : 0;
 
-    // 2. Weighted Reciprocity (r)
+    // 2. Reciprocity (r and rho)
+    // - Weighted Reciprocity (r): W_recip / W_total
+    // - Normalized Reciprocity (rho): (r - density) / (1 - density)
     let totalWeight = 0;
     let reciprocatedWeight = 0;
     graph.forEachLink(link => {
         totalWeight += link.data.weight;
         const reverseLink = graph.getLink(link.toId, link.fromId);
         if (reverseLink) {
-            // We use the common definition where we sum weights of links that have a counterpart
             reciprocatedWeight += link.data.weight;
         }
     });
     const weightedReciprocity = totalWeight > 0 ? (reciprocatedWeight / totalWeight) : 0;
+    const reciprocityRho = (1 - density) > 0 ? (weightedReciprocity - density) / (1 - density) : 0;
 
     // 3. Mean Node Entropy (H)
     let totalEntropy = 0;
@@ -123,28 +128,32 @@ export async function buildMidiNetwork(midiBuffer) {
     const meanNodeEntropy = totalEntropy / n;
 
     // 4. Global Efficiency (E)
-    // Note: This is an O(N^3) or O(N*E) operation. 
-    // For large graphs, we'll use a sample or a simplified distance metric.
-    // For this implementation, we'll calculate it exactly for the MIDI scale (usually < 128 nodes).
-    let efficiencySum = 0;
+    // We calculate both unweighted and weighted versions.
+    // Weighted distance uses edge weight as "cost" (repetition reduces efficiency).
+    let unweightedEfficiencySum = 0;
+    let weightedEfficiencySum = 0;
     const nodes = [];
     graph.forEachNode(node => { 
         nodes.push(node.id); 
     });
     
-    // Simple BFS for all-pairs shortest paths (unweighted distance as per paper Fig 3a)
     for (let i = 0; i < nodes.length; i++) {
-        const distances = bfsDistances(graph, nodes[i]);
+        const uDistances = bfsDistances(graph, nodes[i]);
+        const wDistances = dijkstraDistances(graph, nodes[i]);
+        
         for (let j = 0; j < nodes.length; j++) {
             if (i === j) continue;
-            const d = distances[nodes[j]];
-            if (d && d > 0) {
-                efficiencySum += (1 / d);
-            }
+            
+            const ud = uDistances[nodes[j]];
+            if (ud && ud > 0) unweightedEfficiencySum += (1 / ud);
+            
+            const wd = wDistances[nodes[j]];
+            if (wd && wd > 0) weightedEfficiencySum += (1 / wd);
         }
     }
-    const globalEfficiency = efficiencySum / (n * (n - 1));
-    console.log("Efficiency calculation:", { efficiencySum, n, result: globalEfficiency });
+    
+    const unweightedEfficiency = n > 1 ? unweightedEfficiencySum / (n * (n - 1)) : 0;
+    const weightedEfficiency = n > 1 ? weightedEfficiencySum / (n * (n - 1)) : 0;
 
     // 5. Scale-interval Embedding (Interval Signature)
     // We calculate a 12D vector representing the distribution of interval classes (0-11 semitones)
@@ -164,14 +173,16 @@ export async function buildMidiNetwork(midiBuffer) {
     graph.forEachLink(link => {
         const s = noteToSemitone(link.fromId);
         const t = noteToSemitone(link.toId);
+        // Interval Class: absolute difference modulo 12
         const interval = Math.abs(t - s) % 12;
         intervalVector[interval] += link.data.weight;
     });
 
-    // Normalize the vector
-    const totalTransitions = intervalVector.reduce((a, b) => a + b, 0);
-    const normalizedEmbedding = totalTransitions > 0 
-        ? intervalVector.map(v => (v / totalTransitions).toFixed(4))
+    // Normalize the vector (L2 Normalization to match R implementation)
+    const sumSq = intervalVector.reduce((a, b) => a + (b * b), 0);
+    const denom = Math.sqrt(sumSq);
+    const normalizedEmbedding = denom > 0 
+        ? intervalVector.map(v => (v / denom).toFixed(4))
         : intervalVector.map(v => "0.0000");
 
     return {
@@ -182,8 +193,10 @@ export async function buildMidiNetwork(midiBuffer) {
             edges: edgeCount,
             density: density.toFixed(4),
             reciprocity: weightedReciprocity.toFixed(4),
+            reciprocityRho: reciprocityRho.toFixed(4),
             entropy: meanNodeEntropy.toFixed(4),
-            efficiency: globalEfficiency.toFixed(4),
+            efficiency: unweightedEfficiency.toFixed(4),
+            weightedEfficiency: weightedEfficiency.toFixed(4),
             embedding: normalizedEmbedding
         }
     };
@@ -206,7 +219,7 @@ export function rebuildGraph(serializedGraph) {
 }
 
 /**
- * Helper for Breadth-First Search distances
+ * Helper for Breadth-First Search distances (Unweighted)
  */
 function bfsDistances(graph, startNodeId) {
     const distances = {};
@@ -220,6 +233,40 @@ function bfsDistances(graph, startNodeId) {
             if (link.fromId === u && distances[v] === undefined) {
                 distances[v] = distances[u] + 1;
                 queue.push(v);
+            }
+        });
+    }
+    return distances;
+}
+
+/**
+ * Helper for Dijkstra's distances (Weighted)
+ * Uses edge weights as cost.
+ */
+function dijkstraDistances(graph, startNodeId) {
+    const distances = {};
+    const visited = new Set();
+    const pq = [[startNodeId, 0]]; // [nodeId, distance]
+
+    distances[startNodeId] = 0;
+
+    while (pq.length > 0) {
+        // Simple priority queue (sort by distance)
+        pq.sort((a, b) => a[1] - b[1]);
+        const [u, d] = pq.shift();
+
+        if (visited.has(u)) continue;
+        visited.add(u);
+
+        graph.forEachLinkedNode(u, (linkedNode, link) => {
+            if (link.fromId !== u) return; // Only outgoing edges
+            const v = linkedNode.id;
+            const weight = link.data.weight || 1;
+            const alt = d + weight;
+
+            if (distances[v] === undefined || alt < distances[v]) {
+                distances[v] = alt;
+                pq.push([v, alt]);
             }
         });
     }

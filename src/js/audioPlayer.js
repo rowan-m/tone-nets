@@ -228,6 +228,11 @@ export class MidiPlayer {
         Tone.Draw.cancel(0); // Prevent queued visual updates from firing
 
         if (this.synth) {
+            // Tell SpessaSynth to stop all active voices immediately
+            if (typeof this.synth.stopAll === 'function') {
+                this.synth.stopAll();
+            }
+
             // Synthesizer might have stopAll or we can just send "all notes off" CC
             for (let i = 0; i < 16; i++) {
                 // CC 123 is All Notes Off

@@ -215,6 +215,9 @@ const init = async () => {
                 welcomeMsg.innerText =
                     'Error processing MIDI file. See console.';
             }
+
+            // Clear the input value so the same file can be selected again
+            e.target.value = '';
         }
     });
 };

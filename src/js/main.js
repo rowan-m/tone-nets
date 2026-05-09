@@ -22,6 +22,10 @@ const init = async () => {
     const eCountEl = document.getElementById('e-count');
     const infoPanel = document.getElementById('info-panel');
     const welcomeMsg = document.getElementById('welcome-msg');
+    const msgLoading = document.getElementById('msg-loading');
+    const msgPrompt = document.getElementById('msg-prompt');
+    const msgStatus = document.getElementById('msg-status');
+    const msgStatusText = document.getElementById('msg-status-text');
     const hoverPanel = document.getElementById('hover-panel');
     const hoverContent = document.getElementById('hover-content');
     const appTitle = document.getElementById('app-title');
@@ -30,24 +34,24 @@ const init = async () => {
     const visualizer = new NetworkVisualizer('canvas-container');
     const player = new MidiPlayer();
 
+    const setStatus = (text) => {
+        msgLoading.classList.add('hidden');
+        msgPrompt.classList.add('hidden');
+        msgStatus.classList.remove('hidden');
+        msgStatusText.textContent = text;
+        welcomeMsg.classList.remove('hidden');
+    };
+
     // Disable upload until soundfont is loaded
     uploadInput.disabled = true;
-    welcomeMsg.innerHTML = '<p>Loading SoundFont (7.5MB)... Please wait.</p>';
 
     try {
         await player.loadSoundfont();
-        welcomeMsg.innerHTML = `
-            <p>
-                Upload a MIDI file to begin the visualization or try
-                the included 
-                <a href="#" class="example-midi" data-file="beethoven-moonlight-sonata.mid">Beethoven's Moonlight Sonata</a>
-                or 
-                <a href="#" class="example-midi" data-file="chopin-funeral-march.mid">Chopin's Funeral March</a>.
-            </p>
-        `;
+        msgLoading.classList.add('hidden');
+        msgPrompt.classList.remove('hidden');
         uploadInput.disabled = false;
     } catch (error) {
-        welcomeMsg.innerHTML = '<p>Error loading SoundFont. See console.</p>';
+        setStatus('Error loading SoundFont. See console.');
         console.error(error);
     }
 
@@ -99,8 +103,7 @@ const init = async () => {
         await Tone.start();
 
         console.log('Processing MIDI:', fileName);
-        welcomeMsg.innerText = 'Parsing MIDI and building network...';
-        welcomeMsg.classList.remove('hidden');
+        setStatus('Parsing MIDI and building network...');
         muteToggle.disabled = true;
 
         try {
@@ -115,8 +118,7 @@ const init = async () => {
 
                 if (error) {
                     console.error('Worker error:', error);
-                    welcomeMsg.innerText =
-                        'Error processing MIDI file. See console.';
+                    setStatus('Error processing MIDI file. See console.');
                     return;
                 }
 
@@ -172,8 +174,7 @@ const init = async () => {
 
                 // Setup Progress UI
                 visualizer.onLayoutProgress = (percent) => {
-                    welcomeMsg.innerText = `Calculating topological layout: ${percent}%`;
-                    welcomeMsg.classList.remove('hidden');
+                    setStatus(`Calculating topological layout: ${percent}%`);
                 };
 
                 // Build 3D Visualization
@@ -185,7 +186,7 @@ const init = async () => {
             parserWorker.postMessage({ midiBuffer: arrayBuffer });
         } catch (err) {
             console.error('Error processing MIDI file:', err);
-            welcomeMsg.innerText = 'Error processing MIDI file. See console.';
+            setStatus('Error processing MIDI file. See console.');
         }
     };
 
@@ -222,7 +223,7 @@ const init = async () => {
                 await processMidi(arrayBuffer, fileName);
             } catch (err) {
                 console.error('Error loading example MIDI:', err);
-                welcomeMsg.innerText = 'Error loading example MIDI.';
+                setStatus('Error loading example MIDI.');
             }
         }
     });

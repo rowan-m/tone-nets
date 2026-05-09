@@ -36,8 +36,9 @@ export class MidiPlayer {
         }
 
         if (!this.synth) {
-            // Create a dedicated native AudioContext to bypass Tone.js standardized-audio-context wrappers
-            const rawCtx = new (window.AudioContext || window.webkitAudioContext)();
+            // Use Tone's underlying native AudioContext so all scheduled times align perfectly
+            // Tone.context.rawContext returns a standardized-audio-context wrapper, we need the actual browser context
+            const rawCtx = Tone.context.rawContext._nativeContext || Tone.context.rawContext;
             if (rawCtx.state === 'suspended') {
                 await rawCtx.resume();
             }
@@ -77,16 +78,54 @@ export class MidiPlayer {
         midi.tracks.forEach(track => {
             const channel = track.channel; // 0-15
 
+            // Control Changes (Volume, Pan, Sustain, etc.) - Schedule these FIRST so Bank Selects happen before Program Changes
+            for (const ccNumber in track.controlChanges) {
+                track.controlChanges[ccNumber].forEach(cc => {
+                    // If CC is a bank select (0 or 32) and occurs at time 0, schedule it at time 0
+                    let scheduleTime = cc.time + startDelay;
+                    if ((ccNumber === '0' || ccNumber === '32') && cc.time === 0) {
+                        scheduleTime = 0; 
+                    }
+                    const scheduledEvent = Tone.Transport.schedule((time) => {
+                        if (this.synth) {
+                            this.synth.controllerChange(channel, parseInt(ccNumber), Math.round(cc.value * 127), { time });
+                        }
+                    }, scheduleTime);
+                    this.scheduledEvents.push(scheduledEvent);
+                });
+            }
+
+            // Program Change (Instrument) - Schedule at 0 so it happens before startDelay (and after Bank Selects)
+            if (track.instrument && typeof track.instrument.number === 'number') {
+                const scheduledEvent = Tone.Transport.schedule((time) => {
+                    if (this.synth) {
+                        this.synth.programChange(channel, track.instrument.number, { time });
+                    }
+                }, 0.01); // 0.01 to ensure it definitely happens after CC0 at 0.0
+                this.scheduledEvents.push(scheduledEvent);
+            }
+
+            // Pitch Bends
+            track.pitchBends.forEach(pb => {
+                const scheduledEvent = Tone.Transport.schedule((time) => {
+                    if (this.synth) {
+                        this.synth.pitchWheel(channel, Math.round((pb.value + 1) * 8192), { time });
+                    }
+                }, pb.time + startDelay);
+                this.scheduledEvents.push(scheduledEvent);
+            });
+
+            // Notes
             track.notes.forEach((note, index) => {
                 const prevNote = index > 0 ? track.notes[index - 1] : null;
                 
                 const scheduledEvent = Tone.Transport.schedule((time) => {
                     if (this.synth) {
-                        // Use Tone.Draw to fire exactly at the visual frame to avoid Tone.Transport lookahead mismatch
+                        // Schedule audio sample-accurately using the provided context time
+                        this.synth.noteOn(channel, note.midi, Math.round(note.velocity * 127), { time });
+                        
+                        // Schedule visual updates on the requestAnimationFrame boundary
                         Tone.Draw.schedule(() => {
-                            // SpessaSynth: noteOn(channel, note, velocity)
-                            // Velocity is typically 0-127
-                            this.synth.noteOn(channel, note.midi, Math.round(note.velocity * 127));
                             if (this.onNotePlay) {
                                 this.onNotePlay(note.name, prevNote ? prevNote.name : null);
                             }
@@ -97,8 +136,9 @@ export class MidiPlayer {
                 
                 const releaseEvent = Tone.Transport.schedule((time) => {
                     if (this.synth) {
+                        this.synth.noteOff(channel, note.midi, { time });
+                        
                         Tone.Draw.schedule(() => {
-                            this.synth.noteOff(channel, note.midi);
                             if (this.onNoteRelease) {
                                 this.onNoteRelease(note.name, prevNote ? prevNote.name : null);
                             }

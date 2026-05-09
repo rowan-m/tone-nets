@@ -132,6 +132,14 @@ export class NetworkVisualizer {
             if (this._buildToken !== currentToken) return; // Abort build
 
             this.layout.step();
+            
+            // Apply a gentle central gravity to bring isolated subgraphs closer together
+            // Without this, disconnected tracks will drift infinitely apart due to Coulomb repulsion
+            this.layout.simulator.bodies.forEach(body => {
+                body.pos.x -= body.pos.x * 0.0005;
+                body.pos.y -= body.pos.y * 0.0005;
+            });
+
             if (i % batchSize === 0) {
                 // Yield to main thread
                 await new Promise(resolve => setTimeout(resolve, 0));

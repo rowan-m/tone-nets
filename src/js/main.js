@@ -193,7 +193,10 @@ const init = async () => {
     // Setup Mute Toggle
     muteToggle.addEventListener('click', () => {
         const isMuted = player.toggleMute();
-        muteToggle.innerText = isMuted ? 'Unmute' : 'Mute';
+        // eslint-disable-next-line no-unsanitized/property
+        muteToggle.innerHTML = isMuted
+            ? '<span aria-hidden="true">🔇</span>Unmute'
+            : '<span aria-hidden="true">🔊</span>Mute';
         muteToggle.style.backgroundColor = isMuted
             ? 'rgba(0, 255, 255, 0.2)'
             : '';

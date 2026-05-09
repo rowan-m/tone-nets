@@ -44,7 +44,7 @@
                 <h1 id="app-title">Tone Nets</h1>
                 <div class="controls">
                     <label for="midi-upload" class="custom-file-upload btn">
-                        Load MIDI
+                        <span aria-hidden="true">💾</span>Load MIDI
                     </label>
                     <input
                         type="file"
@@ -52,8 +52,12 @@
                         accept=".mid,.midi"
                         class="hidden-input"
                     />
-                    <button id="mute-toggle" class="btn" disabled>Mute</button>
-                    <button id="toggle-info" class="btn hidden">Stats</button>
+                    <button id="mute-toggle" class="btn" disabled>
+                        <span aria-hidden="true">🔊</span>Mute
+                    </button>
+                    <button id="toggle-info" class="btn hidden">
+                        <span aria-hidden="true">📊</span>Stats
+                    </button>
                 </div>
             </header>
 

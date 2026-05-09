@@ -69,6 +69,7 @@ h1 {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: 0.5rem;
     height: 44px; /* Minimum touch target size */
     box-sizing: border-box;
 }
@@ -126,7 +127,9 @@ a {
     color: var(--accent-color);
     text-decoration: none;
     border-bottom: 1px dashed var(--accent-color);
-    transition: opacity 0.2s, border-bottom-style 0.2s;
+    transition:
+        opacity 0.2s,
+        border-bottom-style 0.2s;
 }
 
 a:hover {

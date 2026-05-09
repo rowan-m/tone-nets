@@ -35,4 +35,10 @@ npm run prettier
 npm run eslint
 ```
 
+## Attribution
+
+Sample MIDI files included from Wikimedia Commons: 
+- [Beethoven's Moonlight Sonata](https://commons.wikimedia.org/wiki/File:Beethoven_-_Moonlight_Sonata_1st_Movement.mid)
+- [Chopin's Funeral March](https://commons.wikimedia.org/wiki/File:Chopin_-_Funeral_March.mid)
+
 _Tone Nets sounds a bit like [Tonnetz](https://wikipedia.org/wiki/Tonnetz). Ha ha, so clever._

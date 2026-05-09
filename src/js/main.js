@@ -36,8 +36,15 @@ const init = async () => {
 
     try {
         await player.loadSoundfont();
-        welcomeMsg.innerHTML =
-            '<p>Upload a MIDI file to begin the visualization</p>';
+        welcomeMsg.innerHTML = `
+            <p>
+                Upload a MIDI file to begin the visualization or try
+                the included 
+                <a href="#" class="example-midi" data-file="beethoven-moonlight-sonata.mid">Beethoven's Moonlight Sonata</a>
+                or 
+                <a href="#" class="example-midi" data-file="chopin-funeral-march.mid">Chopin's Funeral March</a>.
+            </p>
+        `;
         uploadInput.disabled = false;
     } catch (error) {
         welcomeMsg.innerHTML = '<p>Error loading SoundFont. See console.</p>';
@@ -88,6 +95,100 @@ const init = async () => {
         }
     };
 
+    const processMidi = async (arrayBuffer, fileName) => {
+        await Tone.start();
+
+        console.log('Processing MIDI:', fileName);
+        welcomeMsg.innerText = 'Parsing MIDI and building network...';
+        welcomeMsg.classList.remove('hidden');
+        muteToggle.disabled = true;
+
+        try {
+            // Play Audio
+            player.play(arrayBuffer.slice(0)).catch((err) => {
+                console.error('Audio playback error:', err);
+            });
+
+            // Use Web Worker to build the network
+            parserWorker.onmessage = (e) => {
+                const { summary, serializedGraph, error } = e.data;
+
+                if (error) {
+                    console.error('Worker error:', error);
+                    welcomeMsg.innerText =
+                        'Error processing MIDI file. See console.';
+                    return;
+                }
+
+                // Update UI Summary
+                appTitle.innerText =
+                    summary.title !== 'Unknown Title'
+                        ? summary.title
+                        : fileName;
+
+                vCountEl.innerText = summary.vertices;
+                eCountEl.innerText = summary.edges;
+                document.getElementById('metric-efficiency').innerText =
+                    summary.efficiency;
+                document.getElementById(
+                    'metric-weighted-efficiency',
+                ).innerText = summary.weightedEfficiency;
+                document.getElementById('metric-entropy').innerText =
+                    summary.entropy;
+                document.getElementById('metric-binary-reciprocity').innerText =
+                    summary.binaryReciprocity;
+                document.getElementById('metric-reciprocity').innerText =
+                    summary.reciprocity;
+                document.getElementById('metric-reciprocity-rho').innerText =
+                    summary.reciprocityRho;
+                document.getElementById('metric-density').innerText =
+                    summary.density;
+
+                // Render Interval Signature
+                const barContainer = document.getElementById('interval-bars');
+                barContainer.innerHTML = '';
+                summary.embedding.forEach((val, i) => {
+                    const bar = document.createElement('div');
+                    bar.className = 'bar';
+                    bar.style.height = `${parseFloat(val) * 100}%`;
+                    // eslint-disable-next-line security/detect-object-injection
+                    bar.title = `${INTERVAL_NAMES[i]}: ${Math.round(parseFloat(val) * 100)}%`;
+                    barContainer.appendChild(bar);
+                });
+
+                if (window.innerWidth <= 768) {
+                    infoPanel.classList.add('hidden');
+                } else {
+                    infoPanel.classList.remove('hidden');
+                }
+                toggleInfo.classList.remove('hidden');
+                welcomeMsg.classList.add('hidden');
+                muteToggle.disabled = false;
+
+                console.log('Network built successfully (in worker):', summary);
+
+                // Rebuild graph from serialized data
+                const graph = rebuildGraph(serializedGraph);
+
+                // Setup Progress UI
+                visualizer.onLayoutProgress = (percent) => {
+                    welcomeMsg.innerText = `Calculating topological layout: ${percent}%`;
+                    welcomeMsg.classList.remove('hidden');
+                };
+
+                // Build 3D Visualization
+                visualizer.buildVisualization(graph).then(() => {
+                    welcomeMsg.classList.add('hidden');
+                });
+            };
+
+            parserWorker.postMessage({ midiBuffer: arrayBuffer });
+        } catch (err) {
+            console.error('Error processing MIDI file:', err);
+            welcomeMsg.innerText = 'Error processing MIDI file. See console.';
+        }
+    };
+
     // Setup Mute Toggle
     muteToggle.addEventListener('click', () => {
         const isMuted = player.toggleMute();
@@ -108,114 +209,29 @@ const init = async () => {
         infoPanel.classList.add('hidden');
     });
 
+    // Handle Example MIDI clicks
+    document.addEventListener('click', async (e) => {
+        if (e.target.classList.contains('example-midi')) {
+            e.preventDefault();
+            const fileName = e.target.dataset.file;
+            try {
+                const response = await fetch(`/${fileName}`);
+                if (!response.ok)
+                    throw new Error('Failed to fetch example MIDI');
+                const arrayBuffer = await response.arrayBuffer();
+                await processMidi(arrayBuffer, fileName);
+            } catch (err) {
+                console.error('Error loading example MIDI:', err);
+                welcomeMsg.innerText = 'Error loading example MIDI.';
+            }
+        }
+    });
+
     uploadInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (file) {
-            // IMMEDIATE USER GESTURE HANDLING
-            // We must start the audio context immediately upon the file selection event.
-            // If we wait for the 3000-step layout calculation, the browser's
-            // "transient user activation" token will expire and audio will be blocked.
-            await Tone.start();
-
-            console.log('File selected:', file.name);
-            welcomeMsg.innerText = 'Parsing MIDI and building network...';
-            welcomeMsg.classList.remove('hidden');
-            muteToggle.disabled = true;
-
-            try {
-                // Read file as ArrayBuffer for @tonejs/midi
-                const arrayBuffer = await file.arrayBuffer();
-                // Play Audio
-                player.play(arrayBuffer.slice(0)).catch((err) => {
-                    console.error('Audio playback error:', err);
-                });
-
-                // Use Web Worker to build the network
-                parserWorker.onmessage = (e) => {
-                    const { summary, serializedGraph, error } = e.data;
-
-                    if (error) {
-                        console.error('Worker error:', error);
-                        welcomeMsg.innerText =
-                            'Error processing MIDI file. See console.';
-                        return;
-                    }
-
-                    // Update UI Summary
-                    appTitle.innerText =
-                        summary.title !== 'Unknown Title'
-                            ? summary.title
-                            : file.name;
-
-                    vCountEl.innerText = summary.vertices;
-                    eCountEl.innerText = summary.edges;
-                    document.getElementById('metric-efficiency').innerText =
-                        summary.efficiency;
-                    document.getElementById(
-                        'metric-weighted-efficiency',
-                    ).innerText = summary.weightedEfficiency;
-                    document.getElementById('metric-entropy').innerText =
-                        summary.entropy;
-                    document.getElementById(
-                        'metric-binary-reciprocity',
-                    ).innerText = summary.binaryReciprocity;
-                    document.getElementById('metric-reciprocity').innerText =
-                        summary.reciprocity;
-                    document.getElementById(
-                        'metric-reciprocity-rho',
-                    ).innerText = summary.reciprocityRho;
-                    document.getElementById('metric-density').innerText =
-                        summary.density;
-
-                    // Render Interval Signature
-                    const barContainer =
-                        document.getElementById('interval-bars');
-                    barContainer.innerHTML = '';
-                    summary.embedding.forEach((val, i) => {
-                        const bar = document.createElement('div');
-                        bar.className = 'bar';
-                        bar.style.height = `${parseFloat(val) * 100}%`;
-                        // eslint-disable-next-line security/detect-object-injection
-                        bar.title = `${INTERVAL_NAMES[i]}: ${Math.round(parseFloat(val) * 100)}%`;
-                        barContainer.appendChild(bar);
-                    });
-
-                    if (window.innerWidth <= 768) {
-                        infoPanel.classList.add('hidden');
-                    } else {
-                        infoPanel.classList.remove('hidden');
-                    }
-                    toggleInfo.classList.remove('hidden');
-                    welcomeMsg.classList.add('hidden');
-                    muteToggle.disabled = false;
-
-                    console.log(
-                        'Network built successfully (in worker):',
-                        summary,
-                    );
-
-                    // Rebuild graph from serialized data
-                    const graph = rebuildGraph(serializedGraph);
-
-                    // Setup Progress UI
-                    visualizer.onLayoutProgress = (percent) => {
-                        welcomeMsg.innerText = `Calculating topological layout: ${percent}%`;
-                        welcomeMsg.classList.remove('hidden');
-                    };
-
-                    // Build 3D Visualization
-                    visualizer.buildVisualization(graph).then(() => {
-                        welcomeMsg.classList.add('hidden');
-                    });
-                };
-
-                parserWorker.postMessage({ midiBuffer: arrayBuffer });
-            } catch (err) {
-                console.error('Error processing MIDI file:', err);
-                welcomeMsg.innerText =
-                    'Error processing MIDI file. See console.';
-            }
-
+            const arrayBuffer = await file.arrayBuffer();
+            await processMidi(arrayBuffer, file.name);
             // Clear the input value so the same file can be selected again
             e.target.value = '';
         }

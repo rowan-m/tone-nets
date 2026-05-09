@@ -21,6 +21,7 @@
     "ngraph.forcelayout": "^3.3.1",
     "ngraph.graph": "^20.1.2",
     "postprocessing": "^6.39.1",
+    "spessasynth_lib": "^4.2.15",
     "three": "^0.184.0",
     "tone": "^15.1.22"
   }

@@ -121,14 +121,22 @@ export class NetworkVisualizer {
             }
         });
         
+        // Cancellation token to abort if a new file is uploaded
+        const currentToken = {};
+        this._buildToken = currentToken;
+
         // Fully compute the 2D layout incrementally to avoid blocking
         const totalSteps = 3000;
         const batchSize = 100;
         for (let i = 0; i < totalSteps; i++) {
+            if (this._buildToken !== currentToken) return; // Abort build
+
             this.layout.step();
             if (i % batchSize === 0) {
                 // Yield to main thread
                 await new Promise(resolve => setTimeout(resolve, 0));
+                if (this._buildToken !== currentToken) return; // Abort build
+                
                 if (this.onLayoutProgress) {
                     this.onLayoutProgress(Math.round((i / totalSteps) * 100));
                 }

@@ -10,7 +10,7 @@ const parserWorker = new Worker(new URL('./parser.worker.js', import.meta.url), 
 
 import { INTERVAL_NAMES, getIntervalName } from './utils.js';
 
-const init = () => {
+const init = async () => {
     const uploadInput = document.getElementById('midi-upload');
     const muteToggle = document.getElementById('mute-toggle');
     const toggleInfo = document.getElementById('toggle-info');
@@ -26,6 +26,19 @@ const init = () => {
     // Initialize Subsystems
     const visualizer = new NetworkVisualizer('canvas-container');
     const player = new MidiPlayer();
+
+    // Disable upload until soundfont is loaded
+    uploadInput.disabled = true;
+    welcomeMsg.innerHTML = "<p>Loading SoundFont (7.5MB)... Please wait.</p>";
+
+    try {
+        await player.loadSoundfont();
+        welcomeMsg.innerHTML = "<p>Upload a MIDI file to begin the visualization</p>";
+        uploadInput.disabled = false;
+    } catch (error) {
+        welcomeMsg.innerHTML = "<p>Error loading SoundFont. See console.</p>";
+        console.error(error);
+    }
 
     player.onNotePlay = (nodeId, prevNodeId) => visualizer.highlightPlayingElement(nodeId, prevNodeId);
     player.onNoteRelease = (nodeId, prevNodeId) => visualizer.releasePlayingElement(nodeId, prevNodeId);
@@ -91,7 +104,9 @@ const init = () => {
                 // Read file as ArrayBuffer for @tonejs/midi
                 const arrayBuffer = await file.arrayBuffer();
                 // Play Audio
-                player.play(arrayBuffer.slice(0));
+                player.play(arrayBuffer.slice(0)).catch(err => {
+                    console.error("Audio playback error:", err);
+                });
                 
                 // Use Web Worker to build the network
                 parserWorker.onmessage = (e) => {

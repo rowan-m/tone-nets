@@ -1,7 +1,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import createLayout from 'ngraph.forcelayout';
-import { EffectComposer, RenderPass, EffectPass, BloomEffect } from 'postprocessing';
+import {
+    EffectComposer,
+    RenderPass,
+    EffectPass,
+    BloomEffect,
+} from 'postprocessing';
 import { noteToSemitone } from './utils.js';
 
 export class NetworkVisualizer {
@@ -10,10 +15,22 @@ export class NetworkVisualizer {
         this.scene = new THREE.Scene();
         const aspect = this.container.clientWidth / this.container.clientHeight;
         const d = 1000;
-        this.camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 1, 10000);
+        this.camera = new THREE.OrthographicCamera(
+            -d * aspect,
+            d * aspect,
+            d,
+            -d,
+            1,
+            10000,
+        );
         this.baseFrustumSize = d * 2;
-        this.renderer = new THREE.WebGLRenderer({ powerPreference: "high-performance", antialias: false, stencil: false, depth: false });
-        
+        this.renderer = new THREE.WebGLRenderer({
+            powerPreference: 'high-performance',
+            antialias: false,
+            stencil: false,
+            depth: false,
+        });
+
         this.nodes = new Map();
         this.edges = [];
         this.edgeMap = new Map();
@@ -36,17 +53,23 @@ export class NetworkVisualizer {
     }
 
     initThree() {
-        this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+        this.renderer.setSize(
+            this.container.clientWidth,
+            this.container.clientHeight,
+        );
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.container.appendChild(this.renderer.domElement);
 
-        // Initial dummy camera setup for the empty scene. 
+        // Initial dummy camera setup for the empty scene.
         // This will be completely overridden by fitCameraToGraph() once a MIDI is loaded.
         this.camera.up.set(0, 0, 1);
         this.camera.position.set(0, -800, 800);
         this.camera.lookAt(0, 0, 0);
 
-        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+        this.controls = new OrbitControls(
+            this.camera,
+            this.renderer.domElement,
+        );
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
 
@@ -58,15 +81,22 @@ export class NetworkVisualizer {
         this.scene.add(directionalLight);
 
         window.addEventListener('resize', () => {
-            const aspect = this.container.clientWidth / this.container.clientHeight;
+            const aspect =
+                this.container.clientWidth / this.container.clientHeight;
             const d = this.baseFrustumSize / 2;
             this.camera.left = -d * aspect;
             this.camera.right = d * aspect;
             this.camera.top = d;
             this.camera.bottom = -d;
             this.camera.updateProjectionMatrix();
-            this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
-            this.composer.setSize(this.container.clientWidth, this.container.clientHeight);
+            this.renderer.setSize(
+                this.container.clientWidth,
+                this.container.clientHeight,
+            );
+            this.composer.setSize(
+                this.container.clientWidth,
+                this.container.clientHeight,
+            );
         });
 
         this.container.addEventListener('pointermove', (e) => {
@@ -83,18 +113,18 @@ export class NetworkVisualizer {
         const bloomEffect = new BloomEffect({
             intensity: 1.5,
             luminanceThreshold: 0.1,
-            luminanceSmoothing: 0.9
+            luminanceSmoothing: 0.9,
         });
 
         this.composer.addPass(new EffectPass(this.camera, bloomEffect));
     }
 
     clear() {
-        while(this.graphGroup.children.length > 0){ 
+        while (this.graphGroup.children.length > 0) {
             const child = this.graphGroup.children[0];
             if (child.geometry) child.geometry.dispose();
             if (child.material) child.material.dispose();
-            this.graphGroup.remove(child); 
+            this.graphGroup.remove(child);
         }
         this.nodes.clear();
         this.edges = [];
@@ -107,9 +137,9 @@ export class NetworkVisualizer {
 
     async buildVisualization(graph) {
         this.clear();
-        
+
         // 1. Initialize Force Layout in 2D to keep the clean, separated structural web
-        this.layout = createLayout(graph, { 
+        this.layout = createLayout(graph, {
             dimensions: 2,
             physicsSettings: {
                 springLength: 150,
@@ -117,10 +147,10 @@ export class NetworkVisualizer {
                 gravity: -10,
                 theta: 0.8,
                 dragCoeff: 0.1,
-                timeStep: 20
-            }
+                timeStep: 20,
+            },
         });
-        
+
         // Cancellation token to abort if a new file is uploaded
         const currentToken = {};
         this._buildToken = currentToken;
@@ -132,19 +162,19 @@ export class NetworkVisualizer {
             if (this._buildToken !== currentToken) return; // Abort build
 
             this.layout.step();
-            
+
             // Apply a gentle central gravity to bring isolated subgraphs closer together
             // Without this, disconnected tracks will drift infinitely apart due to Coulomb repulsion
-            this.layout.simulator.bodies.forEach(body => {
+            this.layout.simulator.bodies.forEach((body) => {
                 body.pos.x -= body.pos.x * 0.0005;
                 body.pos.y -= body.pos.y * 0.0005;
             });
 
             if (i % batchSize === 0) {
                 // Yield to main thread
-                await new Promise(resolve => setTimeout(resolve, 0));
+                await new Promise((resolve) => setTimeout(resolve, 0));
                 if (this._buildToken !== currentToken) return; // Abort build
-                
+
                 if (this.onLayoutProgress) {
                     this.onLayoutProgress(Math.round((i / totalSteps) * 100));
                 }
@@ -156,141 +186,161 @@ export class NetworkVisualizer {
         const zDepthScale = 300; // How much the 3D effect pops out
 
         let maxDegree = 1;
-        graph.forEachNode(node => {
+        graph.forEachNode((node) => {
             if (node.data.degree > maxDegree) maxDegree = node.data.degree;
         });
 
         let maxWeight = 1;
-        graph.forEachLink(link => {
+        graph.forEachLink((link) => {
             if (link.data.weight > maxWeight) maxWeight = link.data.weight;
         });
 
         const sphereGeo = new THREE.SphereGeometry(1, 32, 32);
 
         // 2. Create Node Meshes (Apply Z-depth based on degree)
-        graph.forEachNode(node => {
+        graph.forEachNode((node) => {
             const pos = this.layout.getNodePosition(node.id);
             const degree = node.data.degree || 1;
-            
+
             const normDegree = Math.min(1, degree / maxDegree);
-            
+
             // Color based on pitch class (0-11)
             const pitchClass = noteToSemitone(node.id) % 12;
             const hue = pitchClass / 12;
             const nodeColor = new THREE.Color().setHSL(hue, 1.0, 0.6); // Vibrant color
 
-            
-            const material = new THREE.MeshStandardMaterial({ 
+            const material = new THREE.MeshStandardMaterial({
                 color: nodeColor,
                 emissive: nodeColor,
                 emissiveIntensity: 0.2,
                 roughness: 0.3,
                 metalness: 0.2,
                 transparent: false,
-                opacity: 1.0
+                opacity: 1.0,
             });
             const mesh = new THREE.Mesh(sphereGeo, material);
-            
-            const scale = 2 + (normDegree * 6); 
+
+            const scale = 2 + normDegree * 6;
             mesh.scale.set(scale, scale, scale);
-            
+
             // MEANINGFUL Z-AXIS: Highly connected notes pop out towards the camera
-            const zPos = (normDegree * zDepthScale) - (zDepthScale * 0.25);
+            const zPos = normDegree * zDepthScale - zDepthScale * 0.25;
             mesh.position.set(pos.x * layoutScale, pos.y * layoutScale, zPos);
-            
+
             const outlineGeo = new THREE.SphereGeometry(1.08, 16, 16);
-            const outlineMat = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide });
+            const outlineMat = new THREE.MeshBasicMaterial({
+                color: 0x000000,
+                side: THREE.BackSide,
+            });
             const outlineMesh = new THREE.Mesh(outlineGeo, outlineMat);
             mesh.add(outlineMesh);
 
             this.graphGroup.add(mesh);
             // Store the calculated Z so edges can use it
-            mesh.userData = { 
-                type: 'node', 
-                id: node.id, 
-                degree: degree, 
+            mesh.userData = {
+                type: 'node',
+                id: node.id,
+                degree: degree,
                 origEmissive: material.emissive.getHex(),
-                origEmissiveIntensity: material.emissiveIntensity
+                origEmissiveIntensity: material.emissiveIntensity,
             };
             this.pickableObjects.push(mesh);
             this.nodes.set(node.id, { mesh: mesh, id: node.id, z: zPos });
         });
 
         // 3. Create Edge Meshes (Curved Lines with Bright Heatmap)
-        const colorLow = new THREE.Color(0xbbbbbb);   // Rare: Medium-Light Grey
-        const colorMid = new THREE.Color(0xdddddd);   // Frequent: Very Light Grey
-        const colorHigh = new THREE.Color(0xffffff);  // Very Frequent: Pure White
+        const colorLow = new THREE.Color(0xbbbbbb); // Rare: Medium-Light Grey
+        const colorMid = new THREE.Color(0xdddddd); // Frequent: Very Light Grey
+        const colorHigh = new THREE.Color(0xffffff); // Very Frequent: Pure White
 
         // Reusable cone geometry for arrows (oriented so tip points along +Z)
         const coneGeo = new THREE.ConeGeometry(1.2, 3.5, 8); // Scaled down to match lines
         coneGeo.rotateX(Math.PI / 2);
 
-        graph.forEachLink(link => {
+        graph.forEachLink((link) => {
             const sPosRaw = this.layout.getNodePosition(link.fromId);
             const tPosRaw = this.layout.getNodePosition(link.toId);
             const sZ = this.nodes.get(link.fromId).z;
             const tZ = this.nodes.get(link.toId).z;
-            
-            const sPos = new THREE.Vector3(sPosRaw.x * layoutScale, sPosRaw.y * layoutScale, sZ);
-            const tPos = new THREE.Vector3(tPosRaw.x * layoutScale, tPosRaw.y * layoutScale, tZ);
-            
+
+            const sPos = new THREE.Vector3(
+                sPosRaw.x * layoutScale,
+                sPosRaw.y * layoutScale,
+                sZ,
+            );
+            const tPos = new THREE.Vector3(
+                tPosRaw.x * layoutScale,
+                tPosRaw.y * layoutScale,
+                tZ,
+            );
+
             const midPoint = sPos.clone().add(tPos).multiplyScalar(0.5);
-            const xyDist = Math.sqrt(Math.pow(tPos.x - sPos.x, 2) + Math.pow(tPos.y - sPos.y, 2));
+            const xyDist = Math.sqrt(
+                Math.pow(tPos.x - sPos.x, 2) + Math.pow(tPos.y - sPos.y, 2),
+            );
             const dx = tPos.x - sPos.x;
             const dy = tPos.y - sPos.y;
             const normal = new THREE.Vector3(-dy, dx, 0).normalize();
-            
-            const controlPoint = midPoint.add(normal.multiplyScalar(xyDist * 0.25));
-            controlPoint.z = Math.max(sZ, tZ) + (xyDist * 0.15); 
-            
-            const curve = new THREE.QuadraticBezierCurve3(sPos, controlPoint, tPos);
-            
+
+            const controlPoint = midPoint.add(
+                normal.multiplyScalar(xyDist * 0.25),
+            );
+            controlPoint.z = Math.max(sZ, tZ) + xyDist * 0.15;
+
+            const curve = new THREE.QuadraticBezierCurve3(
+                sPos,
+                controlPoint,
+                tPos,
+            );
+
             // --- RESTORE FULL LINES TO CENTER ---
-            const pts = curve.getPoints(20); 
+            const pts = curve.getPoints(20);
             const geometry = new THREE.BufferGeometry().setFromPoints(pts);
-            
+
             // --- DATA-DRIVEN STYLING ---
             const normWeight = Math.min(1, link.data.weight / maxWeight);
-            
+
             // Weight Color: Med Grey -> Pure White
             let edgeColor;
             if (normWeight < 0.5) {
                 edgeColor = colorLow.clone().lerp(colorMid, normWeight * 2);
             } else {
-                edgeColor = colorMid.clone().lerp(colorHigh, (normWeight - 0.5) * 2);
+                edgeColor = colorMid
+                    .clone()
+                    .lerp(colorHigh, (normWeight - 0.5) * 2);
             }
 
             // Opacity: Significantly increased base opacity so thin lines pop
-            const edgeOpacity = 0.4 + (normWeight * 0.6);
+            const edgeOpacity = 0.4 + normWeight * 0.6;
 
-            const mat = new THREE.LineBasicMaterial({ 
-                color: edgeColor, 
-                transparent: true, 
-                opacity: edgeOpacity 
+            const mat = new THREE.LineBasicMaterial({
+                color: edgeColor,
+                transparent: true,
+                opacity: edgeOpacity,
             });
 
             const line = new THREE.Line(geometry, mat);
             this.graphGroup.add(line);
-            
-            line.userData = { 
-                type: 'edge', 
-                sourceId: link.fromId, 
-                targetId: link.toId, 
-                weight: link.data.weight, 
-                origOpacity: edgeOpacity, 
-                origColor: edgeColor.getHex() 
+
+            line.userData = {
+                type: 'edge',
+                sourceId: link.fromId,
+                targetId: link.toId,
+                weight: link.data.weight,
+                origOpacity: edgeOpacity,
+                origColor: edgeColor.getHex(),
             };
             this.pickableObjects.push(line);
-            
+
             // --- PLACE ARROW AT CENTER OF CURVE ---
             const tMid = 0.5;
             const arrowPos = curve.getPoint(tMid);
             const arrowDir = curve.getTangent(tMid).normalize();
-            
-            const coneMat = new THREE.MeshBasicMaterial({ 
-                color: edgeColor, 
-                transparent: true, 
-                opacity: Math.max(0.4, edgeOpacity) 
+
+            const coneMat = new THREE.MeshBasicMaterial({
+                color: edgeColor,
+                transparent: true,
+                opacity: Math.max(0.4, edgeOpacity),
             });
             const cone = new THREE.Mesh(coneGeo, coneMat);
             cone.position.copy(arrowPos);
@@ -305,79 +355,100 @@ export class NetworkVisualizer {
                 line: line,
                 cone: cone,
                 sourceId: link.fromId,
-                targetId: link.toId
+                targetId: link.toId,
             };
             this.edges.push(edgeData);
             this.edgeMap.set(`${link.fromId}->${link.toId}`, edgeData);
-            });
+        });
 
-            // Auto-fit camera to the graph's bounding sphere
-            this.fitCameraToGraph();
-            }
+        // Auto-fit camera to the graph's bounding sphere
+        this.fitCameraToGraph();
+    }
 
-            fitCameraToGraph() {
-                if (this.graphGroup.children.length === 0) return;
+    fitCameraToGraph() {
+        if (this.graphGroup.children.length === 0) return;
 
-                const box = new THREE.Box3().setFromObject(this.graphGroup);
-                const center = new THREE.Vector3();
-                box.getCenter(center);
+        const box = new THREE.Box3().setFromObject(this.graphGroup);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
 
-                // Use bounding sphere to ensure the graph never clips when rotated
-                const sphere = new THREE.Sphere();
-                box.getBoundingSphere(sphere);
-                
-                const radius = sphere.radius;
-                let frustumSize = (radius * 2) * 1.05; // Add 5% padding
+        // Use bounding sphere to ensure the graph never clips when rotated
+        const sphere = new THREE.Sphere();
+        box.getBoundingSphere(sphere);
 
-                const aspect = this.container.clientWidth / this.container.clientHeight;
+        const radius = sphere.radius;
+        let frustumSize = radius * 2 * 1.05; // Add 5% padding
 
-                // Adjust for aspect ratio if window is taller than it is wide
-                if (aspect < 1) {
-                    frustumSize /= aspect;
-                }
+        const aspect = this.container.clientWidth / this.container.clientHeight;
 
-                // Update camera frustum and reset zoom
-                this.baseFrustumSize = frustumSize;
-                const d = frustumSize / 2;
-                this.camera.left = -d * aspect;
-                this.camera.right = d * aspect;
-                this.camera.top = d;
-                this.camera.bottom = -d;
-                this.camera.zoom = 1; // Reset zoom from any previous user interaction
-                this.camera.updateProjectionMatrix();
+        // Adjust for aspect ratio if window is taller than it is wide
+        if (aspect < 1) {
+            frustumSize /= aspect;
+        }
 
-                // Set camera to an isometric angle
-                const isoDist = radius * 3; // Move far enough back to avoid near-plane clipping
-                this.camera.position.set(center.x + isoDist, center.y - isoDist, center.z + isoDist);
-                this.camera.lookAt(center);
-                
-                this.controls.target.copy(center);
-                this.controls.update();
-            }
+        // Update camera frustum and reset zoom
+        this.baseFrustumSize = frustumSize;
+        const d = frustumSize / 2;
+        this.camera.left = -d * aspect;
+        this.camera.right = d * aspect;
+        this.camera.top = d;
+        this.camera.bottom = -d;
+        this.camera.zoom = 1; // Reset zoom from any previous user interaction
+        this.camera.updateProjectionMatrix();
 
-            animate() {
-            requestAnimationFrame(this.animate);
+        // Set camera to an isometric angle
+        const isoDist = radius * 3; // Move far enough back to avoid near-plane clipping
+        this.camera.position.set(
+            center.x + isoDist,
+            center.y - isoDist,
+            center.z + isoDist,
+        );
+        this.camera.lookAt(center);
 
-            // Raycasting Logic
-            this.raycaster.setFromCamera(this.mouse, this.camera);
-            const intersects = this.raycaster.intersectObjects(this.pickableObjects, false);
-            let target = null;
-            if (intersects.length > 0) {
-            const hit = intersects.find(i => i.object.userData.type === 'node') || intersects[0];
+        this.controls.target.copy(center);
+        this.controls.update();
+    }
+
+    animate() {
+        requestAnimationFrame(this.animate);
+
+        // Raycasting Logic
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+        const intersects = this.raycaster.intersectObjects(
+            this.pickableObjects,
+            false,
+        );
+        let target = null;
+        if (intersects.length > 0) {
+            const hit =
+                intersects.find((i) => i.object.userData.type === 'node') ||
+                intersects[0];
             target = hit.object;
-            }
-            if (this.hoveredObject !== target) {
+        }
+        if (this.hoveredObject !== target) {
             if (this.hoveredObject) {
                 if (this.hoveredObject.userData.type === 'node') {
-                    this.hoveredObject.material.emissive.setHex(this.hoveredObject.userData.origEmissive);
-                    this.hoveredObject.material.emissiveIntensity = this.hoveredObject.userData.origEmissiveIntensity;
+                    this.hoveredObject.material.emissive.setHex(
+                        this.hoveredObject.userData.origEmissive,
+                    );
+                    this.hoveredObject.material.emissiveIntensity =
+                        this.hoveredObject.userData.origEmissiveIntensity;
                 } else if (this.hoveredObject.userData.type === 'edge') {
-                    this.hoveredObject.material.opacity = this.hoveredObject.userData.origOpacity;
-                    this.hoveredObject.material.color.setHex(this.hoveredObject.userData.origColor);
+                    this.hoveredObject.material.opacity =
+                        this.hoveredObject.userData.origOpacity;
+                    this.hoveredObject.material.color.setHex(
+                        this.hoveredObject.userData.origColor,
+                    );
                     // RESTORE CONE
                     if (this.hoveredObject.userData.cone) {
-                        this.hoveredObject.userData.cone.material.opacity = Math.max(0.4, this.hoveredObject.userData.origOpacity);
-                        this.hoveredObject.userData.cone.material.color.setHex(this.hoveredObject.userData.origColor);
+                        this.hoveredObject.userData.cone.material.opacity =
+                            Math.max(
+                                0.4,
+                                this.hoveredObject.userData.origOpacity,
+                            );
+                        this.hoveredObject.userData.cone.material.color.setHex(
+                            this.hoveredObject.userData.origColor,
+                        );
                     }
                 }
             }
@@ -392,95 +463,133 @@ export class NetworkVisualizer {
                     // HIGHLIGHT CONE
                     if (this.hoveredObject.userData.cone) {
                         this.hoveredObject.userData.cone.material.opacity = 1.0;
-                        this.hoveredObject.userData.cone.material.color.setHex(0xffffff);
+                        this.hoveredObject.userData.cone.material.color.setHex(
+                            0xffffff,
+                        );
                     }
                 }
             }
             if (this.onHover) {
-                this.onHover(this.hoveredObject ? this.hoveredObject.userData : null);
+                this.onHover(
+                    this.hoveredObject ? this.hoveredObject.userData : null,
+                );
             }
+        }
+        this.controls.update();
+        this.composer.render();
+    }
+
+    highlightPlayingElement(nodeId, prevNodeId) {
+        const highlightColor = 0xffe600; // Electric Yellow
+
+        const nodeData = this.nodes.get(nodeId);
+        if (nodeData) {
+            if (!nodeData.playCount) nodeData.playCount = 0;
+            nodeData.playCount++;
+            if (
+                nodeData.playCount === 1 &&
+                this.hoveredObject !== nodeData.mesh
+            ) {
+                nodeData.mesh.material.emissiveIntensity = 1.0;
+                nodeData.mesh.material.emissive.setHex(highlightColor);
             }
-            this.controls.update();
-            this.composer.render();
-            }
+        }
 
-            highlightPlayingElement(nodeId, prevNodeId) {
-                const highlightColor = 0xffe600; // Electric Yellow
-
-                const nodeData = this.nodes.get(nodeId);
-                if (nodeData) {
-                    if (!nodeData.playCount) nodeData.playCount = 0;
-                    nodeData.playCount++;
-                    if (nodeData.playCount === 1 && this.hoveredObject !== nodeData.mesh) {
-                        nodeData.mesh.material.emissiveIntensity = 1.0;
-                        nodeData.mesh.material.emissive.setHex(highlightColor);
-                    }
-                }
-
-                if (prevNodeId) {
-                    const edgeId = `${prevNodeId}->${nodeId}`;
-                    const edgeData = this.edgeMap.get(edgeId);
-                    if (edgeData) {
-                        if (!edgeData.playCount) edgeData.playCount = 0;
-                        edgeData.playCount++;
-                        if (edgeData.playCount === 1 && this.hoveredObject !== edgeData.line) {
-                            edgeData.line.material.opacity = 1.0;
-                            edgeData.line.material.color.setHex(highlightColor);
-                            if (edgeData.cone) {
-                                edgeData.cone.material.opacity = 1.0;
-                                edgeData.cone.material.color.setHex(highlightColor);
-                            }
-                        }
-                    }
-                }
-            }
-
-            releasePlayingElement(nodeId, prevNodeId) {
-                const nodeData = this.nodes.get(nodeId);
-                if (nodeData && nodeData.playCount > 0) {
-                    nodeData.playCount--;
-                    if (nodeData.playCount === 0 && this.hoveredObject !== nodeData.mesh) {
-                        nodeData.mesh.material.emissiveIntensity = nodeData.mesh.userData.origEmissiveIntensity;
-                        nodeData.mesh.material.emissive.setHex(nodeData.mesh.userData.origEmissive);
-                    }
-                }
-
-                if (prevNodeId) {
-                    const edgeId = `${prevNodeId}->${nodeId}`;
-                    const edgeData = this.edgeMap.get(edgeId);
-                    if (edgeData && edgeData.playCount > 0) {
-                        edgeData.playCount--;
-                        if (edgeData.playCount === 0 && this.hoveredObject !== edgeData.line) {
-                            edgeData.line.material.opacity = edgeData.line.userData.origOpacity;
-                            edgeData.line.material.color.setHex(edgeData.line.userData.origColor);
-                            if (edgeData.cone) {
-                                edgeData.cone.material.opacity = Math.max(0.4, edgeData.line.userData.origOpacity);
-                                edgeData.cone.material.color.setHex(edgeData.line.userData.origColor);
-                            }
-                        }
+        if (prevNodeId) {
+            const edgeId = `${prevNodeId}->${nodeId}`;
+            const edgeData = this.edgeMap.get(edgeId);
+            if (edgeData) {
+                if (!edgeData.playCount) edgeData.playCount = 0;
+                edgeData.playCount++;
+                if (
+                    edgeData.playCount === 1 &&
+                    this.hoveredObject !== edgeData.line
+                ) {
+                    edgeData.line.material.opacity = 1.0;
+                    edgeData.line.material.color.setHex(highlightColor);
+                    if (edgeData.cone) {
+                        edgeData.cone.material.opacity = 1.0;
+                        edgeData.cone.material.color.setHex(highlightColor);
                     }
                 }
             }
+        }
+    }
 
-            resetPlayingHighlights() {
-                this.nodes.forEach(nodeData => {
-                    nodeData.playCount = 0;
-                    if (this.hoveredObject !== nodeData.mesh) {
-                        nodeData.mesh.material.emissiveIntensity = nodeData.mesh.userData.origEmissiveIntensity;
-                        nodeData.mesh.material.emissive.setHex(nodeData.mesh.userData.origEmissive);
-                    }
-                });
+    releasePlayingElement(nodeId, prevNodeId) {
+        const nodeData = this.nodes.get(nodeId);
+        if (nodeData && nodeData.playCount > 0) {
+            nodeData.playCount--;
+            if (
+                nodeData.playCount === 0 &&
+                this.hoveredObject !== nodeData.mesh
+            ) {
+                nodeData.mesh.material.emissiveIntensity =
+                    nodeData.mesh.userData.origEmissiveIntensity;
+                nodeData.mesh.material.emissive.setHex(
+                    nodeData.mesh.userData.origEmissive,
+                );
+            }
+        }
 
-                this.edgeMap.forEach(edgeData => {
-                    edgeData.playCount = 0;
-                    if (this.hoveredObject !== edgeData.line) {
-                        edgeData.line.material.opacity = edgeData.line.userData.origOpacity;
-                        edgeData.line.material.color.setHex(edgeData.line.userData.origColor);
-                        if (edgeData.cone) {
-                            edgeData.cone.material.opacity = Math.max(0.4, edgeData.line.userData.origOpacity);
-                            edgeData.cone.material.color.setHex(edgeData.line.userData.origColor);
-                        }
+        if (prevNodeId) {
+            const edgeId = `${prevNodeId}->${nodeId}`;
+            const edgeData = this.edgeMap.get(edgeId);
+            if (edgeData && edgeData.playCount > 0) {
+                edgeData.playCount--;
+                if (
+                    edgeData.playCount === 0 &&
+                    this.hoveredObject !== edgeData.line
+                ) {
+                    edgeData.line.material.opacity =
+                        edgeData.line.userData.origOpacity;
+                    edgeData.line.material.color.setHex(
+                        edgeData.line.userData.origColor,
+                    );
+                    if (edgeData.cone) {
+                        edgeData.cone.material.opacity = Math.max(
+                            0.4,
+                            edgeData.line.userData.origOpacity,
+                        );
+                        edgeData.cone.material.color.setHex(
+                            edgeData.line.userData.origColor,
+                        );
                     }
-                });
+                }
             }
+        }
+    }
+
+    resetPlayingHighlights() {
+        this.nodes.forEach((nodeData) => {
+            nodeData.playCount = 0;
+            if (this.hoveredObject !== nodeData.mesh) {
+                nodeData.mesh.material.emissiveIntensity =
+                    nodeData.mesh.userData.origEmissiveIntensity;
+                nodeData.mesh.material.emissive.setHex(
+                    nodeData.mesh.userData.origEmissive,
+                );
             }
+        });
+
+        this.edgeMap.forEach((edgeData) => {
+            edgeData.playCount = 0;
+            if (this.hoveredObject !== edgeData.line) {
+                edgeData.line.material.opacity =
+                    edgeData.line.userData.origOpacity;
+                edgeData.line.material.color.setHex(
+                    edgeData.line.userData.origColor,
+                );
+                if (edgeData.cone) {
+                    edgeData.cone.material.opacity = Math.max(
+                        0.4,
+                        edgeData.line.userData.origOpacity,
+                    );
+                    edgeData.cone.material.color.setHex(
+                        edgeData.line.userData.origColor,
+                    );
+                }
+            }
+        });
+    }
+}

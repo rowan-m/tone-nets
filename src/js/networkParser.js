@@ -1,12 +1,12 @@
 import { Midi } from '@tonejs/midi';
 import createGraph from 'ngraph.graph';
-import { noteToSemitone, getInterval } from './utils.js';
+import { getInterval } from './utils.js';
 
 /**
  * Parses a MIDI file buffer and constructs a directed graph
  * representing note-to-note transitions.
- * 
- * @param {ArrayBuffer} midiBuffer 
+ *
+ * @param {ArrayBuffer} midiBuffer
  * @returns {Object} Graph object and summary statistics
  */
 export async function buildMidiNetwork(midiBuffer) {
@@ -19,17 +19,17 @@ export async function buildMidiNetwork(midiBuffer) {
 
     // We process each track separately to avoid creating transitions
     // between notes played on different instruments/channels.
-    midi.tracks.forEach(track => {
+    midi.tracks.forEach((track) => {
         // Filter out drum/percussion channel (MIDI channel 10 is index 9)
         if (track.channel === 9) return;
 
         // Group notes by start time to handle chords (notes played simultaneously)
         const notesByTime = new Map();
-        
-        track.notes.forEach(note => {
+
+        track.notes.forEach((note) => {
             // Group by exact MIDI ticks (like the original R code does with time)
             const timeKey = note.ticks;
-            
+
             if (!notesByTime.has(timeKey)) {
                 notesByTime.set(timeKey, []);
             }
@@ -37,7 +37,9 @@ export async function buildMidiNetwork(midiBuffer) {
         });
 
         // Sort the distinct times chronologically
-        const sortedTimes = Array.from(notesByTime.keys()).sort((a, b) => a - b);
+        const sortedTimes = Array.from(notesByTime.keys()).sort(
+            (a, b) => a - b,
+        );
 
         // Build transitions: from all notes at time T to all notes at time T+1
         for (let i = 1; i < sortedTimes.length; i++) {
@@ -47,22 +49,25 @@ export async function buildMidiNetwork(midiBuffer) {
             const sourceNotes = notesByTime.get(previousTime);
             const targetNotes = notesByTime.get(currentTime);
 
-            sourceNotes.forEach(source => {
+            sourceNotes.forEach((source) => {
                 graph.addNode(source, { name: source });
-                
-                targetNotes.forEach(target => {
+
+                targetNotes.forEach((target) => {
                     // Scientific Parity: Skip self-loops (w_xx = 0) as per paper section "Network construction"
                     if (source === target) return;
 
                     graph.addNode(target, { name: target });
-                    
+
                     const linkId = `${source}->${target}`;
                     const existingLink = graph.getLink(source, target);
-                    
+
                     if (existingLink) {
                         existingLink.data.weight += 1;
                     } else {
-                        graph.addLink(source, target, { weight: 1, id: linkId });
+                        graph.addLink(source, target, {
+                            weight: 1,
+                            id: linkId,
+                        });
                         edgeCount++;
                     }
                 });
@@ -80,7 +85,7 @@ export async function buildMidiNetwork(midiBuffer) {
     });
 
     // --- Scientific Metric Calculations (from the paper) ---
-    
+
     // 1. Density (d)
     const n = graph.getNodesCount();
     const density = n > 1 ? edgeCount / (n * (n - 1)) : 0;
@@ -93,27 +98,32 @@ export async function buildMidiNetwork(midiBuffer) {
     let sumMinWeights = 0;
     let reciprocatedEdges = 0;
 
-    graph.forEachLink(link => {
+    graph.forEachLink((link) => {
         totalWeight += link.data.weight;
         const reverseLink = graph.getLink(link.toId, link.fromId);
         if (reverseLink) {
             reciprocatedEdges++;
             // For weighted reciprocity, we only want to count the minimum weight of the pair once per pair,
             // but since we iterate over all directed edges, we sum min(w_ij, w_ji) for each edge.
-            // This is equivalent to summing the mutual portion twice and then dividing? 
+            // This is equivalent to summing the mutual portion twice and then dividing?
             // No, the formula is sum_{i!=j} min(w_ij, w_ji) / sum_{i!=j} w_{ij}.
             // So we just add min(w_ij, w_ji) for every directed link.
-            sumMinWeights += Math.min(link.data.weight, reverseLink.data.weight);
+            sumMinWeights += Math.min(
+                link.data.weight,
+                reverseLink.data.weight,
+            );
         }
     });
 
-    const binaryReciprocity = edgeCount > 0 ? (reciprocatedEdges / edgeCount) : 0;
-    const weightedReciprocity = totalWeight > 0 ? (sumMinWeights / totalWeight) : 0;
-    const reciprocityRho = (1 - density) > 0 ? (binaryReciprocity - density) / (1 - density) : 0;
+    const binaryReciprocity = edgeCount > 0 ? reciprocatedEdges / edgeCount : 0;
+    const weightedReciprocity =
+        totalWeight > 0 ? sumMinWeights / totalWeight : 0;
+    const reciprocityRho =
+        1 - density > 0 ? (binaryReciprocity - density) / (1 - density) : 0;
 
     // 3. Mean Node Entropy (H)
     let totalEntropy = 0;
-    graph.forEachNode(node => {
+    graph.forEachNode((node) => {
         let nodeOutWeight = 0;
         const outWeights = [];
         graph.forEachLinkedNode(node.id, (linkedNode, link) => {
@@ -125,7 +135,7 @@ export async function buildMidiNetwork(midiBuffer) {
 
         if (nodeOutWeight > 0) {
             let nodeEntropy = 0;
-            outWeights.forEach(w => {
+            outWeights.forEach((w) => {
                 const p = w / nodeOutWeight;
                 if (p > 0) {
                     nodeEntropy -= p * Math.log2(p);
@@ -142,43 +152,46 @@ export async function buildMidiNetwork(midiBuffer) {
     let unweightedEfficiencySum = 0;
     let weightedEfficiencySum = 0;
     const nodes = [];
-    graph.forEachNode(node => { 
-        nodes.push(node.id); 
+    graph.forEachNode((node) => {
+        nodes.push(node.id);
     });
-    
+
     for (let i = 0; i < nodes.length; i++) {
         const uDistances = bfsDistances(graph, nodes[i]);
         const wDistances = dijkstraDistances(graph, nodes[i]);
-        
+
         for (let j = 0; j < nodes.length; j++) {
             if (i === j) continue;
-            
+
             const ud = uDistances[nodes[j]];
-            if (ud !== undefined && ud > 0) unweightedEfficiencySum += (1 / ud);
-            
+            if (ud !== undefined && ud > 0) unweightedEfficiencySum += 1 / ud;
+
             const wd = wDistances[nodes[j]];
-            if (wd !== undefined && wd > 0) weightedEfficiencySum += (1 / wd);
+            if (wd !== undefined && wd > 0) weightedEfficiencySum += 1 / wd;
         }
     }
-    
-    const unweightedEfficiency = n > 1 ? unweightedEfficiencySum / (n * (n - 1)) : 0;
-    const weightedEfficiency = n > 1 ? weightedEfficiencySum / (n * (n - 1)) : 0;
+
+    const unweightedEfficiency =
+        n > 1 ? unweightedEfficiencySum / (n * (n - 1)) : 0;
+    const weightedEfficiency =
+        n > 1 ? weightedEfficiencySum / (n * (n - 1)) : 0;
 
     // 5. Scale-interval Embedding (Interval Signature)
     // We calculate a 12D vector representing the distribution of interval classes (0-11 semitones)
     const intervalVector = new Array(12).fill(0);
 
-    graph.forEachLink(link => {
+    graph.forEachLink((link) => {
         const interval = getInterval(link.fromId, link.toId);
         intervalVector[interval] += link.data.weight;
     });
 
     // Normalize the vector (L2 Normalization to match R implementation)
-    const sumSq = intervalVector.reduce((a, b) => a + (b * b), 0);
+    const sumSq = intervalVector.reduce((a, b) => a + b * b, 0);
     const denom = Math.sqrt(sumSq);
-    const normalizedEmbedding = denom > 0 
-        ? intervalVector.map(v => (v / denom).toFixed(4))
-        : intervalVector.map(v => "0.0000");
+    const normalizedEmbedding =
+        denom > 0
+            ? intervalVector.map((v) => (v / denom).toFixed(4))
+            : intervalVector.map(() => '0.0000');
 
     return {
         graph,
@@ -193,22 +206,22 @@ export async function buildMidiNetwork(midiBuffer) {
             entropy: meanNodeEntropy.toFixed(4),
             efficiency: unweightedEfficiency.toFixed(4),
             weightedEfficiency: weightedEfficiency.toFixed(4),
-            embedding: normalizedEmbedding
-        }
+            embedding: normalizedEmbedding,
+        },
     };
 }
 
 /**
  * Rebuilds an ngraph.graph from serialized data
- * @param {Object} serializedGraph 
+ * @param {Object} serializedGraph
  * @returns {Object} ngraph.graph
  */
 export function rebuildGraph(serializedGraph) {
     const graph = createGraph();
-    serializedGraph.nodes.forEach(node => {
+    serializedGraph.nodes.forEach((node) => {
         graph.addNode(node.id, node.data);
     });
-    serializedGraph.links.forEach(link => {
+    serializedGraph.links.forEach((link) => {
         graph.addLink(link.fromId, link.toId, link.data);
     });
     return graph;
@@ -221,7 +234,7 @@ function bfsDistances(graph, startNodeId) {
     const distances = {};
     distances[startNodeId] = 0;
     const queue = [startNodeId];
-    
+
     while (queue.length > 0) {
         const u = queue.shift();
         graph.forEachLinkedNode(u, (linkedNode, link) => {

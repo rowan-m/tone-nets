@@ -8,7 +8,8 @@
     --panel-border: rgba(255, 255, 255, 0.1);
 }
 
-body, html {
+body,
+html {
     margin: 0;
     padding: 0;
     width: 100%;
@@ -28,7 +29,7 @@ body, html {
 
 header {
     padding: 1rem 2rem;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8), transparent);
     z-index: 10;
     display: flex;
     justify-content: space-between;
@@ -62,7 +63,9 @@ h1 {
     cursor: pointer;
     font-family: inherit;
     font-size: 0.9rem;
-    transition: background 0.2s, border-color 0.2s;
+    transition:
+        background 0.2s,
+        border-color 0.2s;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -201,7 +204,11 @@ h3 {
 
 .bar {
     flex-grow: 1;
-    background: linear-gradient(to top, var(--accent-secondary), var(--accent-color));
+    background: linear-gradient(
+        to top,
+        var(--accent-secondary),
+        var(--accent-color)
+    );
     min-height: 1px;
     transition: height 0.3s ease;
     border-radius: 2px 2px 0 0;

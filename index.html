@@ -1,85 +1,99 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tone Nets</title>
-    <link rel="stylesheet" href="./src/css/style.css">
-</head>
-<body>
-    <div id="app">
-        <header>
-            <h1 id="app-title">Tone Nets</h1>
-            <div class="controls">
-                <label for="midi-upload" class="custom-file-upload btn">
-                    Load MIDI
-                </label>
-                <input type="file" id="midi-upload" accept=".mid,.midi" class="hidden-input">
-                <button id="mute-toggle" class="btn" disabled>Mute</button>
-                <button id="toggle-info" class="btn hidden">Stats</button>
-            </div>
-        </header>
-        
-        <main id="canvas-container">
-            <!-- Three.js canvas will be injected here -->
-            <div id="welcome-msg">
-                <p>Upload a MIDI file to begin the visualization</p>
-            </div>
-        </main>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link
+            rel="icon"
+            href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎵</text></svg>"
+        />
+        <title>Tone Nets</title>
+        <link rel="stylesheet" href="./src/css/style.css" />
+    </head>
+    <body>
+        <div id="app">
+            <header>
+                <h1 id="app-title">Tone Nets</h1>
+                <div class="controls">
+                    <label for="midi-upload" class="custom-file-upload btn">
+                        Load MIDI
+                    </label>
+                    <input
+                        type="file"
+                        id="midi-upload"
+                        accept=".mid,.midi"
+                        class="hidden-input"
+                    />
+                    <button id="mute-toggle" class="btn" disabled>Mute</button>
+                    <button id="toggle-info" class="btn hidden">Stats</button>
+                </div>
+            </header>
 
-        <aside id="info-panel" class="hidden">
-            <button id="close-info" class="close-btn" aria-label="Close">×</button>
-            <section id="network-summary">
-                <h2>Musical complexity</h2>
-                <div class="metric">
-                    <label>Global Efficiency (E)</label>
-                    <span id="metric-efficiency">-</span>
+            <main id="canvas-container">
+                <!-- Three.js canvas will be injected here -->
+                <div id="welcome-msg">
+                    <p>Upload a MIDI file to begin the visualization</p>
                 </div>
-                <div class="metric">
-                    <label>Weighted Efficiency (E_w)</label>
-                    <span id="metric-weighted-efficiency">-</span>
-                </div>
-                <div class="metric">
-                    <label>Mean Node Entropy (H)</label>
-                    <span id="metric-entropy">-</span>
-                </div>
-                <div class="metric">
-                    <label>Binary Reciprocity (r_b)</label>
-                    <span id="metric-binary-reciprocity">-</span>
-                </div>
-                <div class="metric">
-                    <label>Weighted Reciprocity (r_w)</label>
-                    <span id="metric-reciprocity">-</span>
-                </div>
-                <div class="metric">
-                    <label>Normalized Reciprocity (ρ)</label>
-                    <span id="metric-reciprocity-rho">-</span>
-                </div>
-                <div class="metric">
-                    <label>Network Density</label>
-                    <span id="metric-density">-</span>
-                </div>
-                <hr>
-                <div class="metric">
-                    <label>Vertices / Edges</label>
-                    <span><span id="v-count">-</span> / <span id="e-count">-</span></span>
-                </div>
-                <hr>
-                <section id="embedding-viz">
-                    <h3>Interval signature</h3>
-                    <div class="bar-chart" id="interval-bars">
-                        <!-- 12 bars will be injected here -->
+            </main>
+
+            <aside id="info-panel" class="hidden">
+                <button id="close-info" class="close-btn" aria-label="Close">
+                    ×
+                </button>
+                <section id="network-summary">
+                    <h2>Musical complexity</h2>
+                    <div class="metric">
+                        <label>Global Efficiency (E)</label>
+                        <span id="metric-efficiency">-</span>
                     </div>
+                    <div class="metric">
+                        <label>Weighted Efficiency (E_w)</label>
+                        <span id="metric-weighted-efficiency">-</span>
+                    </div>
+                    <div class="metric">
+                        <label>Mean Node Entropy (H)</label>
+                        <span id="metric-entropy">-</span>
+                    </div>
+                    <div class="metric">
+                        <label>Binary Reciprocity (r_b)</label>
+                        <span id="metric-binary-reciprocity">-</span>
+                    </div>
+                    <div class="metric">
+                        <label>Weighted Reciprocity (r_w)</label>
+                        <span id="metric-reciprocity">-</span>
+                    </div>
+                    <div class="metric">
+                        <label>Normalized Reciprocity (ρ)</label>
+                        <span id="metric-reciprocity-rho">-</span>
+                    </div>
+                    <div class="metric">
+                        <label>Network Density</label>
+                        <span id="metric-density">-</span>
+                    </div>
+                    <hr />
+                    <div class="metric">
+                        <label>Vertices / Edges</label>
+                        <span
+                            ><span id="v-count">-</span> /
+                            <span id="e-count">-</span></span
+                        >
+                    </div>
+                    <hr />
+                    <section id="embedding-viz">
+                        <h3>Interval signature</h3>
+                        <div class="bar-chart" id="interval-bars">
+                            <!-- 12 bars will be injected here -->
+                        </div>
+                    </section>
                 </section>
-            </section>
-        </aside>
+            </aside>
 
-        <aside id="hover-panel" class="hidden">
-            <section id="hover-content">
-                <!-- Dynamically populated on hover -->
-            </section>
-        </aside>
-    </div>
-    <script type="module" src="./src/js/main.js"></script>
-</body>
+            <aside id="hover-panel" class="hidden">
+                <section id="hover-content">
+                    <!-- Dynamically populated on hover -->
+                </section>
+            </aside>
+        </div>
+        <script type="module" src="./src/js/main.js"></script>
+    </body>
 </html>

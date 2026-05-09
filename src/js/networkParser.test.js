@@ -4,7 +4,7 @@ import { Midi } from '@tonejs/midi';
 
 // Mock @tonejs/midi
 vi.mock('@tonejs/midi', () => {
-    const MidiMock = vi.fn(function(buffer) {
+    const MidiMock = vi.fn(function (buffer) {
         if (buffer === 'test-buffer') {
             this.name = 'Test MIDI';
             this.tracks = [
@@ -13,9 +13,9 @@ vi.mock('@tonejs/midi', () => {
                     notes: [
                         { ticks: 0, name: 'C4' },
                         { ticks: 100, name: 'G4' },
-                        { ticks: 200, name: 'C4' }
-                    ]
-                }
+                        { ticks: 200, name: 'C4' },
+                    ],
+                },
             ];
         } else {
             this.tracks = [];
@@ -26,7 +26,7 @@ vi.mock('@tonejs/midi', () => {
 
 describe('networkParser', () => {
     it('should build a network from MIDI data and ignore self-loops', async () => {
-        vi.mocked(Midi).mockImplementationOnce(function() {
+        vi.mocked(Midi).mockImplementationOnce(function () {
             this.name = 'Loop MIDI';
             this.tracks = [
                 {
@@ -34,9 +34,9 @@ describe('networkParser', () => {
                     notes: [
                         { ticks: 0, name: 'C4' },
                         { ticks: 100, name: 'C4' }, // Self-loop
-                        { ticks: 200, name: 'G4' }
-                    ]
-                }
+                        { ticks: 200, name: 'G4' },
+                    ],
+                },
             ];
         });
 
@@ -44,14 +44,14 @@ describe('networkParser', () => {
 
         expect(summary.title).toBe('Loop MIDI');
         expect(summary.vertices).toBe(2); // C4 and G4
-        expect(summary.edges).toBe(1);    // Only C4 -> G4 (C4 -> C4 ignored)
+        expect(summary.edges).toBe(1); // Only C4 -> G4 (C4 -> C4 ignored)
 
         expect(graph.getLink('C4', 'C4')).toBeUndefined();
         expect(graph.getLink('C4', 'G4')).toBeDefined();
     });
 
     it('should calculate metrics correctly including weighted efficiency', async () => {
-        vi.mocked(Midi).mockImplementationOnce(function() {
+        vi.mocked(Midi).mockImplementationOnce(function () {
             this.name = 'Metric MIDI';
             this.tracks = [
                 {
@@ -59,9 +59,9 @@ describe('networkParser', () => {
                     notes: [
                         { ticks: 0, name: 'C4' },
                         { ticks: 100, name: 'G4' },
-                        { ticks: 200, name: 'C4' }
-                    ]
-                }
+                        { ticks: 200, name: 'C4' },
+                    ],
+                },
             ];
         });
 
@@ -84,7 +84,7 @@ describe('networkParser', () => {
     });
 
     it('should handle complex transitions and weights for weighted efficiency', async () => {
-        vi.mocked(Midi).mockImplementationOnce(function() {
+        vi.mocked(Midi).mockImplementationOnce(function () {
             this.name = 'Complex MIDI';
             this.tracks = [
                 {
@@ -93,9 +93,9 @@ describe('networkParser', () => {
                         { ticks: 0, name: 'C4' },
                         { ticks: 100, name: 'G4' },
                         { ticks: 200, name: 'C4' },
-                        { ticks: 300, name: 'G4' } 
-                    ]
-                }
+                        { ticks: 300, name: 'G4' },
+                    ],
+                },
             ];
         });
 
@@ -106,7 +106,7 @@ describe('networkParser', () => {
         // total weight = 3
         // weighted reciprocity = 2/3 = 0.6667
         expect(summary.reciprocity).toBe('0.6667');
-        
+
         // Weighted Efficiency:
         // sum(1/d_w) = 1/2 + 1/1 = 1.5
         // Weighted Efficiency = 1.5 / (2 * 1) = 0.75
@@ -114,7 +114,7 @@ describe('networkParser', () => {
     });
 
     it('should calculate non-zero mean node entropy correctly', async () => {
-        vi.mocked(Midi).mockImplementationOnce(function() {
+        vi.mocked(Midi).mockImplementationOnce(function () {
             this.name = 'Entropy MIDI';
             this.tracks = [
                 {
@@ -124,9 +124,9 @@ describe('networkParser', () => {
                         { ticks: 100, name: 'G4' },
                         { ticks: 200, name: 'C4' },
                         { ticks: 300, name: 'E4' },
-                        { ticks: 400, name: 'C4' }
-                    ]
-                }
+                        { ticks: 400, name: 'C4' },
+                    ],
+                },
             ];
         });
 
@@ -145,4 +145,3 @@ describe('networkParser', () => {
         expect(summary.entropy).toBe('0.3333');
     });
 });
-

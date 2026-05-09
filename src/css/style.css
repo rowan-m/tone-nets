@@ -214,6 +214,35 @@ h3 {
     border-radius: 2px 2px 0 0;
 }
 
+.app-footer {
+    position: absolute;
+    bottom: 1rem;
+    left: 2rem;
+    display: flex;
+    gap: 1.5rem;
+    font-size: 0.75rem;
+    opacity: 0.6;
+    z-index: 10;
+    pointer-events: none;
+}
+
+.app-footer a {
+    color: var(--text-color);
+    text-decoration: none;
+    transition:
+        opacity 0.2s,
+        color 0.2s;
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.app-footer a:hover {
+    opacity: 1;
+    color: var(--accent-text);
+}
+
 /* Mobile Media Queries */
 @media (max-width: 768px) {
     header {
@@ -261,5 +290,17 @@ h3 {
         left: 1rem;
         right: 1rem;
         width: auto;
+    }
+
+    .app-footer {
+        position: absolute;
+        bottom: 1rem;
+        left: 0;
+        right: 0;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+        padding: 0.5rem 1rem;
+        z-index: 10; /* Lower than info-panel (20) */
     }
 }

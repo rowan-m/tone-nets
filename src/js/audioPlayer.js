@@ -72,6 +72,65 @@ export class MidiPlayer {
         }
     }
 
+    _scheduleNotePlay(channel, note, prevNote, startDelay) {
+        return Tone.Transport.schedule((time) => {
+            if (this.synth) {
+                this.synth.noteOn(
+                    channel,
+                    note.midi,
+                    Math.round(note.velocity * 127),
+                    { time },
+                );
+
+                Tone.Draw.schedule(() => {
+                    if (this.onNotePlay) {
+                        this.onNotePlay(
+                            note.name,
+                            prevNote ? prevNote.name : null,
+                        );
+                    }
+                }, time);
+            }
+        }, note.time + startDelay);
+    }
+
+    _scheduleNoteRelease(channel, note, prevNote, startDelay) {
+        return Tone.Transport.schedule(
+            (time) => {
+                if (this.synth) {
+                    this.synth.noteOff(channel, note.midi, { time });
+
+                    Tone.Draw.schedule(() => {
+                        if (this.onNoteRelease) {
+                            this.onNoteRelease(
+                                note.name,
+                                prevNote ? prevNote.name : null,
+                            );
+                        }
+                    }, time);
+                }
+            },
+            note.time + startDelay + note.duration,
+        );
+    }
+
+    _scheduleControlChange(channel, ccNumber, cc, startDelay) {
+        let scheduleTime = cc.time + startDelay;
+        if ((ccNumber === '0' || ccNumber === '32') && cc.time === 0) {
+            scheduleTime = 0;
+        }
+        return Tone.Transport.schedule((time) => {
+            if (this.synth) {
+                this.synth.controllerChange(
+                    channel,
+                    parseInt(ccNumber, 10),
+                    Math.round(cc.value * 127),
+                    { time },
+                );
+            }
+        }, scheduleTime);
+    }
+
     async play(midiBuffer) {
         this.stop(); // Stop any existing playback
 
@@ -85,29 +144,19 @@ export class MidiPlayer {
             const channel = track.channel; // 0-15
 
             // Control Changes (Volume, Pan, Sustain, etc.) - Schedule these FIRST so Bank Selects happen before Program Changes
-            for (const ccNumber in track.controlChanges) {
-                track.controlChanges[ccNumber].forEach((cc) => {
-                    // If CC is a bank select (0 or 32) and occurs at time 0, schedule it at time 0
-                    let scheduleTime = cc.time + startDelay;
-                    if (
-                        (ccNumber === '0' || ccNumber === '32') &&
-                        cc.time === 0
-                    ) {
-                        scheduleTime = 0;
-                    }
-                    const scheduledEvent = Tone.Transport.schedule((time) => {
-                        if (this.synth) {
-                            this.synth.controllerChange(
-                                channel,
-                                parseInt(ccNumber),
-                                Math.round(cc.value * 127),
-                                { time },
-                            );
-                        }
-                    }, scheduleTime);
-                    this.scheduledEvents.push(scheduledEvent);
-                });
-            }
+            Object.entries(track.controlChanges).forEach(
+                ([ccNumber, ccList]) => {
+                    ccList.forEach((cc) => {
+                        const scheduledEvent = this._scheduleControlChange(
+                            channel,
+                            ccNumber,
+                            cc,
+                            startDelay,
+                        );
+                        this.scheduledEvents.push(scheduledEvent);
+                    });
+                },
+            );
 
             // Program Change (Instrument) - Schedule at 0 so it happens before startDelay (and after Bank Selects)
             if (
@@ -144,45 +193,19 @@ export class MidiPlayer {
             track.notes.forEach((note, index) => {
                 const prevNote = index > 0 ? track.notes[index - 1] : null;
 
-                const scheduledEvent = Tone.Transport.schedule((time) => {
-                    if (this.synth) {
-                        // Schedule audio sample-accurately using the provided context time
-                        this.synth.noteOn(
-                            channel,
-                            note.midi,
-                            Math.round(note.velocity * 127),
-                            { time },
-                        );
-
-                        // Schedule visual updates on the requestAnimationFrame boundary
-                        Tone.Draw.schedule(() => {
-                            if (this.onNotePlay) {
-                                this.onNotePlay(
-                                    note.name,
-                                    prevNote ? prevNote.name : null,
-                                );
-                            }
-                        }, time);
-                    }
-                }, note.time + startDelay);
+                const scheduledEvent = this._scheduleNotePlay(
+                    channel,
+                    note,
+                    prevNote,
+                    startDelay,
+                );
                 this.scheduledEvents.push(scheduledEvent);
 
-                const releaseEvent = Tone.Transport.schedule(
-                    (time) => {
-                        if (this.synth) {
-                            this.synth.noteOff(channel, note.midi, { time });
-
-                            Tone.Draw.schedule(() => {
-                                if (this.onNoteRelease) {
-                                    this.onNoteRelease(
-                                        note.name,
-                                        prevNote ? prevNote.name : null,
-                                    );
-                                }
-                            }, time);
-                        }
-                    },
-                    note.time + startDelay + note.duration,
+                const releaseEvent = this._scheduleNoteRelease(
+                    channel,
+                    note,
+                    prevNote,
+                    startDelay,
                 );
                 this.scheduledEvents.push(releaseEvent);
             });

@@ -38,10 +38,12 @@ export function noteToSemitone(note) {
         CB: 11,
     };
 
-    const match = note.toUpperCase().match(/([A-G]#?B?)(-?\d+)?/);
+    // eslint-disable-next-line security/detect-unsafe-regex
+    const match = note.toUpperCase().match(/^([A-G][#B]?)(-?\d+)?/);
     if (!match) return 0;
 
     const pitchClassStr = match[1];
+    // eslint-disable-next-line security/detect-object-injection
     const val = pcMap[pitchClassStr] !== undefined ? pcMap[pitchClassStr] : 0;
     const oct = match[2] ? parseInt(match[2], 10) : 4;
 
@@ -57,5 +59,6 @@ export function getInterval(n1, n2) {
 
 export function getIntervalName(n1, n2) {
     const diff = getInterval(n1, n2);
+    // eslint-disable-next-line security/detect-object-injection
     return INTERVAL_NAMES[diff];
 }

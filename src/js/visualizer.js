@@ -135,10 +135,7 @@ export class NetworkVisualizer {
         }
     }
 
-    async buildVisualization(graph) {
-        this.clear();
-
-        // 1. Initialize Force Layout in 2D to keep the clean, separated structural web
+    async _computeLayout(graph) {
         this.layout = createLayout(graph, {
             dimensions: 2,
             physicsSettings: {
@@ -151,29 +148,24 @@ export class NetworkVisualizer {
             },
         });
 
-        // Cancellation token to abort if a new file is uploaded
         const currentToken = {};
         this._buildToken = currentToken;
 
-        // Fully compute the 2D layout incrementally to avoid blocking
         const totalSteps = 3000;
         const batchSize = 100;
         for (let i = 0; i < totalSteps; i++) {
-            if (this._buildToken !== currentToken) return; // Abort build
+            if (this._buildToken !== currentToken) return false;
 
             this.layout.step();
 
-            // Apply a gentle central gravity to bring isolated subgraphs closer together
-            // Without this, disconnected tracks will drift infinitely apart due to Coulomb repulsion
             this.layout.simulator.bodies.forEach((body) => {
                 body.pos.x -= body.pos.x * 0.0005;
                 body.pos.y -= body.pos.y * 0.0005;
             });
 
             if (i % batchSize === 0) {
-                // Yield to main thread
                 await new Promise((resolve) => setTimeout(resolve, 0));
-                if (this._buildToken !== currentToken) return; // Abort build
+                if (this._buildToken !== currentToken) return false;
 
                 if (this.onLayoutProgress) {
                     this.onLayoutProgress(Math.round((i / totalSteps) * 100));
@@ -181,33 +173,20 @@ export class NetworkVisualizer {
             }
         }
         if (this.onLayoutProgress) this.onLayoutProgress(100);
+        return true;
+    }
 
-        const layoutScale = 4.0;
-        const zDepthScale = 300; // How much the 3D effect pops out
-
-        let maxDegree = 1;
-        graph.forEachNode((node) => {
-            if (node.data.degree > maxDegree) maxDegree = node.data.degree;
-        });
-
-        let maxWeight = 1;
-        graph.forEachLink((link) => {
-            if (link.data.weight > maxWeight) maxWeight = link.data.weight;
-        });
-
+    _renderNodes(graph, layoutScale, zDepthScale, maxDegree) {
         const sphereGeo = new THREE.SphereGeometry(1, 32, 32);
 
-        // 2. Create Node Meshes (Apply Z-depth based on degree)
         graph.forEachNode((node) => {
             const pos = this.layout.getNodePosition(node.id);
             const degree = node.data.degree || 1;
-
             const normDegree = Math.min(1, degree / maxDegree);
 
-            // Color based on pitch class (0-11)
             const pitchClass = noteToSemitone(node.id) % 12;
             const hue = pitchClass / 12;
-            const nodeColor = new THREE.Color().setHSL(hue, 1.0, 0.6); // Vibrant color
+            const nodeColor = new THREE.Color().setHSL(hue, 1.0, 0.6);
 
             const material = new THREE.MeshStandardMaterial({
                 color: nodeColor,
@@ -223,7 +202,6 @@ export class NetworkVisualizer {
             const scale = 2 + normDegree * 6;
             mesh.scale.set(scale, scale, scale);
 
-            // MEANINGFUL Z-AXIS: Highly connected notes pop out towards the camera
             const zPos = normDegree * zDepthScale - zDepthScale * 0.25;
             mesh.position.set(pos.x * layoutScale, pos.y * layoutScale, zPos);
 
@@ -236,7 +214,6 @@ export class NetworkVisualizer {
             mesh.add(outlineMesh);
 
             this.graphGroup.add(mesh);
-            // Store the calculated Z so edges can use it
             mesh.userData = {
                 type: 'node',
                 id: node.id,
@@ -247,121 +224,142 @@ export class NetworkVisualizer {
             this.pickableObjects.push(mesh);
             this.nodes.set(node.id, { mesh: mesh, id: node.id, z: zPos });
         });
+    }
 
-        // 3. Create Edge Meshes (Curved Lines with Bright Heatmap)
-        const colorLow = new THREE.Color(0xbbbbbb); // Rare: Medium-Light Grey
-        const colorMid = new THREE.Color(0xdddddd); // Frequent: Very Light Grey
-        const colorHigh = new THREE.Color(0xffffff); // Very Frequent: Pure White
+    _createEdgeCurve(sPosRaw, tPosRaw, sZ, tZ, layoutScale) {
+        const sPos = new THREE.Vector3(
+            sPosRaw.x * layoutScale,
+            sPosRaw.y * layoutScale,
+            sZ,
+        );
+        const tPos = new THREE.Vector3(
+            tPosRaw.x * layoutScale,
+            tPosRaw.y * layoutScale,
+            tZ,
+        );
 
-        // Reusable cone geometry for arrows (oriented so tip points along +Z)
-        const coneGeo = new THREE.ConeGeometry(1.2, 3.5, 8); // Scaled down to match lines
+        const midPoint = sPos.clone().add(tPos).multiplyScalar(0.5);
+        const xyDist = Math.sqrt(
+            Math.pow(tPos.x - sPos.x, 2) + Math.pow(tPos.y - sPos.y, 2),
+        );
+        const dx = tPos.x - sPos.x;
+        const dy = tPos.y - sPos.y;
+        const normal = new THREE.Vector3(-dy, dx, 0).normalize();
+
+        const controlPoint = midPoint.add(normal.multiplyScalar(xyDist * 0.25));
+        controlPoint.z = Math.max(sZ, tZ) + xyDist * 0.15;
+
+        return new THREE.QuadraticBezierCurve3(sPos, controlPoint, tPos);
+    }
+
+    _getEdgeColor(normWeight) {
+        const colorLow = new THREE.Color(0xbbbbbb);
+        const colorMid = new THREE.Color(0xdddddd);
+        const colorHigh = new THREE.Color(0xffffff);
+
+        if (normWeight < 0.5) {
+            return colorLow.clone().lerp(colorMid, normWeight * 2);
+        }
+        return colorMid.clone().lerp(colorHigh, (normWeight - 0.5) * 2);
+    }
+
+    _renderEdge(link, layoutScale, maxWeight, coneGeo) {
+        const sPosRaw = this.layout.getNodePosition(link.fromId);
+        const tPosRaw = this.layout.getNodePosition(link.toId);
+        const sZ = this.nodes.get(link.fromId).z;
+        const tZ = this.nodes.get(link.toId).z;
+
+        const curve = this._createEdgeCurve(
+            sPosRaw,
+            tPosRaw,
+            sZ,
+            tZ,
+            layoutScale,
+        );
+
+        const pts = curve.getPoints(20);
+        const geometry = new THREE.BufferGeometry().setFromPoints(pts);
+
+        const normWeight = Math.min(1, link.data.weight / maxWeight);
+        const edgeColor = this._getEdgeColor(normWeight);
+        const edgeOpacity = 0.4 + normWeight * 0.6;
+
+        const mat = new THREE.LineBasicMaterial({
+            color: edgeColor,
+            transparent: true,
+            opacity: edgeOpacity,
+        });
+
+        const line = new THREE.Line(geometry, mat);
+        this.graphGroup.add(line);
+
+        line.userData = {
+            type: 'edge',
+            sourceId: link.fromId,
+            targetId: link.toId,
+            weight: link.data.weight,
+            origOpacity: edgeOpacity,
+            origColor: edgeColor.getHex(),
+        };
+        this.pickableObjects.push(line);
+
+        const tMid = 0.5;
+        const arrowPos = curve.getPoint(tMid);
+        const arrowDir = curve.getTangent(tMid).normalize();
+
+        const coneMat = new THREE.MeshBasicMaterial({
+            color: edgeColor,
+            transparent: true,
+            opacity: Math.max(0.4, edgeOpacity),
+        });
+        const cone = new THREE.Mesh(coneGeo, coneMat);
+        cone.position.copy(arrowPos);
+        cone.lookAt(arrowPos.clone().add(arrowDir));
+
+        this.graphGroup.add(cone);
+        line.userData.cone = cone;
+
+        const edgeData = {
+            line: line,
+            cone: cone,
+            sourceId: link.fromId,
+            targetId: link.toId,
+        };
+        this.edges.push(edgeData);
+        this.edgeMap.set(`${link.fromId}->${link.toId}`, edgeData);
+    }
+
+    _renderEdges(graph, layoutScale, maxWeight) {
+        const coneGeo = new THREE.ConeGeometry(1.2, 3.5, 8);
         coneGeo.rotateX(Math.PI / 2);
 
         graph.forEachLink((link) => {
-            const sPosRaw = this.layout.getNodePosition(link.fromId);
-            const tPosRaw = this.layout.getNodePosition(link.toId);
-            const sZ = this.nodes.get(link.fromId).z;
-            const tZ = this.nodes.get(link.toId).z;
+            this._renderEdge(link, layoutScale, maxWeight, coneGeo);
+        });
+    }
 
-            const sPos = new THREE.Vector3(
-                sPosRaw.x * layoutScale,
-                sPosRaw.y * layoutScale,
-                sZ,
-            );
-            const tPos = new THREE.Vector3(
-                tPosRaw.x * layoutScale,
-                tPosRaw.y * layoutScale,
-                tZ,
-            );
+    async buildVisualization(graph) {
+        this.clear();
 
-            const midPoint = sPos.clone().add(tPos).multiplyScalar(0.5);
-            const xyDist = Math.sqrt(
-                Math.pow(tPos.x - sPos.x, 2) + Math.pow(tPos.y - sPos.y, 2),
-            );
-            const dx = tPos.x - sPos.x;
-            const dy = tPos.y - sPos.y;
-            const normal = new THREE.Vector3(-dy, dx, 0).normalize();
+        const isLayoutComplete = await this._computeLayout(graph);
+        if (!isLayoutComplete) return;
 
-            const controlPoint = midPoint.add(
-                normal.multiplyScalar(xyDist * 0.25),
-            );
-            controlPoint.z = Math.max(sZ, tZ) + xyDist * 0.15;
+        const layoutScale = 4.0;
+        const zDepthScale = 300;
 
-            const curve = new THREE.QuadraticBezierCurve3(
-                sPos,
-                controlPoint,
-                tPos,
-            );
-
-            // --- RESTORE FULL LINES TO CENTER ---
-            const pts = curve.getPoints(20);
-            const geometry = new THREE.BufferGeometry().setFromPoints(pts);
-
-            // --- DATA-DRIVEN STYLING ---
-            const normWeight = Math.min(1, link.data.weight / maxWeight);
-
-            // Weight Color: Med Grey -> Pure White
-            let edgeColor;
-            if (normWeight < 0.5) {
-                edgeColor = colorLow.clone().lerp(colorMid, normWeight * 2);
-            } else {
-                edgeColor = colorMid
-                    .clone()
-                    .lerp(colorHigh, (normWeight - 0.5) * 2);
-            }
-
-            // Opacity: Significantly increased base opacity so thin lines pop
-            const edgeOpacity = 0.4 + normWeight * 0.6;
-
-            const mat = new THREE.LineBasicMaterial({
-                color: edgeColor,
-                transparent: true,
-                opacity: edgeOpacity,
-            });
-
-            const line = new THREE.Line(geometry, mat);
-            this.graphGroup.add(line);
-
-            line.userData = {
-                type: 'edge',
-                sourceId: link.fromId,
-                targetId: link.toId,
-                weight: link.data.weight,
-                origOpacity: edgeOpacity,
-                origColor: edgeColor.getHex(),
-            };
-            this.pickableObjects.push(line);
-
-            // --- PLACE ARROW AT CENTER OF CURVE ---
-            const tMid = 0.5;
-            const arrowPos = curve.getPoint(tMid);
-            const arrowDir = curve.getTangent(tMid).normalize();
-
-            const coneMat = new THREE.MeshBasicMaterial({
-                color: edgeColor,
-                transparent: true,
-                opacity: Math.max(0.4, edgeOpacity),
-            });
-            const cone = new THREE.Mesh(coneGeo, coneMat);
-            cone.position.copy(arrowPos);
-            cone.lookAt(arrowPos.clone().add(arrowDir));
-
-            this.graphGroup.add(cone);
-
-            // STORE CONE IN LINE USERDATA FOR HIGHLIGHT SYNC
-            line.userData.cone = cone;
-
-            const edgeData = {
-                line: line,
-                cone: cone,
-                sourceId: link.fromId,
-                targetId: link.toId,
-            };
-            this.edges.push(edgeData);
-            this.edgeMap.set(`${link.fromId}->${link.toId}`, edgeData);
+        let maxDegree = 1;
+        graph.forEachNode((node) => {
+            if (node.data.degree > maxDegree) maxDegree = node.data.degree;
         });
 
-        // Auto-fit camera to the graph's bounding sphere
+        let maxWeight = 1;
+        graph.forEachLink((link) => {
+            if (link.data.weight > maxWeight) maxWeight = link.data.weight;
+        });
+
+        this._renderNodes(graph, layoutScale, zDepthScale, maxDegree);
+        this._renderEdges(graph, layoutScale, maxWeight);
+
         this.fitCameraToGraph();
     }
 
@@ -409,6 +407,57 @@ export class NetworkVisualizer {
         this.controls.update();
     }
 
+    _clearHoverObjectState(obj) {
+        if (obj.userData.type === 'node') {
+            obj.material.emissive.setHex(obj.userData.origEmissive);
+            obj.material.emissiveIntensity = obj.userData.origEmissiveIntensity;
+        } else if (obj.userData.type === 'edge') {
+            obj.material.opacity = obj.userData.origOpacity;
+            obj.material.color.setHex(obj.userData.origColor);
+            if (obj.userData.cone) {
+                obj.userData.cone.material.opacity = Math.max(
+                    0.4,
+                    obj.userData.origOpacity,
+                );
+                obj.userData.cone.material.color.setHex(obj.userData.origColor);
+            }
+        }
+    }
+
+    _applyHoverObjectState(obj) {
+        if (obj.userData.type === 'node') {
+            obj.material.emissiveIntensity = 0.8;
+            obj.material.emissive.setHex(0xffffff);
+        } else if (obj.userData.type === 'edge') {
+            obj.material.opacity = 1.0;
+            obj.material.color.setHex(0xffffff);
+            if (obj.userData.cone) {
+                obj.userData.cone.material.opacity = 1.0;
+                obj.userData.cone.material.color.setHex(0xffffff);
+            }
+        }
+    }
+
+    _updateHoverState(target) {
+        if (this.hoveredObject !== target) {
+            if (this.hoveredObject) {
+                this._clearHoverObjectState(this.hoveredObject);
+            }
+
+            this.hoveredObject = target;
+
+            if (this.hoveredObject) {
+                this._applyHoverObjectState(this.hoveredObject);
+            }
+
+            if (this.onHover) {
+                this.onHover(
+                    this.hoveredObject ? this.hoveredObject.userData : null,
+                );
+            }
+        }
+    }
+
     animate() {
         requestAnimationFrame(this.animate);
 
@@ -425,63 +474,14 @@ export class NetworkVisualizer {
                 intersects[0];
             target = hit.object;
         }
-        if (this.hoveredObject !== target) {
-            if (this.hoveredObject) {
-                if (this.hoveredObject.userData.type === 'node') {
-                    this.hoveredObject.material.emissive.setHex(
-                        this.hoveredObject.userData.origEmissive,
-                    );
-                    this.hoveredObject.material.emissiveIntensity =
-                        this.hoveredObject.userData.origEmissiveIntensity;
-                } else if (this.hoveredObject.userData.type === 'edge') {
-                    this.hoveredObject.material.opacity =
-                        this.hoveredObject.userData.origOpacity;
-                    this.hoveredObject.material.color.setHex(
-                        this.hoveredObject.userData.origColor,
-                    );
-                    // RESTORE CONE
-                    if (this.hoveredObject.userData.cone) {
-                        this.hoveredObject.userData.cone.material.opacity =
-                            Math.max(
-                                0.4,
-                                this.hoveredObject.userData.origOpacity,
-                            );
-                        this.hoveredObject.userData.cone.material.color.setHex(
-                            this.hoveredObject.userData.origColor,
-                        );
-                    }
-                }
-            }
-            this.hoveredObject = target;
-            if (this.hoveredObject) {
-                if (this.hoveredObject.userData.type === 'node') {
-                    this.hoveredObject.material.emissiveIntensity = 0.8;
-                    this.hoveredObject.material.emissive.setHex(0xffffff);
-                } else if (this.hoveredObject.userData.type === 'edge') {
-                    this.hoveredObject.material.opacity = 1.0;
-                    this.hoveredObject.material.color.setHex(0xffffff);
-                    // HIGHLIGHT CONE
-                    if (this.hoveredObject.userData.cone) {
-                        this.hoveredObject.userData.cone.material.opacity = 1.0;
-                        this.hoveredObject.userData.cone.material.color.setHex(
-                            0xffffff,
-                        );
-                    }
-                }
-            }
-            if (this.onHover) {
-                this.onHover(
-                    this.hoveredObject ? this.hoveredObject.userData : null,
-                );
-            }
-        }
+
+        this._updateHoverState(target);
+
         this.controls.update();
         this.composer.render();
     }
 
-    highlightPlayingElement(nodeId, prevNodeId) {
-        const highlightColor = 0xffe600; // Electric Yellow
-
+    _highlightNode(nodeId, highlightColor) {
         const nodeData = this.nodes.get(nodeId);
         if (nodeData) {
             if (!nodeData.playCount) nodeData.playCount = 0;
@@ -494,29 +494,36 @@ export class NetworkVisualizer {
                 nodeData.mesh.material.emissive.setHex(highlightColor);
             }
         }
+    }
 
-        if (prevNodeId) {
-            const edgeId = `${prevNodeId}->${nodeId}`;
-            const edgeData = this.edgeMap.get(edgeId);
-            if (edgeData) {
-                if (!edgeData.playCount) edgeData.playCount = 0;
-                edgeData.playCount++;
-                if (
-                    edgeData.playCount === 1 &&
-                    this.hoveredObject !== edgeData.line
-                ) {
-                    edgeData.line.material.opacity = 1.0;
-                    edgeData.line.material.color.setHex(highlightColor);
-                    if (edgeData.cone) {
-                        edgeData.cone.material.opacity = 1.0;
-                        edgeData.cone.material.color.setHex(highlightColor);
-                    }
+    _highlightEdge(prevNodeId, nodeId, highlightColor) {
+        if (!prevNodeId) return;
+        const edgeId = `${prevNodeId}->${nodeId}`;
+        const edgeData = this.edgeMap.get(edgeId);
+        if (edgeData) {
+            if (!edgeData.playCount) edgeData.playCount = 0;
+            edgeData.playCount++;
+            if (
+                edgeData.playCount === 1 &&
+                this.hoveredObject !== edgeData.line
+            ) {
+                edgeData.line.material.opacity = 1.0;
+                edgeData.line.material.color.setHex(highlightColor);
+                if (edgeData.cone) {
+                    edgeData.cone.material.opacity = 1.0;
+                    edgeData.cone.material.color.setHex(highlightColor);
                 }
             }
         }
     }
 
-    releasePlayingElement(nodeId, prevNodeId) {
+    highlightPlayingElement(nodeId, prevNodeId) {
+        const highlightColor = 0xffe600; // Electric Yellow
+        this._highlightNode(nodeId, highlightColor);
+        this._highlightEdge(prevNodeId, nodeId, highlightColor);
+    }
+
+    _releaseNode(nodeId) {
         const nodeData = this.nodes.get(nodeId);
         if (nodeData && nodeData.playCount > 0) {
             nodeData.playCount--;
@@ -531,33 +538,39 @@ export class NetworkVisualizer {
                 );
             }
         }
+    }
 
-        if (prevNodeId) {
-            const edgeId = `${prevNodeId}->${nodeId}`;
-            const edgeData = this.edgeMap.get(edgeId);
-            if (edgeData && edgeData.playCount > 0) {
-                edgeData.playCount--;
-                if (
-                    edgeData.playCount === 0 &&
-                    this.hoveredObject !== edgeData.line
-                ) {
-                    edgeData.line.material.opacity =
-                        edgeData.line.userData.origOpacity;
-                    edgeData.line.material.color.setHex(
+    _releaseEdge(prevNodeId, nodeId) {
+        if (!prevNodeId) return;
+        const edgeId = `${prevNodeId}->${nodeId}`;
+        const edgeData = this.edgeMap.get(edgeId);
+        if (edgeData && edgeData.playCount > 0) {
+            edgeData.playCount--;
+            if (
+                edgeData.playCount === 0 &&
+                this.hoveredObject !== edgeData.line
+            ) {
+                edgeData.line.material.opacity =
+                    edgeData.line.userData.origOpacity;
+                edgeData.line.material.color.setHex(
+                    edgeData.line.userData.origColor,
+                );
+                if (edgeData.cone) {
+                    edgeData.cone.material.opacity = Math.max(
+                        0.4,
+                        edgeData.line.userData.origOpacity,
+                    );
+                    edgeData.cone.material.color.setHex(
                         edgeData.line.userData.origColor,
                     );
-                    if (edgeData.cone) {
-                        edgeData.cone.material.opacity = Math.max(
-                            0.4,
-                            edgeData.line.userData.origOpacity,
-                        );
-                        edgeData.cone.material.color.setHex(
-                            edgeData.line.userData.origColor,
-                        );
-                    }
                 }
             }
         }
+    }
+
+    releasePlayingElement(nodeId, prevNodeId) {
+        this._releaseNode(nodeId);
+        this._releaseEdge(prevNodeId, nodeId);
     }
 
     resetPlayingHighlights() {

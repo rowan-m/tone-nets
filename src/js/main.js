@@ -57,20 +57,34 @@ const init = async () => {
         }
 
         hoverPanel.classList.remove('hidden');
+        hoverContent.textContent = ''; // Clear safely
+
+        const addMetric = (labelText, valueText) => {
+            const div = document.createElement('div');
+            div.className = 'metric';
+            const label = document.createElement('label');
+            label.textContent = labelText;
+            const span = document.createElement('span');
+            span.textContent = valueText;
+            div.appendChild(label);
+            div.appendChild(span);
+            hoverContent.appendChild(div);
+        };
+
         if (data.type === 'node') {
-            hoverContent.innerHTML = `
-                <h2>Node: ${data.id}</h2>
-                <div class="metric"><label>Total Connections</label><span>${data.degree}</span></div>
-            `;
+            const h2 = document.createElement('h2');
+            h2.textContent = `Node: ${data.id}`;
+            hoverContent.appendChild(h2);
+            addMetric('Total Connections', data.degree);
         } else if (data.type === 'edge') {
             const interval = getIntervalName(data.sourceId, data.targetId);
-            hoverContent.innerHTML = `
-                <h2>Transition</h2>
-                <div class="metric"><label>From</label><span>${data.sourceId}</span></div>
-                <div class="metric"><label>To</label><span>${data.targetId}</span></div>
-                <div class="metric"><label>Interval</label><span>${interval}</span></div>
-                <div class="metric"><label>Frequency</label><span>${data.weight}</span></div>
-            `;
+            const h2 = document.createElement('h2');
+            h2.textContent = 'Transition';
+            hoverContent.appendChild(h2);
+            addMetric('From', data.sourceId);
+            addMetric('To', data.targetId);
+            addMetric('Interval', interval);
+            addMetric('Frequency', data.weight);
         }
     };
 
@@ -161,6 +175,7 @@ const init = async () => {
                         const bar = document.createElement('div');
                         bar.className = 'bar';
                         bar.style.height = `${parseFloat(val) * 100}%`;
+                        // eslint-disable-next-line security/detect-object-injection
                         bar.title = `${INTERVAL_NAMES[i]}: ${Math.round(parseFloat(val) * 100)}%`;
                         barContainer.appendChild(bar);
                     });

@@ -157,13 +157,21 @@ export class MidiPlayer {
 
     stop() {
         Tone.Transport.stop();
-        Tone.Transport.cancel(0); // Clear scheduled events
+        // Clear all individually scheduled events
+        this.scheduledEvents.forEach(eventId => Tone.Transport.clear(eventId));
         this.scheduledEvents = [];
+        Tone.Transport.cancel(0); // Also clear anything else scheduled
+        Tone.Draw.cancel(0); // Prevent queued visual updates from firing
+        
         if (this.synth) {
             // Synthesizer might have stopAll or we can just send "all notes off" CC
             for (let i = 0; i < 16; i++) {
                  // CC 123 is All Notes Off
                  this.synth.controllerChange(i, 123, 0);
+                 // CC 120 is All Sound Off (more aggressive stop)
+                 this.synth.controllerChange(i, 120, 0);
+                 // CC 64 is Sustain Pedal (reset to 0 to stop holding notes)
+                 this.synth.controllerChange(i, 64, 0);
             }
         }
         if (this.onStop) {

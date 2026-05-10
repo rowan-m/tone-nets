@@ -112,6 +112,17 @@ h1 {
     width: 100%;
 }
 
+#canvas-container.drag-active::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 4px dashed var(--accent-color);
+    box-sizing: border-box;
+    background-color: rgba(0, 255, 255, 0.15);
+    z-index: 100;
+    pointer-events: none;
+}
+
 #welcome-msg {
     position: absolute;
     top: 50%;

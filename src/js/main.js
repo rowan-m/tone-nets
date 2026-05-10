@@ -28,6 +28,20 @@ const init = async () => {
     const statusModal = document.getElementById('status-modal');
     const statusModalText = document.getElementById('status-modal-text');
 
+    // Metric Elements
+    const metricEls = {
+        efficiency: document.getElementById('metric-efficiency'),
+        weightedEfficiency: document.getElementById(
+            'metric-weighted-efficiency',
+        ),
+        entropy: document.getElementById('metric-entropy'),
+        binaryReciprocity: document.getElementById('metric-binary-reciprocity'),
+        reciprocity: document.getElementById('metric-reciprocity'),
+        reciprocityRho: document.getElementById('metric-reciprocity-rho'),
+        density: document.getElementById('metric-density'),
+        intervalBars: document.getElementById('interval-bars'),
+    };
+
     // Show non-dismissable status modal
     statusModal.showModal();
     statusModal.addEventListener('cancel', (e) => e.preventDefault());
@@ -46,6 +60,39 @@ const init = async () => {
         if (statusModal.open) {
             statusModal.close();
         }
+    };
+
+    const updateMetricsUI = (summary, fileName) => {
+        appTitle.innerText =
+            summary.title !== 'Unknown Title' ? summary.title : fileName;
+
+        vCountEl.innerText = summary.vertices;
+        eCountEl.innerText = summary.edges;
+
+        // Populate metrics
+        Object.keys(metricEls).forEach((key) => {
+            if (key === 'intervalBars') return;
+            // eslint-disable-next-line security/detect-object-injection
+            if (metricEls[key]) metricEls[key].innerText = summary[key];
+        });
+
+        // Render Interval Signature
+        metricEls.intervalBars.innerHTML = '';
+        summary.embedding.forEach((val, i) => {
+            const bar = document.createElement('div');
+            bar.className = 'bar';
+            bar.style.height = `${parseFloat(val) * 100}%`;
+            // eslint-disable-next-line security/detect-object-injection
+            bar.title = `${INTERVAL_NAMES[i]}: ${Math.round(parseFloat(val) * 100)}%`;
+            metricEls.intervalBars.appendChild(bar);
+        });
+
+        if (window.innerWidth <= 768) {
+            infoPanel.classList.add('hidden');
+        } else {
+            infoPanel.classList.remove('hidden');
+        }
+        toggleInfo.classList.remove('hidden');
     };
 
     // Disable upload until soundfont is loaded
@@ -127,48 +174,7 @@ const init = async () => {
                     return;
                 }
 
-                // Update UI Summary
-                appTitle.innerText =
-                    summary.title !== 'Unknown Title'
-                        ? summary.title
-                        : fileName;
-
-                vCountEl.innerText = summary.vertices;
-                eCountEl.innerText = summary.edges;
-                document.getElementById('metric-efficiency').innerText =
-                    summary.efficiency;
-                document.getElementById(
-                    'metric-weighted-efficiency',
-                ).innerText = summary.weightedEfficiency;
-                document.getElementById('metric-entropy').innerText =
-                    summary.entropy;
-                document.getElementById('metric-binary-reciprocity').innerText =
-                    summary.binaryReciprocity;
-                document.getElementById('metric-reciprocity').innerText =
-                    summary.reciprocity;
-                document.getElementById('metric-reciprocity-rho').innerText =
-                    summary.reciprocityRho;
-                document.getElementById('metric-density').innerText =
-                    summary.density;
-
-                // Render Interval Signature
-                const barContainer = document.getElementById('interval-bars');
-                barContainer.innerHTML = '';
-                summary.embedding.forEach((val, i) => {
-                    const bar = document.createElement('div');
-                    bar.className = 'bar';
-                    bar.style.height = `${parseFloat(val) * 100}%`;
-                    // eslint-disable-next-line security/detect-object-injection
-                    bar.title = `${INTERVAL_NAMES[i]}: ${Math.round(parseFloat(val) * 100)}%`;
-                    barContainer.appendChild(bar);
-                });
-
-                if (window.innerWidth <= 768) {
-                    infoPanel.classList.add('hidden');
-                } else {
-                    infoPanel.classList.remove('hidden');
-                }
-                toggleInfo.classList.remove('hidden');
+                updateMetricsUI(summary, fileName);
                 muteToggle.disabled = false;
 
                 console.log('Network built successfully (in worker):', summary);
@@ -192,6 +198,33 @@ const init = async () => {
         } catch (err) {
             console.error('Error processing MIDI file:', err);
             showStatus('Error processing MIDI file. See console.');
+        }
+    };
+
+    const loadMidiFromUrl = async (url, fileName) => {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Failed to fetch MIDI');
+            const arrayBuffer = await response.arrayBuffer();
+            await processMidi(arrayBuffer, fileName);
+        } catch (err) {
+            console.error('Error loading MIDI:', err);
+            showStatus(`Error loading ${fileName}.`);
+        }
+    };
+
+    const handleFileSelection = async (file) => {
+        if (!file) return;
+        const fileName = file.name;
+        const ext = fileName.toLowerCase();
+        if (ext.endsWith('.mid') || ext.endsWith('.midi')) {
+            const arrayBuffer = await file.arrayBuffer();
+            await processMidi(arrayBuffer, fileName);
+        } else {
+            showStatus(
+                'Invalid file type. Please upload a .mid or .midi file.',
+            );
+            setTimeout(hideStatus, 3000);
         }
     };
 
@@ -219,30 +252,39 @@ const init = async () => {
     });
 
     // Handle Example MIDI clicks
-    document.addEventListener('click', async (e) => {
+    document.addEventListener('click', (e) => {
         if (e.target.classList.contains('example-midi')) {
             e.preventDefault();
             const fileName = e.target.dataset.file;
-            try {
-                const response = await fetch(`/${fileName}`);
-                if (!response.ok)
-                    throw new Error('Failed to fetch example MIDI');
-                const arrayBuffer = await response.arrayBuffer();
-                await processMidi(arrayBuffer, fileName);
-            } catch (err) {
-                console.error('Error loading example MIDI:', err);
-                showStatus('Error loading example MIDI.');
-            }
+            loadMidiFromUrl(`/${fileName}`, fileName);
         }
     });
 
-    uploadInput.addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const arrayBuffer = await file.arrayBuffer();
-            await processMidi(arrayBuffer, file.name);
-            // Clear the input value so the same file can be selected again
-            e.target.value = '';
+    uploadInput.addEventListener('change', (e) => {
+        handleFileSelection(e.target.files[0]);
+        e.target.value = '';
+    });
+
+    // Drag and Drop functionality
+    const canvasContainer = document.getElementById('canvas-container');
+
+    canvasContainer.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (!uploadInput.disabled && e.dataTransfer.types.includes('Files')) {
+            canvasContainer.classList.add('drag-active');
+        }
+    });
+
+    canvasContainer.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        canvasContainer.classList.remove('drag-active');
+    });
+
+    canvasContainer.addEventListener('drop', (e) => {
+        e.preventDefault();
+        canvasContainer.classList.remove('drag-active');
+        if (!uploadInput.disabled) {
+            handleFileSelection(e.dataTransfer.files[0]);
         }
     });
 };

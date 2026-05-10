@@ -194,7 +194,7 @@ hr {
     opacity: 0;
 }
 
-#loading-modal {
+#status-modal {
     background: var(--panel-bg);
     color: var(--text-color);
     border: 1px solid var(--panel-border);
@@ -206,7 +206,7 @@ hr {
     outline: none;
 }
 
-#loading-modal::backdrop {
+#status-modal::backdrop {
     background: rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(3px);
 }

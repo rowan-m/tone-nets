@@ -22,25 +22,30 @@ const init = async () => {
     const eCountEl = document.getElementById('e-count');
     const infoPanel = document.getElementById('info-panel');
     const welcomeMsg = document.getElementById('welcome-msg');
-    const msgStatus = document.getElementById('msg-status');
-    const msgStatusText = document.getElementById('msg-status-text');
     const hoverPanel = document.getElementById('hover-panel');
     const hoverContent = document.getElementById('hover-content');
     const appTitle = document.getElementById('app-title');
-    const loadingModal = document.getElementById('loading-modal');
+    const statusModal = document.getElementById('status-modal');
+    const statusModalText = document.getElementById('status-modal-text');
 
-    // Show non-dismissable loading modal
-    loadingModal.showModal();
-    loadingModal.addEventListener('cancel', (e) => e.preventDefault());
+    // Show non-dismissable status modal
+    statusModal.showModal();
+    statusModal.addEventListener('cancel', (e) => e.preventDefault());
 
     const visualizer = new NetworkVisualizer('canvas-container');
     const player = new MidiPlayer();
 
-    const setStatus = (text) => {
-        loadingModal.close();
-        msgStatus.classList.remove('hidden');
-        msgStatusText.textContent = text;
-        welcomeMsg.classList.remove('hidden');
+    const showStatus = (text) => {
+        statusModalText.textContent = text;
+        if (!statusModal.open) {
+            statusModal.showModal();
+        }
+    };
+
+    const hideStatus = () => {
+        if (statusModal.open) {
+            statusModal.close();
+        }
     };
 
     // Disable upload until soundfont is loaded
@@ -48,10 +53,10 @@ const init = async () => {
 
     try {
         await player.loadSoundfont();
-        loadingModal.close();
+        hideStatus();
         uploadInput.disabled = false;
     } catch (error) {
-        setStatus('Error loading SoundFont. See console.');
+        showStatus('Error loading SoundFont. See console.');
         console.error(error);
     }
 
@@ -103,7 +108,7 @@ const init = async () => {
         await Tone.start();
 
         console.log('Processing MIDI:', fileName);
-        setStatus('Parsing MIDI and building network...');
+        showStatus('Parsing MIDI and building network...');
         muteToggle.disabled = true;
 
         try {
@@ -118,7 +123,7 @@ const init = async () => {
 
                 if (error) {
                     console.error('Worker error:', error);
-                    setStatus('Error processing MIDI file. See console.');
+                    showStatus('Error processing MIDI file. See console.');
                     return;
                 }
 
@@ -164,7 +169,6 @@ const init = async () => {
                     infoPanel.classList.remove('hidden');
                 }
                 toggleInfo.classList.remove('hidden');
-                welcomeMsg.classList.add('hidden');
                 muteToggle.disabled = false;
 
                 console.log('Network built successfully (in worker):', summary);
@@ -174,19 +178,20 @@ const init = async () => {
 
                 // Setup Progress UI
                 visualizer.onLayoutProgress = (percent) => {
-                    setStatus(`Calculating topological layout: ${percent}%`);
+                    showStatus(`Calculating topological layout: ${percent}%`);
                 };
 
                 // Build 3D Visualization
                 visualizer.buildVisualization(graph).then(() => {
                     welcomeMsg.classList.add('hidden');
+                    hideStatus();
                 });
             };
 
             parserWorker.postMessage({ midiBuffer: arrayBuffer });
         } catch (err) {
             console.error('Error processing MIDI file:', err);
-            setStatus('Error processing MIDI file. See console.');
+            showStatus('Error processing MIDI file. See console.');
         }
     };
 
@@ -226,7 +231,7 @@ const init = async () => {
                 await processMidi(arrayBuffer, fileName);
             } catch (err) {
                 console.error('Error loading example MIDI:', err);
-                setStatus('Error loading example MIDI.');
+                showStatus('Error loading example MIDI.');
             }
         }
     });

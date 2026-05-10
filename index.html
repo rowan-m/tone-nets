@@ -63,8 +63,10 @@
 
             <main id="canvas-container">
                 <!-- Three.js canvas will be injected here -->
-                <dialog id="loading-modal">
-                    <p>Loading SoundFont (7.5MB)... Please wait.</p>
+                <dialog id="status-modal">
+                    <p id="status-modal-text">
+                        Loading SoundFont (7.5MB)... Please wait.
+                    </p>
                 </dialog>
 
                 <div id="welcome-msg">
@@ -107,9 +109,6 @@
                                 >BitMIDI</a
                             >.
                         </p>
-                    </div>
-                    <div id="msg-status" class="hidden">
-                        <p id="msg-status-text"></p>
                     </div>
                 </div>
             </main>

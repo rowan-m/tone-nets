@@ -38,8 +38,7 @@ export function noteToSemitone(note) {
         CB: 11,
     };
 
-    // eslint-disable-next-line security/detect-unsafe-regex
-    const match = note.toUpperCase().match(/^([A-G][#B]?)(-?\d+)?/);
+    const match = note.toUpperCase().match(/^([A-G][#B]?)(-?\d+)?$/);
     if (!match) return 0;
 
     const pitchClassStr = match[1];

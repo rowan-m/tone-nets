@@ -212,6 +212,11 @@ export class MidiPlayer {
         });
 
         // Ensure transport starts from the beginning
+        Tone.Transport.loop = true;
+        Tone.Transport.loopStart = 0;
+        // midi.duration provides the time of the last event. We add the initial delay and a 2-second tail for release tails.
+        Tone.Transport.loopEnd = midi.duration + startDelay + 2;
+
         Tone.Transport.position = 0;
         Tone.Transport.start();
         this.isPlaying = true;
@@ -219,6 +224,7 @@ export class MidiPlayer {
 
     stop() {
         Tone.Transport.stop();
+        Tone.Transport.loop = false;
         // Clear all individually scheduled events
         this.scheduledEvents.forEach((eventId) =>
             Tone.Transport.clear(eventId),

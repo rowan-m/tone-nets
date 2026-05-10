@@ -63,8 +63,7 @@ const init = async () => {
     };
 
     const updateMetricsUI = (summary, fileName) => {
-        appTitle.innerText =
-            summary.title !== 'Unknown Title' ? summary.title : fileName;
+        appTitle.innerText = summary.title ? summary.title : fileName;
 
         vCountEl.innerText = summary.vertices;
         eCountEl.innerText = summary.edges;

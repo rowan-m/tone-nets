@@ -157,7 +157,29 @@ export async function buildMidiNetwork(midiBuffer) {
     let edgeCount = 0;
 
     // Extract Metadata
-    const title = midi.name || 'Unknown Title';
+    let title = midi.name ? midi.name.trim() : '';
+
+    if (midi.header && midi.header.meta) {
+        // Find the first meaningful text event (often the artist or a subtitle)
+        const firstTextEvent = midi.header.meta.find(
+            (m) =>
+                (m.type === 'text' || m.type === 'trackName') &&
+                m.text &&
+                m.text.trim().length > 0 &&
+                !m.text.trim().match(/^Track \d+$/i) &&
+                m.text.trim() !== title,
+        );
+
+        if (firstTextEvent) {
+            const extraInfo = firstTextEvent.text.trim();
+            if (title) {
+                // If we have both, combine them (e.g., "Song Name - Artist")
+                title = `${title} - ${extraInfo}`;
+            } else {
+                title = extraInfo;
+            }
+        }
+    }
 
     // We process each track separately to avoid creating transitions
     // between notes played on different instruments/channels.

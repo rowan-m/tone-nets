@@ -159,8 +159,8 @@ export class NetworkVisualizer {
             this.layout.step();
 
             this.layout.simulator.bodies.forEach((body) => {
-                body.pos.x -= body.pos.x * 0.0005;
-                body.pos.y -= body.pos.y * 0.0005;
+                body.pos.x -= body.pos.x * 0.005;
+                body.pos.y -= body.pos.y * 0.005;
             });
 
             if (i % batchSize === 0) {

@@ -62,3 +62,47 @@ export function getIntervalName(n1, n2) {
     // eslint-disable-next-line security/detect-object-injection
     return INTERVAL_NAMES[diff];
 }
+
+export const INSTRUMENT_EMOJIS = {
+    // Piano
+    0: '🎹',
+    // Chromatic Percussion
+    8: '🔔',
+    // Organ
+    16: '⛪',
+    // Guitar
+    24: '🎸',
+    // Bass
+    32: '🎸',
+    // Strings
+    40: '🎻',
+    // Ensemble
+    48: '🎻',
+    // Brass
+    56: '🎺',
+    // Reed
+    64: '🎷',
+    // Pipe
+    72: '🎷',
+    // Synth Lead
+    80: '⌨️',
+    // Synth Pad
+    88: '☁️',
+    // Synth Effects
+    96: '✨',
+    // Ethnic
+    104: '🪕',
+    // Percussive
+    112: '🥁',
+    // Sound Effects
+    120: '📢',
+    // Drums (Channel 10 special)
+    drums: '🥁',
+};
+
+export function getInstrumentEmoji(programNumber, isDrums = false) {
+    if (isDrums) return INSTRUMENT_EMOJIS['drums'];
+    const familyIndex = Math.floor(programNumber / 8) * 8;
+    // eslint-disable-next-line security/detect-object-injection
+    return INSTRUMENT_EMOJIS[familyIndex] || '🎵';
+}

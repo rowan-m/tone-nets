@@ -44,6 +44,7 @@ export class NetworkVisualizer {
         this.pickableObjects = [];
         this.hoveredObject = null;
         this.onHover = null;
+        this.activeEmojis = [];
         this.scene.add(this.graphGroup);
 
         this.initThree();
@@ -129,6 +130,16 @@ export class NetworkVisualizer {
         this.nodes.clear();
         this.edges = [];
         this.edgeMap.clear();
+
+        // Clear active emojis
+        this.activeEmojis.forEach((emojiData) => {
+            this.scene.remove(emojiData.sprite);
+            if (emojiData.sprite.material.map)
+                emojiData.sprite.material.map.dispose();
+            emojiData.sprite.material.dispose();
+        });
+        this.activeEmojis = [];
+
         if (this.layout) {
             this.layout.dispose();
             this.layout = null;
@@ -458,6 +469,34 @@ export class NetworkVisualizer {
         }
     }
 
+    _updateEmojis() {
+        const upVec = new THREE.Vector3(0, 1, 0);
+        // Get the camera's up vector in world space to float "up" relative to the view
+        this.camera.getWorldDirection(upVec);
+        // We want to float "up" relative to the screen, which is the camera's up vector
+        const cameraUp = new THREE.Vector3(0, 1, 0).applyQuaternion(
+            this.camera.quaternion,
+        );
+
+        for (let i = this.activeEmojis.length - 1; i >= 0; i--) {
+            // eslint-disable-next-line security/detect-object-injection
+            const emojiData = this.activeEmojis[i];
+            emojiData.life -= 0.02;
+
+            if (emojiData.life <= 0) {
+                this.scene.remove(emojiData.sprite);
+                emojiData.sprite.material.map.dispose();
+                emojiData.sprite.material.dispose();
+                this.activeEmojis.splice(i, 1);
+                continue;
+            }
+
+            // Move up relative to camera view
+            emojiData.sprite.position.addScaledVector(cameraUp, 0.5);
+            emojiData.sprite.material.opacity = emojiData.life;
+        }
+    }
+
     animate() {
         requestAnimationFrame(this.animate);
 
@@ -476,9 +515,47 @@ export class NetworkVisualizer {
         }
 
         this._updateHoverState(target);
+        this._updateEmojis();
 
         this.controls.update();
         this.composer.render();
+    }
+
+    _createEmojiSprite(emoji) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        ctx.font = '48px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(emoji, 32, 32);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const material = new THREE.SpriteMaterial({
+            map: texture,
+            transparent: true,
+            depthTest: false, // Ensure it's visible over nodes
+        });
+        const sprite = new THREE.Sprite(material);
+        sprite.scale.set(15, 15, 1);
+        return sprite;
+    }
+
+    showInstrumentEmoji(nodeId, emoji) {
+        const nodeData = this.nodes.get(nodeId);
+        if (!nodeData) return;
+
+        const sprite = this._createEmojiSprite(emoji);
+        sprite.position.copy(nodeData.mesh.position);
+        // Offset a bit so it's not buried in the node
+        sprite.position.z += 10;
+
+        this.scene.add(sprite);
+        this.activeEmojis.push({
+            sprite: sprite,
+            life: 1.0,
+        });
     }
 
     _highlightNode(nodeId, highlightColor) {

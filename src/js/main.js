@@ -11,7 +11,11 @@ const parserWorker = new Worker(
     { type: 'module' },
 );
 
-import { INTERVAL_NAMES, getIntervalName } from './utils.js';
+import {
+    INTERVAL_NAMES,
+    getIntervalName,
+    getInstrumentEmoji,
+} from './utils.js';
 
 const init = async () => {
     const uploadInput = document.getElementById('midi-upload');
@@ -106,8 +110,11 @@ const init = async () => {
         console.error(error);
     }
 
-    player.onNotePlay = (nodeId, prevNodeId) =>
+    player.onNotePlay = (nodeId, prevNodeId, instrumentId, isDrums) => {
         visualizer.highlightPlayingElement(nodeId, prevNodeId);
+        const emoji = getInstrumentEmoji(instrumentId, isDrums);
+        visualizer.showInstrumentEmoji(nodeId, emoji);
+    };
     player.onNoteRelease = (nodeId, prevNodeId) =>
         visualizer.releasePlayingElement(nodeId, prevNodeId);
     player.onStop = () => visualizer.resetPlayingHighlights();

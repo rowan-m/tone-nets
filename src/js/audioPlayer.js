@@ -11,6 +11,7 @@ export class MidiPlayer {
         this.isMuted = false;
         this.scheduledEvents = [];
         this.masterGain = null;
+        this.channelInstruments = new Array(16).fill(0);
 
         // Hooks for visualization
         this.onNotePlay = null;
@@ -87,6 +88,9 @@ export class MidiPlayer {
                         this.onNotePlay(
                             note.name,
                             prevNote ? prevNote.name : null,
+                            // eslint-disable-next-line security/detect-object-injection
+                            this.channelInstruments[channel],
+                            channel === 9,
                         );
                     }
                 }, time);
@@ -105,6 +109,9 @@ export class MidiPlayer {
                             this.onNoteRelease(
                                 note.name,
                                 prevNote ? prevNote.name : null,
+                                // eslint-disable-next-line security/detect-object-injection
+                                this.channelInstruments[channel],
+                                channel === 9,
                             );
                         }
                     }, time);
@@ -140,8 +147,20 @@ export class MidiPlayer {
         const midi = new Midi(midiBuffer);
         const startDelay = 0.5; // Start half a second from the beginning of Transport
 
+        // Reset instrument tracking
+        this.channelInstruments = new Array(16).fill(0);
+
         midi.tracks.forEach((track) => {
             const channel = track.channel; // 0-15
+
+            // Track the instrument for this channel
+            if (
+                track.instrument &&
+                typeof track.instrument.number === 'number'
+            ) {
+                // eslint-disable-next-line security/detect-object-injection
+                this.channelInstruments[channel] = track.instrument.number;
+            }
 
             // Control Changes (Volume, Pan, Sustain, etc.) - Schedule these FIRST so Bank Selects happen before Program Changes
             Object.entries(track.controlChanges).forEach(

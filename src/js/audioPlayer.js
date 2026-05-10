@@ -18,7 +18,9 @@ export class MidiPlayer {
         this.onStop = null;
     }
 
+    // async loadSoundfont(url = '/goldeneye-007.sf2') {
     async loadSoundfont(url = '/creative-emu10k1-8mbgmsfx.sf2') {
+        // async loadSoundfont(url = '/timbres-of-heaven-xgm-4-00-g.sf2') {
         const response = await fetch(url);
         if (!response.ok)
             throw new Error(`Failed to load soundfont: ${response.statusText}`);
@@ -225,30 +227,53 @@ export class MidiPlayer {
     stop() {
         Tone.Transport.stop();
         Tone.Transport.loop = false;
-        // Clear all individually scheduled events
+
+        // Clear all scheduled events on the Tone timeline
         this.scheduledEvents.forEach((eventId) =>
             Tone.Transport.clear(eventId),
         );
         this.scheduledEvents = [];
-        Tone.Transport.cancel(0); // Also clear anything else scheduled
-        Tone.Draw.cancel(0); // Prevent queued visual updates from firing
+        Tone.Transport.cancel(0);
+        Tone.Draw.cancel(0);
 
         if (this.synth) {
-            // Tell SpessaSynth to stop all active voices immediately
+            // Briefly disconnect the synth to hard-cut any lingering reverb/audio buffers
+            if (this.masterGain) {
+                this.masterGain.gain.setTargetAtTime(
+                    0,
+                    Tone.context.currentTime,
+                    0.01,
+                );
+            }
+
+            // SpessaSynth specific stop mechanism (stops all active voices instantly)
             if (typeof this.synth.stopAll === 'function') {
                 this.synth.stopAll();
             }
 
-            // Synthesizer might have stopAll or we can just send "all notes off" CC
+            // Send standard MIDI "Panic" messages across all 16 channels to reset state
             for (let i = 0; i < 16; i++) {
-                // CC 123 is All Notes Off
-                this.synth.controllerChange(i, 123, 0);
-                // CC 120 is All Sound Off (more aggressive stop)
-                this.synth.controllerChange(i, 120, 0);
-                // CC 64 is Sustain Pedal (reset to 0 to stop holding notes)
-                this.synth.controllerChange(i, 64, 0);
+                this.synth.controllerChange(i, 120, 0); // All Sound Off (Aggressive)
+                this.synth.controllerChange(i, 123, 0); // All Notes Off
+                this.synth.controllerChange(i, 64, 0); // Sustain Pedal Off
+                this.synth.controllerChange(i, 121, 0); // Reset All Controllers
+                this.synth.pitchWheel(i, 8192); // Reset Pitch Bend to center
+            }
+
+            // Restore volume after a tiny delay, ensuring the next track plays normally
+            if (this.masterGain) {
+                setTimeout(() => {
+                    if (!this.isMuted) {
+                        this.masterGain.gain.setTargetAtTime(
+                            1,
+                            Tone.context.currentTime,
+                            0.01,
+                        );
+                    }
+                }, 50);
             }
         }
+
         if (this.onStop) {
             this.onStop();
         }

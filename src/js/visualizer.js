@@ -47,6 +47,33 @@ export class NetworkVisualizer {
         this.activeEmojis = [];
         this.scene.add(this.graphGroup);
 
+        this.edgeMaterialPool = new Map();
+        this.coneMaterialPool = new Map();
+
+        // Shared materials for hover/highlight states
+        this.hoverEdgeMaterial = new THREE.LineBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 1.0,
+        });
+        this.hoverConeMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 1.0,
+        });
+
+        const highlightColor = 0xffe600; // Electric Yellow
+        this.highlightEdgeMaterial = new THREE.LineBasicMaterial({
+            color: highlightColor,
+            transparent: true,
+            opacity: 1.0,
+        });
+        this.highlightConeMaterial = new THREE.MeshBasicMaterial({
+            color: highlightColor,
+            transparent: true,
+            opacity: 1.0,
+        });
+
         this.initThree();
         this.initPostProcessing();
         this.animate = this.animate.bind(this);
@@ -124,9 +151,15 @@ export class NetworkVisualizer {
         while (this.graphGroup.children.length > 0) {
             const child = this.graphGroup.children[0];
             if (child.geometry) child.geometry.dispose();
-            if (child.material) child.material.dispose();
             this.graphGroup.remove(child);
         }
+
+        // Dispose pooled materials
+        this.edgeMaterialPool.forEach((mat) => mat.dispose());
+        this.edgeMaterialPool.clear();
+        this.coneMaterialPool.forEach((mat) => mat.dispose());
+        this.coneMaterialPool.clear();
+
         this.nodes.clear();
         this.edges = [];
         this.edgeMap.clear();
@@ -291,15 +324,28 @@ export class NetworkVisualizer {
         const pts = curve.getPoints(20);
         const geometry = new THREE.BufferGeometry().setFromPoints(pts);
 
-        const normWeight = Math.min(1, link.data.weight / maxWeight);
-        const edgeColor = this._getEdgeColor(normWeight);
-        const edgeOpacity = 0.4 + normWeight * 0.6;
+        let mat = this.edgeMaterialPool.get(link.data.weight);
+        let coneMat = this.coneMaterialPool.get(link.data.weight);
 
-        const mat = new THREE.LineBasicMaterial({
-            color: edgeColor,
-            transparent: true,
-            opacity: edgeOpacity,
-        });
+        if (!mat || !coneMat) {
+            const normWeight = Math.min(1, link.data.weight / maxWeight);
+            const edgeColor = this._getEdgeColor(normWeight);
+            const edgeOpacity = 0.4 + normWeight * 0.6;
+
+            mat = new THREE.LineBasicMaterial({
+                color: edgeColor,
+                transparent: true,
+                opacity: edgeOpacity,
+            });
+            this.edgeMaterialPool.set(link.data.weight, mat);
+
+            coneMat = new THREE.MeshBasicMaterial({
+                color: edgeColor,
+                transparent: true,
+                opacity: Math.max(0.4, edgeOpacity),
+            });
+            this.coneMaterialPool.set(link.data.weight, coneMat);
+        }
 
         const line = new THREE.Line(geometry, mat);
         this.graphGroup.add(line);
@@ -309,8 +355,7 @@ export class NetworkVisualizer {
             sourceId: link.fromId,
             targetId: link.toId,
             weight: link.data.weight,
-            origOpacity: edgeOpacity,
-            origColor: edgeColor.getHex(),
+            origMaterial: mat,
         };
         this.pickableObjects.push(line);
 
@@ -318,14 +363,12 @@ export class NetworkVisualizer {
         const arrowPos = curve.getPoint(tMid);
         const arrowDir = curve.getTangent(tMid).normalize();
 
-        const coneMat = new THREE.MeshBasicMaterial({
-            color: edgeColor,
-            transparent: true,
-            opacity: Math.max(0.4, edgeOpacity),
-        });
         const cone = new THREE.Mesh(coneGeo, coneMat);
         cone.position.copy(arrowPos);
         cone.lookAt(arrowPos.clone().add(arrowDir));
+        cone.userData = {
+            origMaterial: coneMat,
+        };
 
         this.graphGroup.add(cone);
         line.userData.cone = cone;
@@ -423,14 +466,22 @@ export class NetworkVisualizer {
             obj.material.emissive.setHex(obj.userData.origEmissive);
             obj.material.emissiveIntensity = obj.userData.origEmissiveIntensity;
         } else if (obj.userData.type === 'edge') {
-            obj.material.opacity = obj.userData.origOpacity;
-            obj.material.color.setHex(obj.userData.origColor);
-            if (obj.userData.cone) {
-                obj.userData.cone.material.opacity = Math.max(
-                    0.4,
-                    obj.userData.origOpacity,
-                );
-                obj.userData.cone.material.color.setHex(obj.userData.origColor);
+            // Restore original shared material instead of mutating
+            // Check if it should be highlighted instead of normal
+            const edgeId = `${obj.userData.sourceId}->${obj.userData.targetId}`;
+            const edgeData = this.edgeMap.get(edgeId);
+
+            if (edgeData && edgeData.playCount > 0) {
+                obj.material = this.highlightEdgeMaterial;
+                if (obj.userData.cone) {
+                    obj.userData.cone.material = this.highlightConeMaterial;
+                }
+            } else {
+                obj.material = obj.userData.origMaterial;
+                if (obj.userData.cone) {
+                    obj.userData.cone.material =
+                        obj.userData.cone.userData.origMaterial;
+                }
             }
         }
     }
@@ -440,11 +491,10 @@ export class NetworkVisualizer {
             obj.material.emissiveIntensity = 0.8;
             obj.material.emissive.setHex(0xffffff);
         } else if (obj.userData.type === 'edge') {
-            obj.material.opacity = 1.0;
-            obj.material.color.setHex(0xffffff);
+            // Assign shared hover material
+            obj.material = this.hoverEdgeMaterial;
             if (obj.userData.cone) {
-                obj.userData.cone.material.opacity = 1.0;
-                obj.userData.cone.material.color.setHex(0xffffff);
+                obj.userData.cone.material = this.hoverConeMaterial;
             }
         }
     }
@@ -573,7 +623,7 @@ export class NetworkVisualizer {
         }
     }
 
-    _highlightEdge(prevNodeId, nodeId, highlightColor) {
+    _highlightEdge(prevNodeId, nodeId) {
         if (!prevNodeId) return;
         const edgeId = `${prevNodeId}->${nodeId}`;
         const edgeData = this.edgeMap.get(edgeId);
@@ -584,11 +634,9 @@ export class NetworkVisualizer {
                 edgeData.playCount === 1 &&
                 this.hoveredObject !== edgeData.line
             ) {
-                edgeData.line.material.opacity = 1.0;
-                edgeData.line.material.color.setHex(highlightColor);
+                edgeData.line.material = this.highlightEdgeMaterial;
                 if (edgeData.cone) {
-                    edgeData.cone.material.opacity = 1.0;
-                    edgeData.cone.material.color.setHex(highlightColor);
+                    edgeData.cone.material = this.highlightConeMaterial;
                 }
             }
         }
@@ -597,7 +645,7 @@ export class NetworkVisualizer {
     highlightPlayingElement(nodeId, prevNodeId) {
         const highlightColor = 0xffe600; // Electric Yellow
         this._highlightNode(nodeId, highlightColor);
-        this._highlightEdge(prevNodeId, nodeId, highlightColor);
+        this._highlightEdge(prevNodeId, nodeId);
     }
 
     _releaseNode(nodeId) {
@@ -627,19 +675,10 @@ export class NetworkVisualizer {
                 edgeData.playCount === 0 &&
                 this.hoveredObject !== edgeData.line
             ) {
-                edgeData.line.material.opacity =
-                    edgeData.line.userData.origOpacity;
-                edgeData.line.material.color.setHex(
-                    edgeData.line.userData.origColor,
-                );
+                edgeData.line.material = edgeData.line.userData.origMaterial;
                 if (edgeData.cone) {
-                    edgeData.cone.material.opacity = Math.max(
-                        0.4,
-                        edgeData.line.userData.origOpacity,
-                    );
-                    edgeData.cone.material.color.setHex(
-                        edgeData.line.userData.origColor,
-                    );
+                    edgeData.cone.material =
+                        edgeData.cone.userData.origMaterial;
                 }
             }
         }
@@ -665,19 +704,10 @@ export class NetworkVisualizer {
         this.edgeMap.forEach((edgeData) => {
             edgeData.playCount = 0;
             if (this.hoveredObject !== edgeData.line) {
-                edgeData.line.material.opacity =
-                    edgeData.line.userData.origOpacity;
-                edgeData.line.material.color.setHex(
-                    edgeData.line.userData.origColor,
-                );
+                edgeData.line.material = edgeData.line.userData.origMaterial;
                 if (edgeData.cone) {
-                    edgeData.cone.material.opacity = Math.max(
-                        0.4,
-                        edgeData.line.userData.origOpacity,
-                    );
-                    edgeData.cone.material.color.setHex(
-                        edgeData.line.userData.origColor,
-                    );
+                    edgeData.cone.material =
+                        edgeData.cone.userData.origMaterial;
                 }
             }
         });

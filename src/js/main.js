@@ -22,21 +22,22 @@ const init = async () => {
     const eCountEl = document.getElementById('e-count');
     const infoPanel = document.getElementById('info-panel');
     const welcomeMsg = document.getElementById('welcome-msg');
-    const msgLoading = document.getElementById('msg-loading');
-    const msgPrompt = document.getElementById('msg-prompt');
     const msgStatus = document.getElementById('msg-status');
     const msgStatusText = document.getElementById('msg-status-text');
     const hoverPanel = document.getElementById('hover-panel');
     const hoverContent = document.getElementById('hover-content');
     const appTitle = document.getElementById('app-title');
+    const loadingModal = document.getElementById('loading-modal');
 
-    // Initialize Subsystems
+    // Show non-dismissable loading modal
+    loadingModal.showModal();
+    loadingModal.addEventListener('cancel', (e) => e.preventDefault());
+
     const visualizer = new NetworkVisualizer('canvas-container');
     const player = new MidiPlayer();
 
     const setStatus = (text) => {
-        msgLoading.classList.add('hidden');
-        msgPrompt.classList.add('hidden');
+        loadingModal.close();
         msgStatus.classList.remove('hidden');
         msgStatusText.textContent = text;
         welcomeMsg.classList.remove('hidden');
@@ -47,8 +48,7 @@ const init = async () => {
 
     try {
         await player.loadSoundfont();
-        msgLoading.classList.add('hidden');
-        msgPrompt.classList.remove('hidden');
+        loadingModal.close();
         uploadInput.disabled = false;
     } catch (error) {
         setStatus('Error loading SoundFont. See console.');

@@ -194,6 +194,23 @@ hr {
     opacity: 0;
 }
 
+#loading-modal {
+    background: var(--panel-bg);
+    color: var(--text-color);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 2rem;
+    backdrop-filter: blur(10px);
+    text-align: center;
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.7);
+    outline: none;
+}
+
+#loading-modal::backdrop {
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(3px);
+}
+
 h2 {
     margin-top: 0;
     font-size: 1.1rem;

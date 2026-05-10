@@ -63,11 +63,12 @@
 
             <main id="canvas-container">
                 <!-- Three.js canvas will be injected here -->
+                <dialog id="loading-modal">
+                    <p>Loading SoundFont (7.5MB)... Please wait.</p>
+                </dialog>
+
                 <div id="welcome-msg">
-                    <div id="msg-loading">
-                        <p>Loading SoundFont (7.5MB)... Please wait.</p>
-                    </div>
-                    <div id="msg-prompt" class="hidden">
+                    <div id="msg-prompt">
                         <p>
                             Upload a MIDI file to begin the visualization or try
                             the included

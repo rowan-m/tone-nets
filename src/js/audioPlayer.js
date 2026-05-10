@@ -18,9 +18,7 @@ export class MidiPlayer {
         this.onStop = null;
     }
 
-    // async loadSoundfont(url = '/goldeneye-007.sf2') {
     async loadSoundfont(url = '/creative-emu10k1-8mbgmsfx.sf2') {
-        // async loadSoundfont(url = '/timbres-of-heaven-xgm-4-00-g.sf2') {
         const response = await fetch(url);
         if (!response.ok)
             throw new Error(`Failed to load soundfont: ${response.statusText}`);

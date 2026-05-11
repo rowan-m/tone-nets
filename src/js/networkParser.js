@@ -144,19 +144,7 @@ function calculateMetrics(graph, edgeCount) {
     };
 }
 
-/**
- * Parses a MIDI file buffer and constructs a directed graph
- * representing note-to-note transitions.
- *
- * @param {ArrayBuffer} midiBuffer
- * @returns {Object} Graph object and summary statistics
- */
-export async function buildMidiNetwork(midiBuffer) {
-    const midi = new Midi(midiBuffer);
-    const graph = createGraph();
-    let edgeCount = 0;
-
-    // Extract Metadata
+function extractMetadata(midi) {
     let title = midi.name ? midi.name.trim() : '';
 
     if (midi.header && midi.header.meta) {
@@ -180,6 +168,11 @@ export async function buildMidiNetwork(midiBuffer) {
             }
         }
     }
+    return title;
+}
+
+function processTransitions(midi, graph) {
+    let edgeCount = 0;
 
     // We process each track separately to avoid creating transitions
     // between notes played on different instruments/channels.
@@ -240,6 +233,10 @@ export async function buildMidiNetwork(midiBuffer) {
         }
     });
 
+    return edgeCount;
+}
+
+function computeNodeDegrees(graph) {
     // Compute degree (in + out) for each node for visualization sizing
     graph.forEachNode((node) => {
         let degree = 0;
@@ -248,6 +245,22 @@ export async function buildMidiNetwork(midiBuffer) {
         });
         node.data.degree = degree;
     });
+}
+
+/**
+ * Parses a MIDI file buffer and constructs a directed graph
+ * representing note-to-note transitions.
+ *
+ * @param {ArrayBuffer} midiBuffer
+ * @returns {Object} Graph object and summary statistics
+ */
+export async function buildMidiNetwork(midiBuffer) {
+    const midi = new Midi(midiBuffer);
+    const graph = createGraph();
+
+    const title = extractMetadata(midi);
+    const edgeCount = processTransitions(midi, graph);
+    computeNodeDegrees(graph);
 
     const metrics = calculateMetrics(graph, edgeCount);
 

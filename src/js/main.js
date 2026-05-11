@@ -223,6 +223,17 @@ const init = async () => {
         if (!file) return;
         const fileName = file.name;
         const ext = fileName.toLowerCase();
+
+        // Security enhancement: Add file size limit to prevent potential DoS from extremely large files.
+        const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+        if (file.size > MAX_FILE_SIZE) {
+            showStatus(
+                'File is too large. Please upload a MIDI file smaller than 5MB.',
+            );
+            setTimeout(hideStatus, 3000);
+            return;
+        }
+
         if (ext.endsWith('.mid') || ext.endsWith('.midi')) {
             const arrayBuffer = await file.arrayBuffer();
             await processMidi(arrayBuffer, fileName);

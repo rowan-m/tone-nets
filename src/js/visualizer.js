@@ -45,6 +45,8 @@ export class NetworkVisualizer {
         this.hoveredObject = null;
         this.onHover = null;
         this.activeEmojis = [];
+        this.playingNodes = new Set();
+        this.playingEdges = new Set();
         this.scene.add(this.graphGroup);
 
         this.edgeMaterialPool = new Map();
@@ -163,6 +165,8 @@ export class NetworkVisualizer {
         this.nodes.clear();
         this.edges = [];
         this.edgeMap.clear();
+        this.playingNodes.clear();
+        this.playingEdges.clear();
 
         // Clear active emojis
         this.activeEmojis.forEach((emojiData) => {
@@ -614,6 +618,8 @@ export class NetworkVisualizer {
         if (nodeData) {
             if (!nodeData.playCount) nodeData.playCount = 0;
             nodeData.playCount++;
+            this.playingNodes.add(nodeData);
+
             if (
                 nodeData.playCount === 1 &&
                 this.hoveredObject !== nodeData.mesh
@@ -631,6 +637,8 @@ export class NetworkVisualizer {
         if (edgeData) {
             if (!edgeData.playCount) edgeData.playCount = 0;
             edgeData.playCount++;
+            this.playingEdges.add(edgeData);
+
             if (
                 edgeData.playCount === 1 &&
                 this.hoveredObject !== edgeData.line
@@ -653,15 +661,15 @@ export class NetworkVisualizer {
         const nodeData = this.nodes.get(nodeId);
         if (nodeData && nodeData.playCount > 0) {
             nodeData.playCount--;
-            if (
-                nodeData.playCount === 0 &&
-                this.hoveredObject !== nodeData.mesh
-            ) {
-                nodeData.mesh.material.emissiveIntensity =
-                    nodeData.mesh.userData.origEmissiveIntensity;
-                nodeData.mesh.material.emissive.setHex(
-                    nodeData.mesh.userData.origEmissive,
-                );
+            if (nodeData.playCount === 0) {
+                this.playingNodes.delete(nodeData);
+                if (this.hoveredObject !== nodeData.mesh) {
+                    nodeData.mesh.material.emissiveIntensity =
+                        nodeData.mesh.userData.origEmissiveIntensity;
+                    nodeData.mesh.material.emissive.setHex(
+                        nodeData.mesh.userData.origEmissive,
+                    );
+                }
             }
         }
     }
@@ -672,14 +680,14 @@ export class NetworkVisualizer {
         const edgeData = this.edgeMap.get(edgeId);
         if (edgeData && edgeData.playCount > 0) {
             edgeData.playCount--;
-            if (
-                edgeData.playCount === 0 &&
-                this.hoveredObject !== edgeData.line
-            ) {
-                edgeData.line.material = edgeData.line.userData.origMaterial;
-                if (edgeData.cone) {
-                    edgeData.cone.material =
-                        edgeData.cone.userData.origMaterial;
+            if (edgeData.playCount === 0) {
+                this.playingEdges.delete(edgeData);
+                if (this.hoveredObject !== edgeData.line) {
+                    edgeData.line.material = edgeData.line.userData.origMaterial;
+                    if (edgeData.cone) {
+                        edgeData.cone.material =
+                            edgeData.cone.userData.origMaterial;
+                    }
                 }
             }
         }
@@ -691,7 +699,7 @@ export class NetworkVisualizer {
     }
 
     resetPlayingHighlights() {
-        this.nodes.forEach((nodeData) => {
+        this.playingNodes.forEach((nodeData) => {
             nodeData.playCount = 0;
             if (this.hoveredObject !== nodeData.mesh) {
                 nodeData.mesh.material.emissiveIntensity =
@@ -701,8 +709,9 @@ export class NetworkVisualizer {
                 );
             }
         });
+        this.playingNodes.clear();
 
-        this.edgeMap.forEach((edgeData) => {
+        this.playingEdges.forEach((edgeData) => {
             edgeData.playCount = 0;
             if (this.hoveredObject !== edgeData.line) {
                 edgeData.line.material = edgeData.line.userData.origMaterial;
@@ -712,5 +721,6 @@ export class NetworkVisualizer {
                 }
             }
         });
+        this.playingEdges.clear();
     }
 }

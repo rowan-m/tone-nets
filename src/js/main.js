@@ -156,6 +156,63 @@ const init = async () => {
         }
     };
 
+    const updateMediaSession = (titleString, fileName) => {
+        if ('mediaSession' in navigator) {
+            let title = fileName;
+            let artist = 'Tone Nets';
+
+            if (titleString && titleString !== 'Unknown Title') {
+                if (titleString.includes(' - ')) {
+                    const parts = titleString.split(' - ');
+                    title = parts[0].trim();
+                    artist = parts.slice(1).join(' - ').trim();
+                } else {
+                    title = titleString;
+                }
+            }
+
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: title,
+                artist: artist,
+                album: 'Tone Nets',
+                artwork: [
+                    {
+                        src: '/now-playing.png',
+                        sizes: '512x512',
+                        type: 'image/png',
+                    },
+                ],
+            });
+        }
+    };
+    const togglePlayPause = () => {
+        if (player.isPlaying) {
+            player.pause();
+
+            playPauseToggle.innerHTML =
+                '<span aria-hidden="true">▶️</span>Play';
+            playPauseToggle.style.backgroundColor = 'rgba(0, 255, 255, 0.2)';
+            playPauseToggle.style.borderColor = 'var(--accent-text)';
+            playPauseToggle.style.color = 'var(--accent-text)';
+        } else {
+            player.resume();
+
+            playPauseToggle.innerHTML =
+                '<span aria-hidden="true">⏸️</span>Pause';
+            playPauseToggle.style.backgroundColor = '';
+            playPauseToggle.style.borderColor = '';
+            playPauseToggle.style.color = 'white';
+        }
+    };
+
+    // Setup Play/Pause Toggle
+    playPauseToggle.addEventListener('click', togglePlayPause);
+
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('play', togglePlayPause);
+        navigator.mediaSession.setActionHandler('pause', togglePlayPause);
+    }
+
     const processMidi = async (arrayBuffer, fileName) => {
         await Tone.start();
 
@@ -181,6 +238,7 @@ const init = async () => {
                 }
 
                 updateMetricsUI(summary, fileName);
+                updateMediaSession(summary.title, fileName);
                 playPauseToggle.disabled = false;
                 toggleInfo.disabled = false;
                 // Reset button to Pause state on new track
@@ -252,27 +310,6 @@ const init = async () => {
             setTimeout(hideStatus, 3000);
         }
     };
-
-    // Setup Play/Pause Toggle
-    playPauseToggle.addEventListener('click', () => {
-        if (player.isPlaying) {
-            player.pause();
-
-            playPauseToggle.innerHTML =
-                '<span aria-hidden="true">▶️</span>Play';
-            playPauseToggle.style.backgroundColor = 'rgba(0, 255, 255, 0.2)';
-            playPauseToggle.style.borderColor = 'var(--accent-text)';
-            playPauseToggle.style.color = 'var(--accent-text)';
-        } else {
-            player.resume();
-
-            playPauseToggle.innerHTML =
-                '<span aria-hidden="true">⏸️</span>Pause';
-            playPauseToggle.style.backgroundColor = '';
-            playPauseToggle.style.borderColor = '';
-            playPauseToggle.style.color = 'white';
-        }
-    });
 
     // Setup Info Panel Toggle
     toggleInfo.addEventListener('click', () => {

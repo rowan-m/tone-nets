@@ -48,7 +48,7 @@ export function noteToSemitone(note) {
     let result = 0;
     if (match) {
         const pitchClassStr = match[1];
-        // eslint-disable-next-line security/detect-object-injection
+
         const val =
             pcMap[pitchClassStr] !== undefined ? pcMap[pitchClassStr] : 0;
         const oct = match[2] ? parseInt(match[2], 10) : 4;

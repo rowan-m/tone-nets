@@ -11,6 +11,10 @@ export class MidiPlayer {
         this.scheduledEvents = [];
         this.masterGain = null;
         this.channelInstruments = new Array(16).fill(0);
+        this.duration = 0;
+
+        this.dummyAudio = new Audio('/background.mp3');
+        this.dummyAudio.loop = true;
 
         // Hooks for visualization
         this.onNotePlay = null;
@@ -49,11 +53,15 @@ export class MidiPlayer {
             // Register the AudioWorklet processor BEFORE creating the synthesizer
             await rawCtx.audioWorklet.addModule(processorUrl);
 
+            // Create master gain for muting/pausing
+            this.masterGain = rawCtx.createGain();
+            this.masterGain.connect(rawCtx.destination);
+
             // Initialize SpessaSynth
             this.synth = new WorkletSynthesizer(rawCtx);
 
-            // Connect synthesizer to audio output
-            this.synth.connect(rawCtx.destination);
+            // Connect synthesizer to master gain
+            this.synth.connect(this.masterGain);
 
             // Wait for worklet to be ready
             await this.synth.isReady;
@@ -131,6 +139,16 @@ export class MidiPlayer {
         }, scheduleTime);
     }
 
+    _updateMediaSessionPosition() {
+        if ('mediaSession' in navigator && this.duration > 0) {
+            navigator.mediaSession.setPositionState({
+                duration: this.duration,
+                playbackRate: Tone.Transport.playbackRate,
+                position: Tone.Transport.seconds,
+            });
+        }
+    }
+
     async play(midiBuffer) {
         this.stop(); // Stop any existing playback
 
@@ -148,6 +166,7 @@ export class MidiPlayer {
 
         const midi = new Midi(midiBuffer);
         const startDelay = 0.5; // Start half a second from the beginning of Transport
+        this.duration = midi.duration + startDelay;
 
         // Reset instrument tracking
         this.channelInstruments = new Array(16).fill(0);
@@ -236,11 +255,20 @@ export class MidiPlayer {
         Tone.Transport.loop = true;
         Tone.Transport.loopStart = 0;
         // midi.duration provides the time of the last event. We add the initial delay and a 2-second tail for release tails.
-        Tone.Transport.loopEnd = midi.duration + startDelay + 2;
+        Tone.Transport.loopEnd = this.duration + 2;
 
         Tone.Transport.position = 0;
         Tone.Transport.start();
+
+        this.dummyAudio.currentTime = 0;
+        this.dummyAudio
+            .play()
+            .catch((e) => console.warn('Dummy audio play failed:', e));
+        if ('mediaSession' in navigator)
+            navigator.mediaSession.playbackState = 'playing';
+
         this.isPlaying = true;
+        this._updateMediaSessionPosition();
     }
 
     _hardResetSynth() {
@@ -285,6 +313,11 @@ export class MidiPlayer {
             this._hardResetSynth();
         }, 150);
 
+        this.dummyAudio.pause();
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'none';
+        }
+
         if (this.onStop) {
             this.onStop();
         }
@@ -309,6 +342,13 @@ export class MidiPlayer {
                 this._hardResetSynth();
             }, 150);
 
+            this.dummyAudio.pause();
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.playbackState = 'paused';
+            }
+
+            this._updateMediaSessionPosition();
+
             this.isPlaying = false;
         }
     }
@@ -328,7 +368,15 @@ export class MidiPlayer {
                 );
             }
             Tone.Transport.start();
+
+            this.dummyAudio
+                .play()
+                .catch((e) => console.warn('Dummy audio play failed:', e));
+            if ('mediaSession' in navigator)
+                navigator.mediaSession.playbackState = 'playing';
+
             this.isPlaying = true;
+            this._updateMediaSessionPosition();
         }
     }
 }

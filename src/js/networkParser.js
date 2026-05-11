@@ -290,9 +290,10 @@ function bfsDistances(graph, startNodeId) {
     const distances = {};
     distances[startNodeId] = 0;
     const queue = [startNodeId];
+    let head = 0;
 
-    while (queue.length > 0) {
-        const u = queue.shift();
+    while (head < queue.length) {
+        const u = queue[head++];
         graph.forEachLinkedNode(u, (linkedNode, link) => {
             const v = linkedNode.id;
             if (link.fromId === u && distances[v] === undefined) {
@@ -316,9 +317,9 @@ function dijkstraDistances(graph, startNodeId) {
     distances[startNodeId] = 0;
 
     while (pq.length > 0) {
-        // Simple priority queue (sort by distance)
-        pq.sort((a, b) => a[1] - b[1]);
-        const [u, d] = pq.shift();
+        // Simple priority queue (sort by distance descending)
+        pq.sort((a, b) => b[1] - a[1]);
+        const [u, d] = pq.pop();
 
         if (visited.has(u)) continue;
         visited.add(u);

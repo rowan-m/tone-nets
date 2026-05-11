@@ -33,6 +33,7 @@ Before sending a pull request, run the linting and formatting checks locally:
 ```
 npm run prettier
 npm run eslint
+npm run test
 ```
 
 ## Attribution

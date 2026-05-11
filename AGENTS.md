@@ -2,7 +2,7 @@
 
 This project ports the original R-based visualisations from the paper ["Decoding the evolution of melodic and harmonic structure of Western music through the lens of network science"](https://www.nature.com/articles/s41598-026-42872-7) to a client-side web app. It visualizes MIDI note transitions as a 3D topological web and calculates complexity metrics defined in the linked paper.
 
-## 🚀 Quick Start
+## Run the development environment
 
 ```bash
 cd music-analysis-web
@@ -10,9 +10,19 @@ npm ci
 npm run dev
 ```
 
+## Contribute
+
+Before committing or sending a pull request, run the linting and formatting checks locally:
+
+```
+npm run prettier
+npm run eslint
+npm run test
+```
+
 The application output of the `dev` command will specify the localhost port where the app is running.
 
-## 🏗️ Architecture Overview
+##  Architecture Overview
 
 The application is built with Vanilla JS (ES Modules) and Vite, structured into three primary subsystems:
 
@@ -34,7 +44,7 @@ The application is built with Vanilla JS (ES Modules) and Vite, structured into 
     - Uses `Tone.js` for synthesis.
     - **Constraint**: Calls `Tone.start()` immediately upon file selection to capture the browser's user gesture token before heavy layout calculations begin.
 
-## 📦 Key Dependencies & Rationale
+## Key Dependencies & Rationale
 
 - **Three.js**: Industry standard for hardware-accelerated 3D visuals.
 - **Tone.js / @tonejs/midi**: Robust MIDI parsing and low-latency web audio synthesis.

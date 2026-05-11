@@ -309,10 +309,15 @@ describe('NetworkVisualizer', () => {
         const edgeData = { line: edgeLine, playCount: 3 };
         visualizer.edgeMap.set('C4->G4', edgeData);
 
+        visualizer.playingNodes.add(nodeData);
+        visualizer.playingEdges.add(edgeData);
+
         visualizer.resetPlayingHighlights();
 
         expect(nodeData.playCount).toBe(0);
         expect(edgeData.playCount).toBe(0);
+        expect(visualizer.playingNodes.size).toBe(0);
+        expect(visualizer.playingEdges.size).toBe(0);
     });
 
     it('should handle window resize', () => {

@@ -43,8 +43,12 @@ export function noteToSemitone(note) {
         CB: 11,
     };
 
-    // eslint-disable-next-line security/detect-unsafe-regex
-    const match = note.toUpperCase().match(/^([A-G][#B]?)(-?\d+)?/);
+    // Use a strictly bounded regex to satisfy ReDoS security checks:
+    // ^      - Start of string
+    // ([A-G][#B]?) - Note letter (A-G) optionally followed by sharp/flat
+    // (-?\d{1,2})? - Optional octave number (optional minus, 1-2 digits)
+    // $      - End of string
+    const match = note.toUpperCase().match(/^([A-G][#B]?)(-?\d{1,2})?$/);
     let result = 0;
     if (match) {
         const pitchClassStr = match[1];

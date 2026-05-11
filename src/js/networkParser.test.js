@@ -1,10 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildMidiNetwork } from './networkParser.js';
+import { buildMidiNetwork, rebuildGraph } from './networkParser.js';
 import { Midi } from '@tonejs/midi';
 
 // Mock @tonejs/midi
 vi.mock('@tonejs/midi', () => {
     const MidiMock = vi.fn(function (buffer) {
+        this.name = '';
+        this.tracks = [];
+        this.header = { meta: [] };
+
         if (buffer === 'test-buffer') {
             this.name = 'Test MIDI';
             this.tracks = [
@@ -17,8 +21,6 @@ vi.mock('@tonejs/midi', () => {
                     ],
                 },
             ];
-        } else {
-            this.tracks = [];
         }
     });
     return { Midi: MidiMock };
@@ -143,5 +145,210 @@ describe('networkParser', () => {
         // Node E4: out-weight 1, transitions [1]. p = [1.0]. H = 0
         // Mean Entropy = (1.0 + 0 + 0) / 3 = 0.3333
         expect(summary.entropy).toBe('0.3333');
+    });
+
+    describe('extractMetadata', () => {
+        it('should combine title and artist from meta events', async () => {
+            vi.mocked(Midi).mockImplementationOnce(function () {
+                this.name = 'Moonlight Sonata';
+                this.header = {
+                    meta: [{ type: 'text', text: 'Beethoven' }],
+                };
+                this.tracks = [];
+            });
+
+            const { summary } = await buildMidiNetwork('meta-buffer');
+            expect(summary.title).toBe('Moonlight Sonata - Beethoven');
+        });
+
+        it('should use meta event as title if name is missing', async () => {
+            vi.mocked(Midi).mockImplementationOnce(function () {
+                this.name = '';
+                this.header = {
+                    meta: [{ type: 'trackName', text: 'Opus 27' }],
+                };
+                this.tracks = [];
+            });
+
+            const { summary } = await buildMidiNetwork('meta-buffer');
+            expect(summary.title).toBe('Opus 27');
+        });
+
+        it('should ignore "Track X" and duplicate titles in meta events', async () => {
+            vi.mocked(Midi).mockImplementationOnce(function () {
+                this.name = 'Sonata';
+                this.header = {
+                    meta: [
+                        { type: 'text', text: 'Track 1' },
+                        { type: 'text', text: 'Sonata' },
+                        { type: 'text', text: 'Ludwig' },
+                    ],
+                };
+                this.tracks = [];
+            });
+
+            const { summary } = await buildMidiNetwork('meta-buffer');
+            expect(summary.title).toBe('Sonata - Ludwig');
+        });
+    });
+
+    describe('processTransitions', () => {
+        it('should ignore drum tracks (channel 9)', async () => {
+            vi.mocked(Midi).mockImplementationOnce(function () {
+                this.tracks = [
+                    {
+                        channel: 9, // Drum channel
+                        notes: [
+                            { ticks: 0, name: 'C2' },
+                            { ticks: 100, name: 'D2' },
+                        ],
+                    },
+                    {
+                        channel: 0,
+                        notes: [
+                            { ticks: 0, name: 'C4' },
+                            { ticks: 100, name: 'G4' },
+                        ],
+                    },
+                ];
+            });
+
+            const { summary } = await buildMidiNetwork('drum-buffer');
+            expect(summary.vertices).toBe(2); // Only C4 and G4
+            expect(summary.edges).toBe(1);
+        });
+
+        it('should handle chords (multiple notes at same time)', async () => {
+            vi.mocked(Midi).mockImplementationOnce(function () {
+                this.tracks = [
+                    {
+                        channel: 0,
+                        notes: [
+                            { ticks: 0, name: 'C4' },
+                            { ticks: 0, name: 'E4' },
+                            { ticks: 100, name: 'G4' },
+                        ],
+                    },
+                ];
+            });
+
+            const { summary, graph } = await buildMidiNetwork('chord-buffer');
+            // C4 -> G4, E4 -> G4
+            expect(summary.vertices).toBe(3);
+            expect(summary.edges).toBe(2);
+            expect(graph.getLink('C4', 'G4')).toBeDefined();
+            expect(graph.getLink('E4', 'G4')).toBeDefined();
+        });
+    });
+
+    describe('rebuildGraph', () => {
+        it('should rebuild a graph from serialized data', () => {
+            const serialized = {
+                nodes: [
+                    { id: 'C4', data: { name: 'C4' } },
+                    { id: 'G4', data: { name: 'G4' } },
+                ],
+                links: [{ fromId: 'C4', toId: 'G4', data: { weight: 5 } }],
+            };
+
+            const graph = rebuildGraph(serialized);
+            expect(graph.getNodesCount()).toBe(2);
+            expect(graph.getLinksCount()).toBe(1);
+            const link = graph.getLink('C4', 'G4');
+            expect(link.data.weight).toBe(5);
+        });
+
+        it('should handle missing weight in serialized links', () => {
+            const serialized = {
+                nodes: [
+                    { id: 'C4', data: { name: 'C4' } },
+                    { id: 'G4', data: { name: 'G4' } },
+                ],
+                links: [
+                    { fromId: 'C4', toId: 'G4', data: {} }, // Missing weight
+                ],
+            };
+
+            const graph = rebuildGraph(serialized);
+            expect(graph.getLink('C4', 'G4')).toBeDefined();
+        });
+    });
+
+    describe('Internal Distance Helpers', () => {
+        it('should handle cycles in BFS (BFS branch)', async () => {
+            vi.mocked(Midi).mockImplementationOnce(function () {
+                this.tracks = [
+                    {
+                        channel: 0,
+                        notes: [
+                            { ticks: 0, name: 'C4' },
+                            { ticks: 100, name: 'G4' },
+                            { ticks: 200, name: 'C4' },
+                            { ticks: 300, name: 'G4' },
+                        ],
+                    },
+                ];
+            });
+            // This creates C4 -> G4 and G4 -> C4
+            // When BFS starts at C4, it sees G4. Then from G4 it sees C4 (already visited).
+            const { summary } = await buildMidiNetwork('cycle-buffer');
+            expect(summary.efficiency).toBe('1.0000');
+        });
+    });
+
+    describe('Metric Edge Cases', () => {
+        it('should handle empty MIDI', async () => {
+            vi.mocked(Midi).mockImplementationOnce(function () {
+                this.tracks = [];
+            });
+            const { summary } = await buildMidiNetwork('empty-buffer');
+            expect(summary.vertices).toBe(0);
+            expect(summary.edges).toBe(0);
+            expect(summary.density).toBe('0.0000');
+            expect(summary.embedding).toEqual(new Array(12).fill('0.0000'));
+        });
+
+        it('should handle single node MIDI', async () => {
+            vi.mocked(Midi).mockImplementationOnce(function () {
+                this.tracks = [
+                    {
+                        channel: 0,
+                        notes: [{ ticks: 0, name: 'C4' }],
+                    },
+                ];
+            });
+            const { summary } = await buildMidiNetwork('single-buffer');
+            // Current implementation only adds nodes if they are part of a transition
+            expect(summary.vertices).toBe(0);
+            expect(summary.edges).toBe(0);
+            expect(summary.density).toBe('0.0000');
+            expect(summary.efficiency).toBe('0.0000');
+        });
+
+        it('should handle disconnected nodes for efficiency', async () => {
+            vi.mocked(Midi).mockImplementationOnce(function () {
+                this.tracks = [
+                    {
+                        channel: 0,
+                        notes: [
+                            { ticks: 0, name: 'C4' },
+                            { ticks: 100, name: 'G4' },
+                        ],
+                    },
+                    {
+                        channel: 1,
+                        notes: [
+                            { ticks: 0, name: 'A4' },
+                            { ticks: 100, name: 'B4' },
+                        ],
+                    },
+                ];
+            });
+            const { summary } = await buildMidiNetwork('disconnected-buffer');
+            // C4 -> G4, A4 -> B4. No path between {C4,G4} and {A4,B4}
+            expect(summary.vertices).toBe(4);
+            expect(summary.efficiency).not.toBe('0.0000');
+            expect(parseFloat(summary.efficiency)).toBeLessThan(1.0);
+        });
     });
 });

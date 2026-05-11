@@ -5,7 +5,9 @@ export default defineConfig({
     coverage: {
       enabled: true,
       provider: 'v8',
-      reporter: ['text', 'json-summary', 'json'],
+      reporter: ['text', 'json', 'json-summary'],
+      reportsDirectory: './coverage',
+      reportOnFailure: true,
       include: ['src/js/**/*.js'],
       exclude: ['src/js/**/*.test.js'],
     },

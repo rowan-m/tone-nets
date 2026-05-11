@@ -13,7 +13,12 @@ export const INTERVAL_NAMES = [
     'Major Seventh',
 ];
 
+// Cache for noteToSemitone to avoid repeated regex and object lookup overhead
+const NOTE_CACHE = new Map();
+
 export function noteToSemitone(note) {
+    if (NOTE_CACHE.has(note)) return NOTE_CACHE.get(note);
+
     const pcMap = {
         C: 0,
         'B#': 0,
@@ -40,14 +45,18 @@ export function noteToSemitone(note) {
 
     // eslint-disable-next-line security/detect-unsafe-regex
     const match = note.toUpperCase().match(/^([A-G][#B]?)(-?\d+)?/);
-    if (!match) return 0;
+    let result = 0;
+    if (match) {
+        const pitchClassStr = match[1];
+        // eslint-disable-next-line security/detect-object-injection
+        const val =
+            pcMap[pitchClassStr] !== undefined ? pcMap[pitchClassStr] : 0;
+        const oct = match[2] ? parseInt(match[2], 10) : 4;
+        result = oct * 12 + val;
+    }
 
-    const pitchClassStr = match[1];
-    // eslint-disable-next-line security/detect-object-injection
-    const val = pcMap[pitchClassStr] !== undefined ? pcMap[pitchClassStr] : 0;
-    const oct = match[2] ? parseInt(match[2], 10) : 4;
-
-    return oct * 12 + val;
+    NOTE_CACHE.set(note, result);
+    return result;
 }
 
 export function getInterval(n1, n2) {

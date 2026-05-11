@@ -8,7 +8,6 @@ export class MidiPlayer {
         this.synth = null;
         this.sf2Buffer = null;
         this.isPlaying = false;
-        this.isMuted = false;
         this.scheduledEvents = [];
         this.masterGain = null;
         this.channelInstruments = new Array(16).fill(0);
@@ -50,17 +49,11 @@ export class MidiPlayer {
             // Register the AudioWorklet processor BEFORE creating the synthesizer
             await rawCtx.audioWorklet.addModule(processorUrl);
 
-            // Create master gain
-            this.masterGain = rawCtx.createGain();
-            this.masterGain.gain.value = this.isMuted ? 0 : 1;
-            this.masterGain.connect(rawCtx.destination);
-
             // Initialize SpessaSynth
             this.synth = new WorkletSynthesizer(rawCtx);
 
-            // Disconnect from default destination (if any) and connect to our master gain
-            this.synth.disconnect();
-            this.synth.connect(this.masterGain);
+            // Connect synthesizer to audio output
+            this.synth.connect(rawCtx.destination);
 
             // Wait for worklet to be ready
             await this.synth.isReady;
@@ -143,6 +136,15 @@ export class MidiPlayer {
 
         // Ensure audio context is started and synth exists
         await this.initialize();
+
+        // Ensure volume is up for playback
+        if (this.masterGain) {
+            this.masterGain.gain.setTargetAtTime(
+                1,
+                Tone.context.currentTime,
+                0.01,
+            );
+        }
 
         const midi = new Midi(midiBuffer);
         const startDelay = 0.5; // Start half a second from the beginning of Transport
@@ -241,6 +243,22 @@ export class MidiPlayer {
         this.isPlaying = true;
     }
 
+    _hardResetSynth() {
+        if (this.synth) {
+            if (typeof this.synth.stopAll === 'function') {
+                this.synth.stopAll();
+            }
+
+            for (let i = 0; i < 16; i++) {
+                this.synth.controllerChange(i, 120, 0); // All Sound Off (Aggressive)
+                this.synth.controllerChange(i, 123, 0); // All Notes Off
+                this.synth.controllerChange(i, 64, 0); // Sustain Pedal Off
+                this.synth.controllerChange(i, 121, 0); // Reset All Controllers
+                this.synth.pitchWheel(i, 8192); // Reset Pitch Bend to center
+            }
+        }
+    }
+
     stop() {
         Tone.Transport.stop();
         Tone.Transport.loop = false;
@@ -253,8 +271,30 @@ export class MidiPlayer {
         Tone.Transport.cancel(0);
         Tone.Draw.cancel(0);
 
-        if (this.synth) {
-            // Briefly disconnect the synth to hard-cut any lingering reverb/audio buffers
+        if (this.masterGain) {
+            this.masterGain.gain.setTargetAtTime(
+                0,
+                Tone.context.currentTime,
+                0.01,
+            );
+        }
+
+        this._hardResetSynth();
+        if (this._resetTimeout) clearTimeout(this._resetTimeout);
+        this._resetTimeout = setTimeout(() => {
+            this._hardResetSynth();
+        }, 150);
+
+        if (this.onStop) {
+            this.onStop();
+        }
+        this.isPlaying = false;
+    }
+
+    pause() {
+        if (this.isPlaying) {
+            Tone.Transport.pause();
+
             if (this.masterGain) {
                 this.masterGain.gain.setTargetAtTime(
                     0,
@@ -263,51 +303,32 @@ export class MidiPlayer {
                 );
             }
 
-            // SpessaSynth specific stop mechanism (stops all active voices instantly)
-            if (typeof this.synth.stopAll === 'function') {
-                this.synth.stopAll();
-            }
+            this._hardResetSynth();
+            if (this._resetTimeout) clearTimeout(this._resetTimeout);
+            this._resetTimeout = setTimeout(() => {
+                this._hardResetSynth();
+            }, 150);
 
-            // Send standard MIDI "Panic" messages across all 16 channels to reset state
-            for (let i = 0; i < 16; i++) {
-                this.synth.controllerChange(i, 120, 0); // All Sound Off (Aggressive)
-                this.synth.controllerChange(i, 123, 0); // All Notes Off
-                this.synth.controllerChange(i, 64, 0); // Sustain Pedal Off
-                this.synth.controllerChange(i, 121, 0); // Reset All Controllers
-                this.synth.pitchWheel(i, 8192); // Reset Pitch Bend to center
-            }
-
-            // Restore volume after a tiny delay, ensuring the next track plays normally
-            if (this.masterGain) {
-                setTimeout(() => {
-                    if (!this.isMuted) {
-                        this.masterGain.gain.setTargetAtTime(
-                            1,
-                            Tone.context.currentTime,
-                            0.01,
-                        );
-                    }
-                }, 50);
-            }
+            this.isPlaying = false;
         }
-
-        if (this.onStop) {
-            this.onStop();
-        }
-        this.isPlaying = false;
     }
 
-    toggleMute() {
-        this.isMuted = !this.isMuted;
-        if (this.masterGain) {
-            this.masterGain.gain.value = this.isMuted ? 0 : 1;
-        }
-        if (this.isMuted && this.synth) {
-            // Silence currently playing notes
-            for (let i = 0; i < 16; i++) {
-                this.synth.controllerChange(i, 123, 0);
+    resume() {
+        if (!this.isPlaying && this.synth) {
+            if (this._resetTimeout) clearTimeout(this._resetTimeout);
+
+            // Hard reset one more time to clear any residual state before unmuting
+            this._hardResetSynth();
+
+            if (this.masterGain) {
+                this.masterGain.gain.setTargetAtTime(
+                    1,
+                    Tone.context.currentTime,
+                    0.01,
+                );
             }
+            Tone.Transport.start();
+            this.isPlaying = true;
         }
-        return this.isMuted;
     }
 }

@@ -19,7 +19,7 @@ import {
 
 const init = async () => {
     const uploadInput = document.getElementById('midi-upload');
-    const muteToggle = document.getElementById('mute-toggle');
+    const playPauseToggle = document.getElementById('play-pause-toggle');
     const toggleInfo = document.getElementById('toggle-info');
     const closeInfo = document.getElementById('close-info');
     const vCountEl = document.getElementById('v-count');
@@ -95,7 +95,6 @@ const init = async () => {
         } else {
             infoPanel.classList.remove('hidden');
         }
-        toggleInfo.classList.remove('hidden');
     };
 
     // Disable upload until soundfont is loaded
@@ -162,7 +161,8 @@ const init = async () => {
 
         console.log('Processing MIDI:', fileName);
         showStatus('Parsing MIDI and building network...');
-        muteToggle.disabled = true;
+        playPauseToggle.disabled = true;
+        toggleInfo.disabled = true;
 
         try {
             // Play Audio
@@ -181,7 +181,15 @@ const init = async () => {
                 }
 
                 updateMetricsUI(summary, fileName);
-                muteToggle.disabled = false;
+                playPauseToggle.disabled = false;
+                toggleInfo.disabled = false;
+                // Reset button to Pause state on new track
+
+                playPauseToggle.innerHTML =
+                    '<span aria-hidden="true">⏸️</span>Pause';
+                playPauseToggle.style.backgroundColor = '';
+                playPauseToggle.style.borderColor = '';
+                playPauseToggle.style.color = 'white';
 
                 console.log('Network built successfully (in worker):', summary);
 
@@ -245,18 +253,25 @@ const init = async () => {
         }
     };
 
-    // Setup Mute Toggle
-    muteToggle.addEventListener('click', () => {
-        const isMuted = player.toggleMute();
-        // eslint-disable-next-line no-unsanitized/property
-        muteToggle.innerHTML = isMuted
-            ? '<span aria-hidden="true">🔇</span>Unmute'
-            : '<span aria-hidden="true">🔊</span>Mute';
-        muteToggle.style.backgroundColor = isMuted
-            ? 'rgba(0, 255, 255, 0.2)'
-            : '';
-        muteToggle.style.borderColor = isMuted ? 'var(--accent-text)' : '';
-        muteToggle.style.color = isMuted ? 'var(--accent-text)' : 'white';
+    // Setup Play/Pause Toggle
+    playPauseToggle.addEventListener('click', () => {
+        if (player.isPlaying) {
+            player.pause();
+
+            playPauseToggle.innerHTML =
+                '<span aria-hidden="true">▶️</span>Play';
+            playPauseToggle.style.backgroundColor = 'rgba(0, 255, 255, 0.2)';
+            playPauseToggle.style.borderColor = 'var(--accent-text)';
+            playPauseToggle.style.color = 'var(--accent-text)';
+        } else {
+            player.resume();
+
+            playPauseToggle.innerHTML =
+                '<span aria-hidden="true">⏸️</span>Pause';
+            playPauseToggle.style.backgroundColor = '';
+            playPauseToggle.style.borderColor = '';
+            playPauseToggle.style.color = 'white';
+        }
     });
 
     // Setup Info Panel Toggle

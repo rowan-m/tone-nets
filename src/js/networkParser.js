@@ -68,14 +68,11 @@ function _sumEfficiencyForNode(
     for (let j = 0; j < nodes.length; j++) {
         if (i === j) continue;
 
-        // eslint-disable-next-line security/detect-object-injection
         const targetNode = nodes[j];
 
-        // eslint-disable-next-line security/detect-object-injection
         const ud = uDistances[targetNode];
         if (ud !== undefined && ud > 0) efficiencySums.unweighted += 1 / ud;
 
-        // eslint-disable-next-line security/detect-object-injection
         const wd = wDistances[targetNode];
         if (wd !== undefined && wd > 0) efficiencySums.weighted += 1 / wd;
     }
@@ -89,7 +86,6 @@ function calculateEfficiency(graph, n) {
     });
 
     for (let i = 0; i < nodes.length; i++) {
-        // eslint-disable-next-line security/detect-object-injection
         const startNode = nodes[i];
         const uDistances = bfsDistances(graph, startNode);
         const wDistances = dijkstraDistances(graph, startNode);
@@ -113,7 +109,6 @@ function calculateEmbedding(graph) {
 
     graph.forEachLink((link) => {
         const interval = getInterval(link.fromId, link.toId);
-        // eslint-disable-next-line security/detect-object-injection
         intervalVector[interval] += link.data.weight;
     });
 
@@ -201,7 +196,6 @@ function processTransitions(midi, graph) {
         // Build transitions: from all notes at time T to all notes at time T+1
         for (let i = 1; i < sortedTimes.length; i++) {
             const previousTime = sortedTimes[i - 1];
-            // eslint-disable-next-line security/detect-object-injection
             const currentTime = sortedTimes[i];
 
             const sourceNotes = notesByTime.get(previousTime);
@@ -294,7 +288,6 @@ export function rebuildGraph(serializedGraph) {
  */
 function bfsDistances(graph, startNodeId) {
     const distances = {};
-    // eslint-disable-next-line security/detect-object-injection
     distances[startNodeId] = 0;
     const queue = [startNodeId];
 
@@ -302,9 +295,7 @@ function bfsDistances(graph, startNodeId) {
         const u = queue.shift();
         graph.forEachLinkedNode(u, (linkedNode, link) => {
             const v = linkedNode.id;
-            // eslint-disable-next-line security/detect-object-injection
             if (link.fromId === u && distances[v] === undefined) {
-                // eslint-disable-next-line security/detect-object-injection
                 distances[v] = distances[u] + 1;
                 queue.push(v);
             }
@@ -322,7 +313,6 @@ function dijkstraDistances(graph, startNodeId) {
     const visited = new Set();
     const pq = [[startNodeId, 0]]; // [nodeId, distance]
 
-    // eslint-disable-next-line security/detect-object-injection
     distances[startNodeId] = 0;
 
     while (pq.length > 0) {
@@ -339,9 +329,7 @@ function dijkstraDistances(graph, startNodeId) {
             const weight = link.data.weight || 1;
             const alt = d + weight;
 
-            // eslint-disable-next-line security/detect-object-injection
             if (distances[v] === undefined || alt < distances[v]) {
-                // eslint-disable-next-line security/detect-object-injection
                 distances[v] = alt;
                 pq.push([v, alt]);
             }

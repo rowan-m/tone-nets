@@ -75,7 +75,6 @@ const init = async () => {
         // Populate metrics
         Object.keys(metricEls).forEach((key) => {
             if (key === 'intervalBars') return;
-            // eslint-disable-next-line security/detect-object-injection
             if (metricEls[key]) metricEls[key].innerText = summary[key];
         });
 
@@ -85,7 +84,6 @@ const init = async () => {
             const bar = document.createElement('div');
             bar.className = 'bar';
             bar.style.height = `${parseFloat(val) * 100}%`;
-            // eslint-disable-next-line security/detect-object-injection
             bar.title = `${INTERVAL_NAMES[i]}: ${Math.round(parseFloat(val) * 100)}%`;
             metricEls.intervalBars.appendChild(bar);
         });

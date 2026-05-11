@@ -29,6 +29,7 @@ export default defineConfig([
             ...pluginSecurity.configs.recommended.rules,
             ...sonarjs.configs.recommended.rules,
             ...noUnsanitized.configs.recommended.rules,
+            'security/detect-object-injection': 'off',
         },
     },
     {

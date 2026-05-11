@@ -89,7 +89,6 @@ export class MidiPlayer {
                         this.onNotePlay(
                             note.name,
                             prevNote ? prevNote.name : null,
-                            // eslint-disable-next-line security/detect-object-injection
                             this.channelInstruments[channel],
                             channel === 9,
                         );
@@ -110,7 +109,6 @@ export class MidiPlayer {
                             this.onNoteRelease(
                                 note.name,
                                 prevNote ? prevNote.name : null,
-                                // eslint-disable-next-line security/detect-object-injection
                                 this.channelInstruments[channel],
                                 channel === 9,
                             );
@@ -179,7 +177,6 @@ export class MidiPlayer {
                 track.instrument &&
                 typeof track.instrument.number === 'number'
             ) {
-                // eslint-disable-next-line security/detect-object-injection
                 this.channelInstruments[channel] = track.instrument.number;
             }
 

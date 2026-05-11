@@ -68,7 +68,6 @@ export function getInterval(n1, n2) {
 
 export function getIntervalName(n1, n2) {
     const diff = getInterval(n1, n2);
-    // eslint-disable-next-line security/detect-object-injection
     return INTERVAL_NAMES[diff];
 }
 
@@ -112,6 +111,5 @@ export const INSTRUMENT_EMOJIS = {
 export function getInstrumentEmoji(programNumber, isDrums = false) {
     if (isDrums) return INSTRUMENT_EMOJIS['drums'];
     const familyIndex = Math.floor(programNumber / 8) * 8;
-    // eslint-disable-next-line security/detect-object-injection
     return INSTRUMENT_EMOJIS[familyIndex] || '🎵';
 }

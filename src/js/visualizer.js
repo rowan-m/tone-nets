@@ -531,7 +531,6 @@ export class NetworkVisualizer {
         );
 
         for (let i = this.activeEmojis.length - 1; i >= 0; i--) {
-            // eslint-disable-next-line security/detect-object-injection
             const emojiData = this.activeEmojis[i];
             emojiData.life -= 0.02;
 

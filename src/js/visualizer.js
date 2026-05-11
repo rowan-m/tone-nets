@@ -324,11 +324,13 @@ export class NetworkVisualizer {
         const pts = curve.getPoints(20);
         const geometry = new THREE.BufferGeometry().setFromPoints(pts);
 
-        let mat = this.edgeMaterialPool.get(link.data.weight);
-        let coneMat = this.coneMaterialPool.get(link.data.weight);
+        const normWeight = Math.min(1, link.data.weight / maxWeight);
+        const weightBucket = Math.round(normWeight * 100);
+
+        let mat = this.edgeMaterialPool.get(weightBucket);
+        let coneMat = this.coneMaterialPool.get(weightBucket);
 
         if (!mat || !coneMat) {
-            const normWeight = Math.min(1, link.data.weight / maxWeight);
             const edgeColor = this._getEdgeColor(normWeight);
             const edgeOpacity = 0.4 + normWeight * 0.6;
 
@@ -337,14 +339,14 @@ export class NetworkVisualizer {
                 transparent: true,
                 opacity: edgeOpacity,
             });
-            this.edgeMaterialPool.set(link.data.weight, mat);
+            this.edgeMaterialPool.set(weightBucket, mat);
 
             coneMat = new THREE.MeshBasicMaterial({
                 color: edgeColor,
                 transparent: true,
                 opacity: Math.max(0.4, edgeOpacity),
             });
-            this.coneMaterialPool.set(link.data.weight, coneMat);
+            this.coneMaterialPool.set(weightBucket, coneMat);
         }
 
         const line = new THREE.Line(geometry, mat);

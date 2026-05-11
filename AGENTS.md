@@ -22,7 +22,7 @@ npm run test
 
 The application output of the `dev` command will specify the localhost port where the app is running.
 
-##  Architecture Overview
+## Architecture Overview
 
 The application is built with Vanilla JS (ES Modules) and Vite, structured into three primary subsystems:
 

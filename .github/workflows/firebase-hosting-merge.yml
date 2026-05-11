@@ -9,12 +9,19 @@ on:
 jobs:
     build_and_deploy:
         runs-on: ubuntu-latest
+        permissions:
+            checks: write
+            contents: read
+            pull-requests: write
         steps:
             - uses: actions/checkout@v4
             - run: npm ci
             - run: npm run prettier:check
             - run: npm run eslint
             - run: npm run test
+            - name: 'Report Coverage'
+              if: always()
+              uses: davelosert/vitest-coverage-report-action@v2
             - run: npm run build
             - uses: FirebaseExtended/action-hosting-deploy@v0
               with:

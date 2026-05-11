@@ -9,7 +9,6 @@
         "preview": "vite preview",
         "test": "vitest run",
         "test:watch": "vitest",
-        "test:coverage": "vitest run --coverage",
         "eslint": "eslint src",
         "prettier:check": "prettier --check .",
         "prettier": "prettier --write ."

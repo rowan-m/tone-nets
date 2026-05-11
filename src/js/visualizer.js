@@ -683,7 +683,8 @@ export class NetworkVisualizer {
             if (edgeData.playCount === 0) {
                 this.playingEdges.delete(edgeData);
                 if (this.hoveredObject !== edgeData.line) {
-                    edgeData.line.material = edgeData.line.userData.origMaterial;
+                    edgeData.line.material =
+                        edgeData.line.userData.origMaterial;
                     if (edgeData.cone) {
                         edgeData.cone.material =
                             edgeData.cone.userData.origMaterial;

@@ -30,7 +30,6 @@ Other available scripts:
 
 - `npm run build`: Production build.
 - `npm run preview`: Preview the production build locally.
-- `npm run test:coverage`: Run tests with coverage reporting.
 
 ## Architecture Overview
 

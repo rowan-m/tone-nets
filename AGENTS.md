@@ -12,6 +12,12 @@ npm run dev
 
 ## Contribute
 
+This project follows a strict **Test-Driven Development (TDD)** ethos. All contributing agents MUST follow the **Red/Green/Refactor** approach:
+
+1.  **Red**: Before implementing a feature or fix, write a test that fails. Use this to empirically reproduce bugs or define new behavior.
+2.  **Green**: Write the minimal code necessary to make the test pass. Do not over-engineer at this stage.
+3.  **Refactor**: Optimize and clean the code while ensuring the tests remain green. Adhere to the established architectural patterns.
+
 Before committing or sending a pull request, run the linting, formatting, and tests:
 
 ```bash
@@ -73,5 +79,5 @@ The application is built with Vanilla JS (ES Modules) and Vite, structured into 
 
 - **Linting**: Strict security and quality rules via `eslint-plugin-security`, `sonarjs`, and `no-unsanitized`.
 - **Formatting**: Prettier with 4-space tabs and single quotes.
-- **Testing**: Unit tests for utility functions (`utils.js`) and network construction logic (`networkParser.js`).
+- **Testing**: Mandated TDD workflow. Unit tests are required for all utility functions, network construction logic, and UI-independent business logic. Tests must be written before implementation (Red phase).
 - **Media Support**: Implements `MediaSession` API for lock-screen controls and metadata.

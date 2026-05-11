@@ -21,6 +21,7 @@ npm run test
 ```
 
 Other available scripts:
+
 - `npm run build`: Production build.
 - `npm run preview`: Preview the production build locally.
 - `npm run test:coverage`: Run tests with coverage reporting.
@@ -32,11 +33,11 @@ The application is built with Vanilla JS (ES Modules) and Vite, structured into 
 1.  **Network Parser (`src/js/networkParser.js` & `src/js/parser.worker.js`)**:
     - **Parsing**: Uses `@tonejs/midi` for binary MIDI parsing.
     - **Graph Construction**: Builds a directed, weighted graph using `ngraph.graph`.
-    - **Scientific Parity**: 
+    - **Scientific Parity**:
         - Groups notes by exact **MIDI ticks** to handle chords/simultaneous events.
         - Skips self-loops ($w_{xx} = 0$) as per paper specifications.
         - Filters out MIDI Channel 10 (drums) from transition analysis.
-    - **Metrics**: Calculates academic complexity metrics: 
+    - **Metrics**: Calculates academic complexity metrics:
         - **Efficiency**: Global (unweighted) and Weighted (via Dijkstra).
         - **Reciprocity**: Binary, Weighted, and Normalized ($\rho$).
         - **Entropy**: Mean Node Entropy.
@@ -48,7 +49,7 @@ The application is built with Vanilla JS (ES Modules) and Vite, structured into 
     - **Layout Strategy**: Uses `ngraph.forcelayout` in **2D mode** for planar separation, then maps **Node Degree to the Z-axis** to create a 2.5D topological landscape.
     - **Performance**: Layout is calculated **incrementally (async)** over 3000 steps with real-time progress reporting.
     - **Visuals**: Quadratic Bezier edges with directional cones, pitch-class based node coloring (HSL), and post-processing bloom.
-    - **Interactivity**: 
+    - **Interactivity**:
         - `THREE.Raycaster` for hover-based highlighting and metadata display.
         - Real-time highlighting of nodes and edges during playback.
         - Floating instrument emojis above active nodes using `THREE.Sprite`.

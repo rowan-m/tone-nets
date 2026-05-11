@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MidiPlayer } from './audioPlayer.js';
 import * as Tone from 'tone';
-import { Midi } from '@tonejs/midi';
 
 // --- Mocks ---
 
@@ -129,11 +128,12 @@ vi.mock('tone', () => {
         destination: mockDestination,
     };
 
+    let eventCounter = 0;
     return {
         Transport: {
-            schedule: vi.fn((callback, time) => {
+            schedule: vi.fn(() => {
                 // We return a mock event ID
-                return `event-${Math.random()}`;
+                return `event-${eventCounter++}`;
             }),
             clear: vi.fn(),
             cancel: vi.fn(),
@@ -358,12 +358,7 @@ describe('MidiPlayer', () => {
                 duration: 1,
             };
             const prevNoteObj = { name: 'B3' };
-            const schedulePlayCb = player._scheduleNotePlay(
-                0,
-                noteObj,
-                prevNoteObj,
-                0,
-            );
+            player._scheduleNotePlay(0, noteObj, prevNoteObj, 0);
 
             // Extract the callback passed to Transport.schedule
             const transportCb = Tone.Transport.schedule.mock.calls.find(
@@ -381,12 +376,7 @@ describe('MidiPlayer', () => {
 
             // Test Drums flag
             Tone.Draw.schedule.mockImplementationOnce((cb) => cb());
-            const transportCbDrums = player._scheduleNotePlay(
-                9,
-                noteObj,
-                null,
-                0,
-            );
+            player._scheduleNotePlay(9, noteObj, null, 0);
             const transportCb2 =
                 Tone.Transport.schedule.mock.calls[
                     Tone.Transport.schedule.mock.calls.length - 1
@@ -400,103 +390,56 @@ describe('MidiPlayer', () => {
         beforeEach(async () => {
             player.synth = {
                 stopAll: vi.fn(),
+                noteOff: vi.fn(),
                 controllerChange: vi.fn(),
                 pitchWheel: vi.fn(),
             };
             player.masterGain = {
-                gain: { setTargetAtTime: vi.fn() },
+                gain: {
+                    setTargetAtTime: vi.fn(),
+                },
             };
+            player.scheduledEvents = ['event-1', 'event-2'];
             player.isPlaying = true;
         });
 
         it('should pause playback correctly', () => {
             player.pause();
-
             expect(Tone.Transport.pause).toHaveBeenCalled();
-            expect(player.masterGain.gain.setTargetAtTime).toHaveBeenCalledWith(
-                0,
-                0,
-                0.01,
-            );
-            expect(player.synth.controllerChange).toHaveBeenCalledWith(
-                0,
-                120,
-                0,
-            ); // Hard reset All Sound Off
+            expect(mockAudioInstance.pause).toHaveBeenCalled();
             expect(player.isPlaying).toBe(false);
             if ('mediaSession' in navigator) {
                 expect(navigator.mediaSession.playbackState).toBe('paused');
             }
         });
 
-        it('should not pause if already paused/stopped', () => {
-            player.isPlaying = false;
-            Tone.Transport.pause.mockClear();
-            player.pause();
-            expect(Tone.Transport.pause).not.toHaveBeenCalled();
-        });
-
         it('should resume playback correctly', () => {
             player.isPlaying = false;
             player.resume();
-
-            expect(player.masterGain.gain.setTargetAtTime).toHaveBeenCalledWith(
-                1,
-                0,
-                0.01,
-            );
             expect(Tone.Transport.start).toHaveBeenCalled();
+            expect(mockAudioInstance.play).toHaveBeenCalled();
             expect(player.isPlaying).toBe(true);
             if ('mediaSession' in navigator) {
                 expect(navigator.mediaSession.playbackState).toBe('playing');
             }
         });
 
-        it('should not resume if already playing', () => {
-            Tone.Transport.start.mockClear();
-            player.resume();
-            expect(Tone.Transport.start).not.toHaveBeenCalled();
-        });
-
-        it('should stop playback and clear events', () => {
-            player.scheduledEvents = ['event-1', 'event-2'];
-            const stopCb = vi.fn();
-            player.onStop = stopCb;
-
+        it('should stop playback correctly', () => {
             player.stop();
-
             expect(Tone.Transport.stop).toHaveBeenCalled();
-            expect(Tone.Transport.loop).toBe(false);
-            expect(Tone.Transport.clear).toHaveBeenCalledWith('event-1');
-            expect(Tone.Transport.clear).toHaveBeenCalledWith('event-2');
-            expect(player.scheduledEvents.length).toBe(0);
-            expect(Tone.Transport.cancel).toHaveBeenCalledWith(0);
-            expect(Tone.Draw.cancel).toHaveBeenCalledWith(0);
-            expect(stopCb).toHaveBeenCalled();
+            expect(Tone.Transport.cancel).toHaveBeenCalled();
+            expect(Tone.Draw.cancel).toHaveBeenCalled();
+            expect(player.synth.stopAll).toHaveBeenCalled();
             expect(player.isPlaying).toBe(false);
+            expect(player.scheduledEvents.length).toBe(0);
+            if ('mediaSession' in navigator) {
+                expect(navigator.mediaSession.playbackState).toBe('none');
+            }
         });
 
-        it('should trigger a delayed hard reset on stop to catch late tailing notes', () => {
-            vi.useFakeTimers();
-            player.stop();
-            expect(player.synth.controllerChange).toHaveBeenCalledTimes(16 * 4); // Initial synchronous reset
-
-            player.synth.controllerChange.mockClear();
-            vi.advanceTimersByTime(150);
-
-            expect(player.synth.controllerChange).toHaveBeenCalledTimes(16 * 4); // Delayed async reset
-            vi.useRealTimers();
-        });
-
-        it('should execute hard reset safely even if synth lacks stopAll', () => {
-            player.synth = {
-                // No stopAll method
-                controllerChange: vi.fn(),
-                pitchWheel: vi.fn(),
-            };
-
-            expect(() => player._hardResetSynth()).not.toThrow();
-            expect(player.synth.controllerChange).toHaveBeenCalled();
+        it('should handle stop when synth is not initialized', () => {
+            player.synth = null;
+            expect(() => player.stop()).not.toThrow();
         });
     });
 

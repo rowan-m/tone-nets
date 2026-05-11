@@ -2,12 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import createLayout from 'ngraph.forcelayout';
-import {
-    EffectComposer,
-    RenderPass,
-    EffectPass,
-    BloomEffect,
-} from 'postprocessing';
+import { EffectComposer } from 'postprocessing';
 import { NetworkVisualizer } from './visualizer.js';
 
 // --- Mocks ---

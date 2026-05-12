@@ -1,16 +1,17 @@
 import * as Tone from 'tone';
-import { Midi } from '@tonejs/midi';
-import { WorkletSynthesizer } from 'spessasynth_lib';
+import { WorkletSynthesizer, Sequencer } from 'spessasynth_lib';
 import processorUrl from 'spessasynth_lib/dist/spessasynth_processor.min.js?url';
+import { midiNoteToName } from './utils.js';
 
 export class MidiPlayer {
     constructor() {
         this.synth = null;
+        this.sequencer = null;
         this.sf2Buffer = null;
         this.isPlaying = false;
-        this.scheduledEvents = [];
         this.masterGain = null;
         this.channelInstruments = new Array(16).fill(0);
+        this.lastNotePerChannel = new Map();
         this.duration = 0;
 
         this.dummyAudio = new Audio('/background.mp3');
@@ -42,7 +43,6 @@ export class MidiPlayer {
 
         if (!this.synth) {
             // Use Tone's underlying native AudioContext so all scheduled times align perfectly
-            // Tone.context.rawContext returns a standardized-audio-context wrapper, we need the actual browser context
             const rawCtx =
                 Tone.context.rawContext._nativeContext ||
                 Tone.context.rawContext;
@@ -71,78 +71,69 @@ export class MidiPlayer {
                 this.sf2Buffer,
                 'default',
             );
-        }
-    }
 
-    _scheduleNotePlay(channel, note, prevNote, startDelay) {
-        return Tone.Transport.schedule((time) => {
-            if (this.synth) {
-                this.synth.noteOn(
-                    channel,
-                    note.midi,
-                    Math.round(note.velocity * 127),
-                    { time },
-                );
+            // Initialize Sequencer
+            this.sequencer = new Sequencer(this.synth);
 
-                Tone.Draw.schedule(() => {
-                    if (this.onNotePlay) {
-                        this.onNotePlay(
-                            note.name,
-                            prevNote ? prevNote.name : null,
-                            this.channelInstruments[channel],
-                            channel === 9,
-                        );
-                    }
-                }, time);
-            }
-        }, note.time + startDelay);
-    }
+            // Setup Synth Events for visualization
+            this.synth.eventHandler.addEvent('noteOn', 'viz-play', (data) => {
+                const noteName = midiNoteToName(data.midiNote);
+                const prevNoteName = this.lastNotePerChannel.get(data.channel);
+                this.lastNotePerChannel.set(data.channel, noteName);
 
-    _scheduleNoteRelease(channel, note, prevNote, startDelay) {
-        return Tone.Transport.schedule(
-            (time) => {
-                if (this.synth) {
-                    this.synth.noteOff(channel, note.midi, { time });
-
-                    Tone.Draw.schedule(() => {
-                        if (this.onNoteRelease) {
-                            this.onNoteRelease(
-                                note.name,
-                                prevNote ? prevNote.name : null,
-                                this.channelInstruments[channel],
-                                channel === 9,
-                            );
-                        }
-                    }, time);
+                if (this.onNotePlay) {
+                    this.onNotePlay(
+                        noteName,
+                        prevNoteName,
+                        this.channelInstruments[data.channel],
+                        data.channel === 9,
+                    );
                 }
-            },
-            note.time + startDelay + note.duration,
-        );
-    }
+            });
 
-    _scheduleControlChange(channel, ccNumber, cc, startDelay) {
-        let scheduleTime = cc.time + startDelay;
-        if ((ccNumber === '0' || ccNumber === '32') && cc.time === 0) {
-            scheduleTime = 0;
+            this.synth.eventHandler.addEvent(
+                'noteOff',
+                'viz-release',
+                (data) => {
+                    const noteName = midiNoteToName(data.midiNote);
+                    const prevNoteName = this.lastNotePerChannel.get(
+                        data.channel,
+                    );
+
+                    if (this.onNoteRelease) {
+                        this.onNoteRelease(noteName, prevNoteName);
+                    }
+                },
+            );
+
+            this.synth.eventHandler.addEvent(
+                'programChange',
+                'viz-pc',
+                (data) => {
+                    this.channelInstruments[data.channel] = data.program;
+                },
+            );
+
+            this.sequencer.eventHandler.addEvent(
+                'songEnded',
+                'viz-stop',
+                () => {
+                    this.stop();
+                },
+            );
         }
-        return Tone.Transport.schedule((time) => {
-            if (this.synth) {
-                this.synth.controllerChange(
-                    channel,
-                    parseInt(ccNumber, 10),
-                    Math.round(cc.value * 127),
-                    { time },
-                );
-            }
-        }, scheduleTime);
     }
 
     _updateMediaSessionPosition() {
-        if ('mediaSession' in navigator && this.duration > 0) {
+        if (
+            'mediaSession' in navigator &&
+            this.duration > 0 &&
+            this.sequencer
+        ) {
             navigator.mediaSession.setPositionState({
                 duration: this.duration,
-                playbackRate: Tone.Transport.playbackRate,
-                position: Tone.Transport.seconds,
+                playbackRate: this.sequencer.playbackRate,
+                position: this.sequencer.currentTime,
             });
         }
     }
@@ -162,105 +153,23 @@ export class MidiPlayer {
             );
         }
 
-        const midi = new Midi(midiBuffer);
-        const startDelay = 0.5; // Start half a second from the beginning of Transport
-        this.duration = midi.duration + startDelay;
-
-        // Reset instrument tracking
+        // Reset tracking
         this.channelInstruments = new Array(16).fill(0);
+        this.lastNotePerChannel.clear();
 
-        midi.tracks.forEach((track) => {
-            const channel = track.channel; // 0-15
+        // Load MIDI data into sequencer
+        this.sequencer.loadNewSongList([{ binary: midiBuffer }]);
+        this.duration = this.sequencer.duration;
 
-            // Track the instrument for this channel
-            if (
-                track.instrument &&
-                typeof track.instrument.number === 'number'
-            ) {
-                this.channelInstruments[channel] = track.instrument.number;
-            }
-
-            // Control Changes (Volume, Pan, Sustain, etc.) - Schedule these FIRST so Bank Selects happen before Program Changes
-            Object.entries(track.controlChanges).forEach(
-                ([ccNumber, ccList]) => {
-                    ccList.forEach((cc) => {
-                        const scheduledEvent = this._scheduleControlChange(
-                            channel,
-                            ccNumber,
-                            cc,
-                            startDelay,
-                        );
-                        this.scheduledEvents.push(scheduledEvent);
-                    });
-                },
-            );
-
-            // Program Change (Instrument) - Schedule at 0 so it happens before startDelay (and after Bank Selects)
-            if (
-                track.instrument &&
-                typeof track.instrument.number === 'number'
-            ) {
-                const scheduledEvent = Tone.Transport.schedule((time) => {
-                    if (this.synth) {
-                        this.synth.programChange(
-                            channel,
-                            track.instrument.number,
-                            { time },
-                        );
-                    }
-                }, 0.01); // 0.01 to ensure it definitely happens after CC0 at 0.0
-                this.scheduledEvents.push(scheduledEvent);
-            }
-
-            // Pitch Bends
-            track.pitchBends.forEach((pb) => {
-                const scheduledEvent = Tone.Transport.schedule((time) => {
-                    if (this.synth) {
-                        this.synth.pitchWheel(
-                            channel,
-                            Math.round((pb.value + 1) * 8192),
-                            { time },
-                        );
-                    }
-                }, pb.time + startDelay);
-                this.scheduledEvents.push(scheduledEvent);
-            });
-
-            // Notes
-            track.notes.forEach((note, index) => {
-                const prevNote = index > 0 ? track.notes[index - 1] : null;
-
-                const scheduledEvent = this._scheduleNotePlay(
-                    channel,
-                    note,
-                    prevNote,
-                    startDelay,
-                );
-                this.scheduledEvents.push(scheduledEvent);
-
-                const releaseEvent = this._scheduleNoteRelease(
-                    channel,
-                    note,
-                    prevNote,
-                    startDelay,
-                );
-                this.scheduledEvents.push(releaseEvent);
-            });
-        });
-
-        // Ensure transport starts from the beginning
-        Tone.Transport.loop = true;
-        Tone.Transport.loopStart = 0;
-        // midi.duration provides the time of the last event. We add the initial delay and a 2-second tail for release tails.
-        Tone.Transport.loopEnd = this.duration + 2;
-
-        Tone.Transport.position = 0;
-        Tone.Transport.start();
+        // Loop settings
+        this.sequencer.loopCount = -1; // Infinite loop as per original behavior
+        this.sequencer.play();
 
         this.dummyAudio.currentTime = 0;
         this.dummyAudio
             .play()
             .catch((e) => console.warn('Dummy audio play failed:', e));
+
         if ('mediaSession' in navigator)
             navigator.mediaSession.playbackState = 'playing';
 
@@ -270,29 +179,23 @@ export class MidiPlayer {
 
     _hardResetSynth() {
         if (this.synth) {
-            if (typeof this.synth.stopAll === 'function') {
-                this.synth.stopAll();
-            }
+            this.synth.stopAll();
 
             for (let i = 0; i < 16; i++) {
-                this.synth.controllerChange(i, 120, 0); // All Sound Off (Aggressive)
+                this.synth.controllerChange(i, 120, 0); // All Sound Off
                 this.synth.controllerChange(i, 123, 0); // All Notes Off
                 this.synth.controllerChange(i, 64, 0); // Sustain Pedal Off
                 this.synth.controllerChange(i, 121, 0); // Reset All Controllers
-                this.synth.pitchWheel(i, 8192); // Reset Pitch Bend to center
+                this.synth.pitchWheel(i, 8192); // Reset Pitch Bend
             }
         }
     }
 
     stop() {
-        Tone.Transport.stop();
-        Tone.Transport.loop = false;
-
-        // Clear all scheduled events on the Tone timeline
-        // cancel(0) removes everything from the timeline starting at 0
-        Tone.Transport.cancel(0);
-        Tone.Draw.cancel(0);
-        this.scheduledEvents = [];
+        if (this.sequencer) {
+            this.sequencer.pause();
+            this.sequencer.currentTime = 0;
+        }
 
         if (this.masterGain) {
             this.masterGain.gain.setTargetAtTime(
@@ -317,11 +220,12 @@ export class MidiPlayer {
             this.onStop();
         }
         this.isPlaying = false;
+        this.lastNotePerChannel.clear();
     }
 
     pause() {
-        if (this.isPlaying) {
-            Tone.Transport.pause();
+        if (this.isPlaying && this.sequencer) {
+            this.sequencer.pause();
 
             if (this.masterGain) {
                 this.masterGain.gain.setTargetAtTime(
@@ -343,16 +247,14 @@ export class MidiPlayer {
             }
 
             this._updateMediaSessionPosition();
-
             this.isPlaying = false;
         }
     }
 
     resume() {
-        if (!this.isPlaying && this.synth) {
+        if (!this.isPlaying && this.sequencer) {
             if (this._resetTimeout) clearTimeout(this._resetTimeout);
 
-            // Hard reset one more time to clear any residual state before unmuting
             this._hardResetSynth();
 
             if (this.masterGain) {
@@ -362,7 +264,7 @@ export class MidiPlayer {
                     0.01,
                 );
             }
-            Tone.Transport.start();
+            this.sequencer.play();
 
             this.dummyAudio
                 .play()

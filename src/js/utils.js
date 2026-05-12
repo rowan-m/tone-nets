@@ -63,6 +63,26 @@ export function noteToSemitone(note) {
     return result;
 }
 
+export function midiNoteToName(midiNote) {
+    const names = [
+        'C',
+        'C#',
+        'D',
+        'D#',
+        'E',
+        'F',
+        'F#',
+        'G',
+        'G#',
+        'A',
+        'A#',
+        'B',
+    ];
+    const octave = Math.floor(midiNote / 12) - 1;
+    const name = names[midiNote % 12];
+    return `${name}${octave}`;
+}
+
 export function getInterval(n1, n2) {
     const s1 = noteToSemitone(n1);
     const s2 = noteToSemitone(n2);

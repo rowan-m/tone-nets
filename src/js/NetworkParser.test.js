@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildMidiNetwork, rebuildGraph } from './networkParser.js';
+import { NetworkParser } from './NetworkParser.js';
 import { Midi } from '@tonejs/midi';
 
 // Mock @tonejs/midi
@@ -27,7 +27,7 @@ vi.mock('@tonejs/midi', () => {
     return { Midi: MidiMock };
 });
 
-describe('networkParser', () => {
+describe('NetworkParser', () => {
     it('should build a network from MIDI data and ignore self-loops', async () => {
         vi.mocked(Midi).mockImplementationOnce(function () {
             this.name = 'Loop MIDI';
@@ -44,7 +44,8 @@ describe('networkParser', () => {
             ];
         });
 
-        const { graph, summary } = await buildMidiNetwork('test-buffer');
+        const { graph, summary } =
+            await NetworkParser.buildMidiNetwork('test-buffer');
 
         expect(summary.title).toBe('Loop MIDI');
         expect(summary.duration).toBe(10);
@@ -71,7 +72,7 @@ describe('networkParser', () => {
             ];
         });
 
-        const { summary } = await buildMidiNetwork('test-buffer');
+        const { summary } = await NetworkParser.buildMidiNetwork('test-buffer');
 
         expect(summary.density).toBe('1.0000');
         expect(summary.binaryReciprocity).toBe('1.0000');
@@ -106,7 +107,8 @@ describe('networkParser', () => {
             ];
         });
 
-        const { summary } = await buildMidiNetwork('another-buffer');
+        const { summary } =
+            await NetworkParser.buildMidiNetwork('another-buffer');
 
         // C4->G4 weight 2, G4->C4 weight 1
         // sum(min) = min(2,1) + min(1,2) = 2
@@ -138,7 +140,8 @@ describe('networkParser', () => {
             ];
         });
 
-        const { summary } = await buildMidiNetwork('entropy-buffer');
+        const { summary } =
+            await NetworkParser.buildMidiNetwork('entropy-buffer');
 
         // Transitions:
         // C4 -> G4 (1)
@@ -164,7 +167,8 @@ describe('networkParser', () => {
                 this.tracks = [];
             });
 
-            const { summary } = await buildMidiNetwork('meta-buffer');
+            const { summary } =
+                await NetworkParser.buildMidiNetwork('meta-buffer');
             expect(summary.title).toBe('Moonlight Sonata - Beethoven');
         });
 
@@ -178,7 +182,8 @@ describe('networkParser', () => {
                 this.tracks = [];
             });
 
-            const { summary } = await buildMidiNetwork('meta-buffer');
+            const { summary } =
+                await NetworkParser.buildMidiNetwork('meta-buffer');
             expect(summary.title).toBe('Opus 27');
         });
 
@@ -196,7 +201,8 @@ describe('networkParser', () => {
                 this.tracks = [];
             });
 
-            const { summary } = await buildMidiNetwork('meta-buffer');
+            const { summary } =
+                await NetworkParser.buildMidiNetwork('meta-buffer');
             expect(summary.title).toBe('Sonata - Ludwig');
         });
     });
@@ -223,7 +229,8 @@ describe('networkParser', () => {
                 ];
             });
 
-            const { summary } = await buildMidiNetwork('drum-buffer');
+            const { summary } =
+                await NetworkParser.buildMidiNetwork('drum-buffer');
             expect(summary.vertices).toBe(2); // Only C4 and G4
             expect(summary.edges).toBe(1);
         });
@@ -243,7 +250,8 @@ describe('networkParser', () => {
                 ];
             });
 
-            const { summary, graph } = await buildMidiNetwork('chord-buffer');
+            const { summary, graph } =
+                await NetworkParser.buildMidiNetwork('chord-buffer');
             // C4 -> G4, E4 -> G4
             expect(summary.vertices).toBe(3);
             expect(summary.edges).toBe(2);
@@ -262,7 +270,7 @@ describe('networkParser', () => {
                 links: [{ fromId: 'C4', toId: 'G4', data: { weight: 5 } }],
             };
 
-            const graph = rebuildGraph(serialized);
+            const graph = NetworkParser.rebuildGraph(serialized);
             expect(graph.getNodesCount()).toBe(2);
             expect(graph.getLinksCount()).toBe(1);
             const link = graph.getLink('C4', 'G4');
@@ -280,7 +288,7 @@ describe('networkParser', () => {
                 ],
             };
 
-            const graph = rebuildGraph(serialized);
+            const graph = NetworkParser.rebuildGraph(serialized);
             expect(graph.getLink('C4', 'G4')).toBeDefined();
         });
     });
@@ -303,7 +311,8 @@ describe('networkParser', () => {
             });
             // This creates C4 -> G4 and G4 -> C4
             // When BFS starts at C4, it sees G4. Then from G4 it sees C4 (already visited).
-            const { summary } = await buildMidiNetwork('cycle-buffer');
+            const { summary } =
+                await NetworkParser.buildMidiNetwork('cycle-buffer');
             expect(summary.efficiency).toBe('1.0000');
         });
     });
@@ -314,7 +323,8 @@ describe('networkParser', () => {
                 this.duration = 0;
                 this.tracks = [];
             });
-            const { summary } = await buildMidiNetwork('empty-buffer');
+            const { summary } =
+                await NetworkParser.buildMidiNetwork('empty-buffer');
             expect(summary.vertices).toBe(0);
             expect(summary.edges).toBe(0);
             expect(summary.density).toBe('0.0000');
@@ -331,7 +341,8 @@ describe('networkParser', () => {
                     },
                 ];
             });
-            const { summary } = await buildMidiNetwork('single-buffer');
+            const { summary } =
+                await NetworkParser.buildMidiNetwork('single-buffer');
             // Current implementation only adds nodes if they are part of a transition
             expect(summary.vertices).toBe(0);
             expect(summary.edges).toBe(0);
@@ -359,7 +370,9 @@ describe('networkParser', () => {
                     },
                 ];
             });
-            const { summary } = await buildMidiNetwork('disconnected-buffer');
+            const { summary } = await NetworkParser.buildMidiNetwork(
+                'disconnected-buffer',
+            );
             // C4 -> G4, A4 -> B4. No path between {C4,G4} and {A4,B4}
             expect(summary.vertices).toBe(4);
             expect(summary.efficiency).not.toBe('0.0000');

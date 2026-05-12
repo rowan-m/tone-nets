@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { MidiPlayer } from './audioPlayer.js';
+import { MidiPlayer } from './MidiPlayer.js';
 
 // --- Mocks ---
 

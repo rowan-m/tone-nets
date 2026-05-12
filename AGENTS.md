@@ -35,7 +35,7 @@ Other available scripts:
 
 The application is built with Vanilla JS (ES Modules) and Vite, structured into three primary subsystems:
 
-1.  **Network Parser (`src/js/networkParser.js` & `src/js/parser.worker.js`)**:
+1.  **Network Parser (`src/js/NetworkParser.js` & `src/js/parser.worker.js`)**:
     - **Parsing**: Uses `@tonejs/midi` for binary MIDI parsing.
     - **Graph Construction**: Builds a directed, weighted graph using `ngraph.graph`.
     - **Scientific Parity**:
@@ -49,7 +49,7 @@ The application is built with Vanilla JS (ES Modules) and Vite, structured into 
         - **Scale-interval Embedding**: 12D interval signature (directed pitch class intervals).
     - **Scaling**: Parsing and metrics calculation (which involve $O(V \cdot E)$ operations like BFS/Dijkstra) are performed in a **Web Worker** to keep the UI responsive.
 
-2.  **3D Visualizer (`src/js/visualizer.js`)**:
+2.  **3D Visualizer (`src/js/NetworkVisualizer.js`)**:
     - **Engine**: Uses `Three.js` with `OrbitControls` for interactive 3D rendering.
     - **Layout Strategy**: Uses `ngraph.forcelayout` in **2D mode** for planar separation, then maps **Node Degree to the Z-axis** to create a 2.5D topological landscape.
     - **Performance**: Layout is calculated **incrementally (async)** over 3000 steps with real-time progress reporting.
@@ -59,7 +59,7 @@ The application is built with Vanilla JS (ES Modules) and Vite, structured into 
         - Real-time highlighting of nodes and edges during playback.
         - Floating instrument emojis above active nodes using `THREE.Sprite`.
 
-3.  **Audio Player (`src/js/audioPlayer.js`)**:
+3.  **Audio Player (`src/js/MidiPlayer.js`)**:
     - **Synthesis**: Combines `Tone.js` for scheduling/transport and `spessasynth_lib` for high-quality SoundFont synthesis.
     - **Resources**: Uses a 7.5MB General MIDI SoundFont (`.sf2`) stored in `public/`.
     - **Scheduling**: Uses `Tone.Transport` to schedule notes, program changes, and CC events. Employs `Tone.Draw` to sync visual highlights with audio.

@@ -7,7 +7,7 @@ import {
     EffectPass,
     BloomEffect,
 } from 'postprocessing';
-import { noteToSemitone } from './utils.js';
+import { Utils } from './Utils.js';
 
 export class NetworkVisualizer {
     constructor(containerId) {
@@ -317,7 +317,7 @@ export class NetworkVisualizer {
             const degree = node.data.degree || 1;
             const normDegree = Math.min(1, degree / maxDegree);
 
-            const pitchClass = noteToSemitone(node.id) % 12;
+            const pitchClass = Utils.noteToSemitone(node.id) % 12;
 
             let baseMaterial = this.nodeMaterialCache.get(pitchClass);
             if (!baseMaterial) {

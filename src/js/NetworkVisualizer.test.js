@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import createLayout from 'ngraph.forcelayout';
 import { EffectComposer } from 'postprocessing';
-import { NetworkVisualizer } from './visualizer.js';
+import { NetworkVisualizer } from './NetworkVisualizer.js';
 
 // --- Mocks ---
 
@@ -271,7 +271,7 @@ describe('NetworkVisualizer', () => {
         visualizer.onLayoutProgress = progressSpy;
 
         // Set layout steps to something small or mock layout to finish fast
-        // In visualizer.js, totalSteps is 3000 and batchSize is 100.
+        // In NetworkVisualizer.js, totalSteps is 3000 and batchSize is 100.
         // It will call onLayoutProgress every 100 steps.
 
         await visualizer.buildVisualization(mockGraph);

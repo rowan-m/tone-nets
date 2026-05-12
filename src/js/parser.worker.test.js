@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
-import { buildMidiNetwork } from './networkParser.js';
+import { NetworkParser } from './NetworkParser.js';
 
-// Mock buildMidiNetwork
-vi.mock('./networkParser.js', () => ({
-    buildMidiNetwork: vi.fn(),
+// Mock NetworkParser
+vi.mock('./NetworkParser.js', () => ({
+    NetworkParser: {
+        buildMidiNetwork: vi.fn(),
+    },
 }));
 
 describe('parser.worker', () => {
@@ -33,7 +35,7 @@ describe('parser.worker', () => {
         };
         const mockSummary = { title: 'Test MIDI', vertices: 2, edges: 1 };
 
-        vi.mocked(buildMidiNetwork).mockResolvedValue({
+        vi.mocked(NetworkParser.buildMidiNetwork).mockResolvedValue({
             graph: mockGraph,
             summary: mockSummary,
         });
@@ -41,7 +43,9 @@ describe('parser.worker', () => {
         const event = { data: { midiBuffer: new ArrayBuffer(8) } };
         await self.onmessage(event);
 
-        expect(buildMidiNetwork).toHaveBeenCalledWith(event.data.midiBuffer);
+        expect(NetworkParser.buildMidiNetwork).toHaveBeenCalledWith(
+            event.data.midiBuffer,
+        );
         expect(self.postMessage).toHaveBeenCalledWith({
             summary: mockSummary,
             serializedGraph: {
@@ -54,9 +58,11 @@ describe('parser.worker', () => {
         });
     });
 
-    it('should handle errors in buildMidiNetwork and post the error message', async () => {
+    it('should handle errors in NetworkParser.buildMidiNetwork and post the error message', async () => {
         const errorMessage = 'Invalid MIDI file';
-        vi.mocked(buildMidiNetwork).mockRejectedValue(new Error(errorMessage));
+        vi.mocked(NetworkParser.buildMidiNetwork).mockRejectedValue(
+            new Error(errorMessage),
+        );
 
         const event = { data: { midiBuffer: new ArrayBuffer(0) } };
         await self.onmessage(event);
@@ -67,7 +73,7 @@ describe('parser.worker', () => {
     });
 
     it('should handle unexpected errors and post the error message', async () => {
-        vi.mocked(buildMidiNetwork).mockImplementation(() => {
+        vi.mocked(NetworkParser.buildMidiNetwork).mockImplementation(() => {
             throw new Error('Unexpected crash');
         });
 

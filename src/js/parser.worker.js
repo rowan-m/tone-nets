@@ -1,9 +1,10 @@
-import { buildMidiNetwork } from './networkParser.js';
+import { NetworkParser } from './NetworkParser.js';
 
 self.onmessage = async (e) => {
     const { midiBuffer } = e.data;
     try {
-        const { graph, summary } = await buildMidiNetwork(midiBuffer);
+        const { graph, summary } =
+            await NetworkParser.buildMidiNetwork(midiBuffer);
 
         // Serialize the graph for transfer
         const serializedGraph = {

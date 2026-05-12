@@ -1,6 +1,6 @@
-import { rebuildGraph } from './networkParser.js';
-import { NetworkVisualizer } from './visualizer.js';
-import { MidiPlayer } from './audioPlayer.js';
+import { NetworkParser } from './NetworkParser.js';
+import { NetworkVisualizer } from './NetworkVisualizer.js';
+import { MidiPlayer } from './MidiPlayer.js';
 import * as Tone from 'tone';
 
 console.log('Tone Nets Initialized');
@@ -11,11 +11,7 @@ const parserWorker = new Worker(
     { type: 'module' },
 );
 
-import {
-    INTERVAL_NAMES,
-    getIntervalName,
-    getInstrumentEmoji,
-} from './utils.js';
+import { Utils } from './Utils.js';
 
 const init = async () => {
     const uploadInput = document.getElementById('midi-upload');
@@ -86,9 +82,12 @@ const init = async () => {
             const bar = document.createElement('div');
             bar.className = 'bar';
             bar.style.height = `${percentage}%`;
-            bar.title = `${INTERVAL_NAMES[i]}: ${percentage}%`;
+            bar.title = `${Utils.INTERVAL_NAMES[i]}: ${percentage}%`;
             bar.setAttribute('role', 'meter');
-            bar.setAttribute('aria-label', `Interval ${INTERVAL_NAMES[i]}`);
+            bar.setAttribute(
+                'aria-label',
+                `Interval ${Utils.INTERVAL_NAMES[i]}`,
+            );
             bar.setAttribute('aria-valuenow', percentage);
             bar.setAttribute('aria-valuemin', '0');
             bar.setAttribute('aria-valuemax', '100');
@@ -117,7 +116,7 @@ const init = async () => {
 
     player.onNotePlay = (nodeId, prevNodeId, instrumentId, isDrums) => {
         visualizer.highlightPlayingElement(nodeId, prevNodeId);
-        const emoji = getInstrumentEmoji(instrumentId, isDrums);
+        const emoji = Utils.getInstrumentEmoji(instrumentId, isDrums);
         visualizer.showInstrumentEmoji(nodeId, emoji);
     };
     player.onNoteRelease = (nodeId, prevNodeId) =>
@@ -151,7 +150,10 @@ const init = async () => {
             hoverContent.appendChild(h2);
             addMetric('Total Connections', data.degree);
         } else if (data.type === 'edge') {
-            const interval = getIntervalName(data.sourceId, data.targetId);
+            const interval = Utils.getIntervalName(
+                data.sourceId,
+                data.targetId,
+            );
             const h2 = document.createElement('h2');
             h2.textContent = 'Transition';
             hoverContent.appendChild(h2);
@@ -291,7 +293,7 @@ const init = async () => {
                 console.log('Network built successfully (in worker):', summary);
 
                 // Rebuild graph from serialized data
-                const graph = rebuildGraph(serializedGraph);
+                const graph = NetworkParser.rebuildGraph(serializedGraph);
 
                 // Setup Progress UI
                 visualizer.onLayoutProgress = (percent) => {

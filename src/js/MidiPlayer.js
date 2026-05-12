@@ -1,7 +1,7 @@
 import * as Tone from 'tone';
 import { WorkletSynthesizer, Sequencer } from 'spessasynth_lib';
 import processorUrl from 'spessasynth_lib/dist/spessasynth_processor.min.js?url';
-import { midiNoteToName } from './utils.js';
+import { Utils } from './Utils.js';
 
 export class MidiPlayer {
     constructor() {
@@ -78,7 +78,7 @@ export class MidiPlayer {
 
             // Setup Synth Events for visualization
             this.synth.eventHandler.addEvent('noteOn', 'viz-play', (data) => {
-                const noteName = midiNoteToName(data.midiNote);
+                const noteName = Utils.midiNoteToName(data.midiNote);
                 const prevNoteName = this.lastNotePerChannel.get(data.channel);
                 this.lastNotePerChannel.set(data.channel, noteName);
 
@@ -103,7 +103,7 @@ export class MidiPlayer {
                 'noteOff',
                 'viz-release',
                 (data) => {
-                    const noteName = midiNoteToName(data.midiNote);
+                    const noteName = Utils.midiNoteToName(data.midiNote);
                     const noteKey = `${data.channel}-${data.midiNote}`;
                     const stack = this.activeNotes.get(noteKey);
                     const prevNoteName = stack ? stack.shift() : undefined;

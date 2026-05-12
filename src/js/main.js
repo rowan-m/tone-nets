@@ -79,7 +79,7 @@ const init = async () => {
         });
 
         // Render Interval Signature
-        metricEls.intervalBars.innerHTML = '';
+        metricEls.intervalBars.textContent = '';
         summary.embedding.forEach((val, i) => {
             const bar = document.createElement('div');
             bar.className = 'bar';
@@ -183,20 +183,28 @@ const init = async () => {
             });
         }
     };
+
+    const updatePlayPauseButton = (icon, text) => {
+        playPauseToggle.textContent = '';
+        const span = document.createElement('span');
+        span.setAttribute('aria-hidden', 'true');
+        span.textContent = icon;
+        playPauseToggle.appendChild(span);
+        playPauseToggle.appendChild(document.createTextNode(text));
+    };
+
     const togglePlayPause = () => {
         if (player.isPlaying) {
             player.pause();
 
-            playPauseToggle.innerHTML =
-                '<span aria-hidden="true">▶️</span>Play';
+            updatePlayPauseButton('▶️', 'Play');
             playPauseToggle.style.backgroundColor = 'rgba(0, 255, 255, 0.2)';
             playPauseToggle.style.borderColor = 'var(--accent-text)';
             playPauseToggle.style.color = 'var(--accent-text)';
         } else {
             player.resume();
 
-            playPauseToggle.innerHTML =
-                '<span aria-hidden="true">⏸️</span>Pause';
+            updatePlayPauseButton('⏸️', 'Pause');
             playPauseToggle.style.backgroundColor = '';
             playPauseToggle.style.borderColor = '';
             playPauseToggle.style.color = 'white';
@@ -241,8 +249,7 @@ const init = async () => {
                 toggleInfo.disabled = false;
                 // Reset button to Pause state on new track
 
-                playPauseToggle.innerHTML =
-                    '<span aria-hidden="true">⏸️</span>Pause';
+                updatePlayPauseButton('⏸️', 'Pause');
                 playPauseToggle.style.backgroundColor = '';
                 playPauseToggle.style.borderColor = '';
                 playPauseToggle.style.color = 'white';

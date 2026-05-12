@@ -330,6 +330,37 @@ describe('MidiPlayer', () => {
             expect(player.scheduledEvents.length).toBeGreaterThan(0);
         });
 
+        it('should execute pitch bend callback when scheduled', async () => {
+            const dummyBuffer = new ArrayBuffer(8);
+            // Provide dummy synth and masterGain to skip initialize() full setup if already tested
+            player.masterGain = { gain: { setTargetAtTime: vi.fn() } };
+            player.synth = {
+                pitchWheel: vi.fn(),
+                controllerChange: vi.fn(),
+                programChange: vi.fn(),
+                noteOn: vi.fn(),
+                noteOff: vi.fn(),
+                stopAll: vi.fn(),
+            };
+
+            await player.play(dummyBuffer);
+
+            // In the mock @tonejs/midi: pitchBends: [{ time: 1, value: 0.5 }]
+            // startDelay is 0.5, so expected schedule time is 1.5
+            const pbCall = Tone.Transport.schedule.mock.calls.find(
+                (call) => call[1] === 1.5,
+            );
+
+            expect(pbCall).toBeDefined();
+            const pbCallback = pbCall[0];
+            pbCallback(1.5); // Execute callback with mock time
+
+            // value 0.5 -> Math.round((0.5 + 1) * 8192) = 12288
+            expect(player.synth.pitchWheel).toHaveBeenCalledWith(0, 12288, {
+                time: 1.5,
+            });
+        });
+
         it('should invoke onNotePlay and onNoteRelease callbacks via Tone.Draw', () => {
             // Setup callbacks
             const playCb = vi.fn();

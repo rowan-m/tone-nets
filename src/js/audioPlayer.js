@@ -289,12 +289,10 @@ export class MidiPlayer {
         Tone.Transport.loop = false;
 
         // Clear all scheduled events on the Tone timeline
-        this.scheduledEvents.forEach((eventId) =>
-            Tone.Transport.clear(eventId),
-        );
-        this.scheduledEvents = [];
+        // cancel(0) removes everything from the timeline starting at 0
         Tone.Transport.cancel(0);
         Tone.Draw.cancel(0);
+        this.scheduledEvents = [];
 
         if (this.masterGain) {
             this.masterGain.gain.setTargetAtTime(

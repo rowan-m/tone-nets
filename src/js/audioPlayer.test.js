@@ -215,7 +215,7 @@ describe('MidiPlayer', () => {
             player.onNotePlay = playCb;
             player.onNoteRelease = releaseCb;
 
-            // Trigger noteOn event
+            // Trigger noteOn event for C4
             const noteOnHandler =
                 player.synth.eventHandler.addEvent.mock.calls.find(
                     (call) => call[0] === 'noteOn',
@@ -224,14 +224,19 @@ describe('MidiPlayer', () => {
 
             expect(playCb).toHaveBeenCalledWith('C4', undefined, 0, false);
 
-            // Trigger noteOff event
+            // Trigger noteOn event for E4 (C4 is now the previous note)
+            noteOnHandler({ channel: 0, midiNote: 64, velocity: 100 });
+            expect(playCb).toHaveBeenCalledWith('E4', 'C4', 0, false);
+
+            // Trigger noteOff event for E4
             const noteOffHandler =
                 player.synth.eventHandler.addEvent.mock.calls.find(
                     (call) => call[0] === 'noteOff',
                 )[2];
-            noteOffHandler({ channel: 0, midiNote: 60 });
+            noteOffHandler({ channel: 0, midiNote: 64 });
 
-            expect(releaseCb).toHaveBeenCalledWith('C4', 'C4');
+            // It should be released with 'C4' as prevNoteName, not 'E4'
+            expect(releaseCb).toHaveBeenCalledWith('E4', 'C4');
         });
 
         it('should update channel instruments via programChange events', async () => {

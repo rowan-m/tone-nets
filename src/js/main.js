@@ -203,6 +203,7 @@ const init = async () => {
     const togglePlayPause = () => {
         if (player.isPlaying) {
             player.pause();
+            visualizer.setPaused(true);
 
             updatePlayPauseButton('▶️', 'Play');
             playPauseToggle.style.backgroundColor = 'rgba(0, 255, 255, 0.2)';
@@ -210,6 +211,7 @@ const init = async () => {
             playPauseToggle.style.color = 'var(--accent-text)';
         } else {
             player.resume();
+            visualizer.setPaused(false);
 
             updatePlayPauseButton('⏸️', 'Pause');
             playPauseToggle.style.backgroundColor = '';
@@ -260,6 +262,7 @@ const init = async () => {
                 playPauseToggle.style.backgroundColor = '';
                 playPauseToggle.style.borderColor = '';
                 playPauseToggle.style.color = 'white';
+                visualizer.setPaused(false);
 
                 console.log('Network built successfully (in worker):', summary);
 

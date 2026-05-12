@@ -50,6 +50,7 @@ export class NetworkVisualizer {
         this.maxEmojis = 100;
         this.playingNodes = new Set();
         this.playingEdges = new Set();
+        this.isPaused = false;
         this.scene.add(this.graphGroup);
 
         this._lastFrameTime = 0;
@@ -680,9 +681,10 @@ export class NetworkVisualizer {
     animate(time) {
         requestAnimationFrame(this.animate);
 
-        const delta = this._lastFrameTime
-            ? (time - this._lastFrameTime) / 1000
-            : 0.016;
+        const delta =
+            this.isPaused || !this._lastFrameTime
+                ? 0
+                : (time - this._lastFrameTime) / 1000;
         this._lastFrameTime = time;
 
         // Raycasting Logic - Only if mouse moved and throttled
@@ -884,5 +886,9 @@ export class NetworkVisualizer {
             }
         });
         this.playingEdges.clear();
+    }
+
+    setPaused(paused) {
+        this.isPaused = paused;
     }
 }

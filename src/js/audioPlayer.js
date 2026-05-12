@@ -12,6 +12,7 @@ export class MidiPlayer {
         this.masterGain = null;
         this.channelInstruments = new Array(16).fill(0);
         this.lastNotePerChannel = new Map();
+        this.activeNotes = new Map();
         this.duration = 0;
 
         this.dummyAudio = new Audio('/background.mp3');
@@ -81,6 +82,13 @@ export class MidiPlayer {
                 const prevNoteName = this.lastNotePerChannel.get(data.channel);
                 this.lastNotePerChannel.set(data.channel, noteName);
 
+                // Store prevNoteName for this specific note instance
+                const noteKey = `${data.channel}-${data.midiNote}`;
+                if (!this.activeNotes.has(noteKey)) {
+                    this.activeNotes.set(noteKey, []);
+                }
+                this.activeNotes.get(noteKey).push(prevNoteName);
+
                 if (this.onNotePlay) {
                     this.onNotePlay(
                         noteName,
@@ -96,9 +104,12 @@ export class MidiPlayer {
                 'viz-release',
                 (data) => {
                     const noteName = midiNoteToName(data.midiNote);
-                    const prevNoteName = this.lastNotePerChannel.get(
-                        data.channel,
-                    );
+                    const noteKey = `${data.channel}-${data.midiNote}`;
+                    const stack = this.activeNotes.get(noteKey);
+                    const prevNoteName = stack ? stack.shift() : undefined;
+                    if (stack && stack.length === 0) {
+                        this.activeNotes.delete(noteKey);
+                    }
 
                     if (this.onNoteRelease) {
                         this.onNoteRelease(noteName, prevNoteName);
@@ -156,6 +167,7 @@ export class MidiPlayer {
         // Reset tracking
         this.channelInstruments = new Array(16).fill(0);
         this.lastNotePerChannel.clear();
+        this.activeNotes.clear();
 
         // Load MIDI data into sequencer
         this.sequencer.loadNewSongList([{ binary: midiBuffer }]);
@@ -221,6 +233,7 @@ export class MidiPlayer {
         }
         this.isPlaying = false;
         this.lastNotePerChannel.clear();
+        this.activeNotes.clear();
     }
 
     pause() {

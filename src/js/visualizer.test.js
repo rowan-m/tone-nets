@@ -429,4 +429,29 @@ describe('NetworkVisualizer', () => {
         expect(composerSizeSpy).toHaveBeenCalled();
         expect(updateProjectionSpy).toHaveBeenCalled();
     });
+
+    describe('Pausing', () => {
+        it('should update isPaused state', () => {
+            visualizer.setPaused(true);
+            expect(visualizer.isPaused).toBe(true);
+            visualizer.setPaused(false);
+            expect(visualizer.isPaused).toBe(false);
+        });
+
+        it('should pass delta 0 to _updateEmojis when paused', () => {
+            const updateSpy = vi.spyOn(visualizer, '_updateEmojis');
+            visualizer.setPaused(true);
+            visualizer._lastFrameTime = 1000;
+            visualizer.animate(2000);
+            expect(updateSpy).toHaveBeenCalledWith(0);
+        });
+
+        it('should pass normal delta when not paused', () => {
+            const updateSpy = vi.spyOn(visualizer, '_updateEmojis');
+            visualizer.setPaused(false);
+            visualizer._lastFrameTime = 1000;
+            visualizer.animate(1500); // 500ms diff
+            expect(updateSpy).toHaveBeenCalledWith(0.5);
+        });
+    });
 });

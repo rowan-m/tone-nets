@@ -135,34 +135,43 @@ export class MidiPlayer {
         }
     }
 
-    _updateMediaSessionPosition() {
-        if (
-            'mediaSession' in navigator &&
-            this.duration > 0 &&
-            this.sequencer
-        ) {
-            navigator.mediaSession.setPositionState({
-                duration: this.duration,
-                playbackRate: this.sequencer.playbackRate,
-                position: this.sequencer.currentTime,
-            });
+    updateMediaSessionPosition() {
+        if ('mediaSession' in navigator && this.sequencer) {
+            // Update duration from sequencer if it's currently 0 or changed
+            if (this.sequencer.duration > 0) {
+                if (
+                    this.duration <= 0 ||
+                    Math.abs(this.duration - this.sequencer.duration) > 0.1
+                ) {
+                    this.duration = this.sequencer.duration;
+                }
+            }
+
+            if (this.duration > 0) {
+                try {
+                    navigator.mediaSession.setPositionState({
+                        duration: this.duration,
+                        playbackRate: this.sequencer.playbackRate,
+                        position: Math.min(
+                            this.sequencer.currentTime,
+                            this.duration,
+                        ),
+                    });
+                } catch (e) {
+                    console.warn(
+                        'Failed to set MediaSession position state:',
+                        e,
+                    );
+                }
+            }
         }
     }
 
-    async play(midiBuffer) {
+    async play(midiBuffer, autoplay = true) {
         this.stop(); // Stop any existing playback
 
         // Ensure audio context is started and synth exists
         await this.initialize();
-
-        // Ensure volume is up for playback
-        if (this.masterGain) {
-            this.masterGain.gain.setTargetAtTime(
-                1,
-                Tone.context.currentTime,
-                0.01,
-            );
-        }
 
         // Reset tracking
         this.channelInstruments = new Array(16).fill(0);
@@ -170,23 +179,79 @@ export class MidiPlayer {
         this.activeNotes.clear();
 
         // Load MIDI data into sequencer
-        this.sequencer.loadNewSongList([{ binary: midiBuffer }]);
-        this.duration = this.sequencer.duration;
+        this.sequencer.loadNewSongList([
+            { binary: new Uint8Array(midiBuffer) },
+        ]);
+
+        // Only update duration if sequencer has a valid one
+        if (this.sequencer.duration > 0) {
+            this.duration = this.sequencer.duration;
+        }
 
         // Loop settings
         this.sequencer.loopCount = -1; // Infinite loop as per original behavior
-        this.sequencer.play();
 
-        this.dummyAudio.currentTime = 0;
-        this.dummyAudio
-            .play()
-            .catch((e) => console.warn('Dummy audio play failed:', e));
+        if (autoplay) {
+            // Ensure volume is up for playback
+            if (this.masterGain) {
+                this.masterGain.gain.setTargetAtTime(
+                    1,
+                    Tone.context.currentTime,
+                    0.01,
+                );
+            }
 
-        if ('mediaSession' in navigator)
-            navigator.mediaSession.playbackState = 'playing';
+            this.sequencer.play();
 
-        this.isPlaying = true;
-        this._updateMediaSessionPosition();
+            this.dummyAudio.currentTime = 0;
+            this.dummyAudio
+                .play()
+                .catch((e) => console.warn('Dummy audio play failed:', e));
+
+            if ('mediaSession' in navigator)
+                navigator.mediaSession.playbackState = 'playing';
+
+            this.isPlaying = true;
+
+            // Start periodic update for MediaSession
+            this._startMediaSessionInterval();
+        } else {
+            // If not autoplaying, ensure we're in a "paused" state
+            if (this.sequencer) {
+                this.sequencer.pause();
+            }
+
+            if (this.masterGain) {
+                this.masterGain.gain.setTargetAtTime(
+                    0,
+                    Tone.context.currentTime,
+                    0.01,
+                );
+            }
+            if ('mediaSession' in navigator)
+                navigator.mediaSession.playbackState = 'paused';
+            this.isPlaying = false;
+        }
+
+        this.updateMediaSessionPosition();
+    }
+
+    _startMediaSessionInterval() {
+        this._stopMediaSessionInterval();
+        this._mediaSessionInterval = setInterval(() => {
+            if (this.isPlaying) {
+                this.updateMediaSessionPosition();
+            } else {
+                this._stopMediaSessionInterval();
+            }
+        }, 1000);
+    }
+
+    _stopMediaSessionInterval() {
+        if (this._mediaSessionInterval) {
+            clearInterval(this._mediaSessionInterval);
+            this._mediaSessionInterval = null;
+        }
     }
 
     _hardResetSynth() {
@@ -234,6 +299,7 @@ export class MidiPlayer {
         this.isPlaying = false;
         this.lastNotePerChannel.clear();
         this.activeNotes.clear();
+        this._stopMediaSessionInterval();
     }
 
     pause() {
@@ -259,8 +325,9 @@ export class MidiPlayer {
                 navigator.mediaSession.playbackState = 'paused';
             }
 
-            this._updateMediaSessionPosition();
+            this.updateMediaSessionPosition();
             this.isPlaying = false;
+            this._stopMediaSessionInterval();
         }
     }
 
@@ -286,7 +353,20 @@ export class MidiPlayer {
                 navigator.mediaSession.playbackState = 'playing';
 
             this.isPlaying = true;
-            this._updateMediaSessionPosition();
+            this.updateMediaSessionPosition();
+            this._startMediaSessionInterval();
+        }
+    }
+
+    restart() {
+        if (this.sequencer) {
+            this.sequencer.currentTime = 0;
+            this._hardResetSynth();
+            this.updateMediaSessionPosition();
+
+            if (this.onStop) {
+                this.onStop();
+            }
         }
     }
 }

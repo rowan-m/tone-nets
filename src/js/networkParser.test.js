@@ -8,6 +8,7 @@ vi.mock('@tonejs/midi', () => {
         this.name = '';
         this.tracks = [];
         this.header = { meta: [] };
+        this.duration = 10; // Default duration
 
         if (buffer === 'test-buffer') {
             this.name = 'Test MIDI';
@@ -30,6 +31,7 @@ describe('networkParser', () => {
     it('should build a network from MIDI data and ignore self-loops', async () => {
         vi.mocked(Midi).mockImplementationOnce(function () {
             this.name = 'Loop MIDI';
+            this.duration = 10;
             this.tracks = [
                 {
                     channel: 0,
@@ -45,6 +47,7 @@ describe('networkParser', () => {
         const { graph, summary } = await buildMidiNetwork('test-buffer');
 
         expect(summary.title).toBe('Loop MIDI');
+        expect(summary.duration).toBe(10);
         expect(summary.vertices).toBe(2); // C4 and G4
         expect(summary.edges).toBe(1); // Only C4 -> G4 (C4 -> C4 ignored)
 
@@ -55,6 +58,7 @@ describe('networkParser', () => {
     it('should calculate metrics correctly including weighted efficiency', async () => {
         vi.mocked(Midi).mockImplementationOnce(function () {
             this.name = 'Metric MIDI';
+            this.duration = 10;
             this.tracks = [
                 {
                     channel: 0,
@@ -88,6 +92,7 @@ describe('networkParser', () => {
     it('should handle complex transitions and weights for weighted efficiency', async () => {
         vi.mocked(Midi).mockImplementationOnce(function () {
             this.name = 'Complex MIDI';
+            this.duration = 10;
             this.tracks = [
                 {
                     channel: 0,
@@ -118,6 +123,7 @@ describe('networkParser', () => {
     it('should calculate non-zero mean node entropy correctly', async () => {
         vi.mocked(Midi).mockImplementationOnce(function () {
             this.name = 'Entropy MIDI';
+            this.duration = 10;
             this.tracks = [
                 {
                     channel: 0,
@@ -151,6 +157,7 @@ describe('networkParser', () => {
         it('should combine title and artist from meta events', async () => {
             vi.mocked(Midi).mockImplementationOnce(function () {
                 this.name = 'Moonlight Sonata';
+                this.duration = 10;
                 this.header = {
                     meta: [{ type: 'text', text: 'Beethoven' }],
                 };
@@ -164,6 +171,7 @@ describe('networkParser', () => {
         it('should use meta event as title if name is missing', async () => {
             vi.mocked(Midi).mockImplementationOnce(function () {
                 this.name = '';
+                this.duration = 10;
                 this.header = {
                     meta: [{ type: 'trackName', text: 'Opus 27' }],
                 };
@@ -177,6 +185,7 @@ describe('networkParser', () => {
         it('should ignore "Track X" and duplicate titles in meta events', async () => {
             vi.mocked(Midi).mockImplementationOnce(function () {
                 this.name = 'Sonata';
+                this.duration = 10;
                 this.header = {
                     meta: [
                         { type: 'text', text: 'Track 1' },
@@ -195,6 +204,7 @@ describe('networkParser', () => {
     describe('processTransitions', () => {
         it('should ignore drum tracks (channel 9)', async () => {
             vi.mocked(Midi).mockImplementationOnce(function () {
+                this.duration = 10;
                 this.tracks = [
                     {
                         channel: 9, // Drum channel
@@ -220,6 +230,7 @@ describe('networkParser', () => {
 
         it('should handle chords (multiple notes at same time)', async () => {
             vi.mocked(Midi).mockImplementationOnce(function () {
+                this.duration = 10;
                 this.tracks = [
                     {
                         channel: 0,
@@ -277,6 +288,7 @@ describe('networkParser', () => {
     describe('Internal Distance Helpers', () => {
         it('should handle cycles in BFS (BFS branch)', async () => {
             vi.mocked(Midi).mockImplementationOnce(function () {
+                this.duration = 10;
                 this.tracks = [
                     {
                         channel: 0,
@@ -299,6 +311,7 @@ describe('networkParser', () => {
     describe('Metric Edge Cases', () => {
         it('should handle empty MIDI', async () => {
             vi.mocked(Midi).mockImplementationOnce(function () {
+                this.duration = 0;
                 this.tracks = [];
             });
             const { summary } = await buildMidiNetwork('empty-buffer');
@@ -310,6 +323,7 @@ describe('networkParser', () => {
 
         it('should handle single node MIDI', async () => {
             vi.mocked(Midi).mockImplementationOnce(function () {
+                this.duration = 10;
                 this.tracks = [
                     {
                         channel: 0,
@@ -327,6 +341,7 @@ describe('networkParser', () => {
 
         it('should handle disconnected nodes for efficiency', async () => {
             vi.mocked(Midi).mockImplementationOnce(function () {
+                this.duration = 10;
                 this.tracks = [
                     {
                         channel: 0,

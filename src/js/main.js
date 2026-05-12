@@ -20,6 +20,7 @@ import {
 const init = async () => {
     const uploadInput = document.getElementById('midi-upload');
     const playPauseToggle = document.getElementById('play-pause-toggle');
+    const restartBtn = document.getElementById('restart-btn');
     const toggleInfo = document.getElementById('toggle-info');
     const closeInfo = document.getElementById('close-info');
     const vCountEl = document.getElementById('v-count');
@@ -188,6 +189,9 @@ const init = async () => {
                     },
                 ],
             });
+
+            // Update position state once metadata is set
+            player.updateMediaSessionPosition();
         }
     };
 
@@ -223,6 +227,11 @@ const init = async () => {
     // Setup Play/Pause Toggle
     playPauseToggle.addEventListener('click', togglePlayPause);
 
+    // Setup Restart Button
+    restartBtn.addEventListener('click', () => {
+        player.restart();
+    });
+
     if ('mediaSession' in navigator) {
         navigator.mediaSession.setActionHandler('play', togglePlayPause);
         navigator.mediaSession.setActionHandler('pause', togglePlayPause);
@@ -234,13 +243,15 @@ const init = async () => {
         console.log('Processing MIDI:', fileName);
         showStatus('Parsing MIDI and building network...');
         playPauseToggle.disabled = true;
+        restartBtn.disabled = true;
         toggleInfo.disabled = true;
+
+        const autoplayToggle = document.getElementById('autoplay-toggle');
+        const autoplay = autoplayToggle ? autoplayToggle.checked : true;
 
         try {
             // Play Audio
-            player.play(arrayBuffer.slice(0)).catch((err) => {
-                console.error('Audio playback error:', err);
-            });
+            await player.play(arrayBuffer.slice(0), autoplay);
 
             // Use Web Worker to build the network
             parserWorker.onmessage = (e) => {
@@ -252,17 +263,30 @@ const init = async () => {
                     return;
                 }
 
+                if (summary.duration) {
+                    player.duration = summary.duration;
+                }
                 updateMetricsUI(summary, fileName);
                 updateMediaSession(summary.title, fileName);
                 playPauseToggle.disabled = false;
+                restartBtn.disabled = false;
                 toggleInfo.disabled = false;
-                // Reset button to Pause state on new track
 
-                updatePlayPauseButton('⏸️', 'Pause');
-                playPauseToggle.style.backgroundColor = '';
-                playPauseToggle.style.borderColor = '';
-                playPauseToggle.style.color = 'white';
-                visualizer.setPaused(false);
+                // Set button state based on autoplay
+                if (autoplay) {
+                    updatePlayPauseButton('⏸️', 'Pause');
+                    playPauseToggle.style.backgroundColor = '';
+                    playPauseToggle.style.borderColor = '';
+                    playPauseToggle.style.color = 'white';
+                    visualizer.setPaused(false);
+                } else {
+                    updatePlayPauseButton('▶️', 'Play');
+                    playPauseToggle.style.backgroundColor =
+                        'rgba(0, 255, 255, 0.2)';
+                    playPauseToggle.style.borderColor = 'var(--accent-text)';
+                    playPauseToggle.style.color = 'var(--accent-text)';
+                    visualizer.setPaused(true);
+                }
 
                 console.log('Network built successfully (in worker):', summary);
 
@@ -340,7 +364,7 @@ const init = async () => {
         if (e.target.classList.contains('example-midi')) {
             e.preventDefault();
             const fileName = e.target.dataset.file;
-            loadMidiFromUrl(`/${fileName}`, fileName);
+            loadMidiFromUrl(`./${fileName}`, fileName);
         }
     });
 

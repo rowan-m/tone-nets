@@ -262,6 +262,7 @@ export async function buildMidiNetwork(midiBuffer) {
         graph,
         summary: {
             title: title,
+            duration: midi.duration,
             ...metrics,
         },
     };

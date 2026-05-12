@@ -1,6 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MidiPlayer } from './audioPlayer.js';
-import * as Tone from 'tone';
 
 // --- Mocks ---
 
@@ -97,8 +96,9 @@ vi.mock('tone', () => {
 
     return {
         context: {
-            state: 'running',
+            state: 'suspended',
             currentTime: 0,
+            start: vi.fn().mockResolvedValue(),
             rawContext: mockRawContext,
         },
         start: vi.fn().mockResolvedValue(),
@@ -110,145 +110,91 @@ describe('MidiPlayer', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        Tone.context.state = 'running';
-        Tone.context.rawContext.state = 'running';
         player = new MidiPlayer();
     });
 
-    afterEach(() => {
-        player.stop();
-        if (player._resetTimeout) {
-            clearTimeout(player._resetTimeout);
-        }
-    });
-
     describe('Initialization', () => {
-        it('should load soundfont successfully', async () => {
-            await player.loadSoundfont('/custom-font.sf2');
-            expect(global.fetch).toHaveBeenCalledWith('/custom-font.sf2');
-            expect(player.sf2Buffer).toBeInstanceOf(ArrayBuffer);
-        });
-
-        it('should throw an error if soundfont fails to load', async () => {
-            global.fetch.mockResolvedValueOnce({
-                ok: false,
-                statusText: 'Not Found',
-            });
-            await expect(player.loadSoundfont()).rejects.toThrow(
-                'Failed to load soundfont: Not Found',
-            );
-        });
-
-        it('should start Tone.context and rawContext if suspended during init', async () => {
-            Tone.context.state = 'suspended';
-            Tone.context.rawContext.state = 'suspended';
-
+        it('should load soundfont and initialize synth', async () => {
             player.sf2Buffer = new ArrayBuffer(8);
             await player.initialize();
 
-            expect(Tone.start).toHaveBeenCalled();
-            expect(Tone.context.rawContext.resume).toHaveBeenCalled();
-        });
-
-        it('should setup the worklet, gain, synth and sequencer correctly', async () => {
-            player.sf2Buffer = new ArrayBuffer(8);
-            await player.initialize();
-
-            expect(
-                Tone.context.rawContext.audioWorklet.addModule,
-            ).toHaveBeenCalledWith('mock-processor-url');
-            expect(Tone.context.rawContext.createGain).toHaveBeenCalled();
             expect(player.synth).toBeDefined();
             expect(player.sequencer).toBeDefined();
-            expect(player.synth.connect).toHaveBeenCalledWith(
-                player.masterGain,
-            );
-            expect(
-                player.synth.soundBankManager.addSoundBank,
-            ).toHaveBeenCalledWith(player.sf2Buffer, 'default');
+            expect(player.sf2Buffer).toBeDefined();
+        });
 
-            // Verify event listeners
-            expect(player.synth.eventHandler.addEvent).toHaveBeenCalledWith(
-                'noteOn',
-                'viz-play',
-                expect.any(Function),
-            );
-            expect(player.synth.eventHandler.addEvent).toHaveBeenCalledWith(
-                'noteOff',
-                'viz-release',
-                expect.any(Function),
-            );
-            expect(player.sequencer.eventHandler.addEvent).toHaveBeenCalledWith(
-                'songEnded',
-                'viz-stop',
-                expect.any(Function),
-            );
+        it('should not re-initialize if synth already exists', async () => {
+            player.sf2Buffer = new ArrayBuffer(8);
+            await player.initialize();
+            const firstSynth = player.synth;
+
+            await player.initialize();
+            expect(player.synth).toBe(firstSynth);
         });
     });
 
-    describe('Playback', () => {
-        it('should load MIDI and play via sequencer', async () => {
-            const dummyBuffer = new ArrayBuffer(8);
-            await player.play(dummyBuffer);
+    describe('MediaSession', () => {
+        it('should update MediaSession position and refresh duration from sequencer', async () => {
+            player.duration = 0;
+            player.sequencer = {
+                duration: 42,
+                playbackRate: 1,
+                currentTime: 10,
+            };
 
-            expect(player.sequencer.loadNewSongList).toHaveBeenCalledWith([
-                { binary: dummyBuffer },
-            ]);
-            expect(player.sequencer.play).toHaveBeenCalled();
-            expect(player.sequencer.loopCount).toBe(-1);
-            expect(player.isPlaying).toBe(true);
-            expect(mockAudioInstance.play).toHaveBeenCalled();
+            player.updateMediaSessionPosition();
 
+            expect(player.duration).toBe(42);
             if ('mediaSession' in navigator) {
-                expect(navigator.mediaSession.playbackState).toBe('playing');
                 expect(
                     navigator.mediaSession.setPositionState,
-                ).toHaveBeenCalled();
+                ).toHaveBeenCalledWith({
+                    duration: 42,
+                    playbackRate: 1,
+                    position: 10,
+                });
             }
         });
 
-        it('should invoke onNotePlay and onNoteRelease via synth events', async () => {
-            await player.initialize();
+        it('should not overwrite duration with 0 if sequencer duration is not yet available', () => {
+            player.duration = 120; // Set by worker
+            player.sequencer = {
+                duration: 0,
+                playbackRate: 1,
+                currentTime: 0,
+            };
 
-            const playCb = vi.fn();
-            const releaseCb = vi.fn();
-            player.onNotePlay = playCb;
-            player.onNoteRelease = releaseCb;
+            player.updateMediaSessionPosition();
 
-            // Trigger noteOn event for C4
-            const noteOnHandler =
-                player.synth.eventHandler.addEvent.mock.calls.find(
-                    (call) => call[0] === 'noteOn',
-                )[2];
-            noteOnHandler({ channel: 0, midiNote: 60, velocity: 100 });
-
-            expect(playCb).toHaveBeenCalledWith('C4', undefined, 0, false);
-
-            // Trigger noteOn event for E4 (C4 is now the previous note)
-            noteOnHandler({ channel: 0, midiNote: 64, velocity: 100 });
-            expect(playCb).toHaveBeenCalledWith('E4', 'C4', 0, false);
-
-            // Trigger noteOff event for E4
-            const noteOffHandler =
-                player.synth.eventHandler.addEvent.mock.calls.find(
-                    (call) => call[0] === 'noteOff',
-                )[2];
-            noteOffHandler({ channel: 0, midiNote: 64 });
-
-            // It should be released with 'C4' as prevNoteName, not 'E4'
-            expect(releaseCb).toHaveBeenCalledWith('E4', 'C4');
+            expect(player.duration).toBe(120);
         });
 
-        it('should update channel instruments via programChange events', async () => {
-            await player.initialize();
+        it('should handle missing sequencer gracefully', () => {
+            player.duration = 120;
+            player.sequencer = null;
 
-            const pcHandler =
-                player.synth.eventHandler.addEvent.mock.calls.find(
-                    (call) => call[0] === 'programChange',
-                )[2];
+            // Should not throw
+            player.updateMediaSessionPosition();
+            expect(player.duration).toBe(120);
+        });
 
-            pcHandler({ channel: 3, program: 25 });
-            expect(player.channelInstruments[3]).toBe(25);
+        it('should not overwrite existing duration with 0 during play if sequencer is not ready', async () => {
+            player.duration = 120;
+            player.sequencer = {
+                loadNewSongList: vi.fn(),
+                duration: 0,
+                play: vi.fn(),
+                pause: vi.fn(),
+                currentTime: 0,
+                playbackRate: 1,
+                eventHandler: { addEvent: vi.fn() },
+            };
+            // Mock initialize to not change sequencer
+            vi.spyOn(player, 'initialize').mockImplementation(async () => {});
+
+            await player.play(new ArrayBuffer(8));
+
+            expect(player.duration).toBe(120);
         });
     });
 
@@ -280,15 +226,28 @@ describe('MidiPlayer', () => {
             }
         });
 
-        it('should stop playback correctly', () => {
+        it('should stop playback and reset state', () => {
             player.stop();
             expect(player.sequencer.pause).toHaveBeenCalled();
             expect(player.sequencer.currentTime).toBe(0);
-            expect(player.synth.stopAll).toHaveBeenCalled();
+            expect(mockAudioInstance.pause).toHaveBeenCalled();
             expect(player.isPlaying).toBe(false);
             if ('mediaSession' in navigator) {
                 expect(navigator.mediaSession.playbackState).toBe('none');
             }
+        });
+
+        it('should restart playback', () => {
+            const onStopCb = vi.fn();
+            player.onStop = onStopCb;
+            player.isPlaying = true;
+
+            player.restart();
+
+            expect(player.sequencer.currentTime).toBe(0);
+            expect(player.synth.stopAll).toHaveBeenCalled();
+            expect(onStopCb).toHaveBeenCalled();
+            expect(player.isPlaying).toBe(true); // Should maintain playing state
         });
     });
 

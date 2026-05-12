@@ -201,15 +201,19 @@ export class NetworkVisualizer {
 
         const totalSteps = 3000;
         const batchSize = 100;
+        const bodies = this.layout.simulator.bodies;
+        const bodiesLen = bodies.length;
+
         for (let i = 0; i < totalSteps; i++) {
             if (this._buildToken !== currentToken) return false;
 
             this.layout.step();
 
-            this.layout.simulator.bodies.forEach((body) => {
-                body.pos.x -= body.pos.x * 0.005;
-                body.pos.y -= body.pos.y * 0.005;
-            });
+            for (let j = 0; j < bodiesLen; j++) {
+                const pos = bodies[j].pos;
+                pos.x *= 0.995;
+                pos.y *= 0.995;
+            }
 
             if (i % batchSize === 0) {
                 await new Promise((resolve) => setTimeout(resolve, 0));

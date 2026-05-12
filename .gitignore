@@ -1,5 +1,7 @@
 /.firebase/
 /.firebaserc
+/.jules/
+/.Jules/
 /coverage/
 /dist/
 /node_modules/

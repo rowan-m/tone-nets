@@ -28,8 +28,10 @@ export class NetworkVisualizer {
             powerPreference: 'high-performance',
             antialias: false,
             stencil: false,
-            depth: false,
+            depth: true,
         });
+
+        this.highlightColor = 0xffe600; // Electric Yellow
 
         this.nodes = new Map();
         this.edges = [];
@@ -41,16 +43,39 @@ export class NetworkVisualizer {
         this.raycaster = new THREE.Raycaster();
         this.raycaster.params.Line.threshold = 5;
         this.mouse = new THREE.Vector2(-1000, -1000);
-        this.pickableObjects = [];
-        this.hoveredObject = null;
+        this.mouseMoved = false;
         this.onHover = null;
         this.activeEmojis = [];
+        this.emojiPool = [];
+        this.maxEmojis = 100;
         this.playingNodes = new Set();
         this.playingEdges = new Set();
         this.scene.add(this.graphGroup);
 
+        this._lastFrameTime = 0;
+        this._lastRaycastTime = 0;
+        this._raycastThrottleMs = 33; // ~30fps for hover logic
+
         this.edgeMaterialPool = new Map();
         this.coneMaterialPool = new Map();
+        this.nodeMaterialCache = new Map();
+        this.emojiTextureCache = new Map();
+
+        // Shared colors for interpolation to avoid object churn
+        this._colorLow = new THREE.Color(0xbbbbbb);
+        this._colorMid = new THREE.Color(0xdddddd);
+        this._colorHigh = new THREE.Color(0xffffff);
+        this._scratchColor = new THREE.Color();
+
+        // Reusable vectors to minimize GC
+        this._cameraUp = new THREE.Vector3();
+        this._upVec = new THREE.Vector3(0, 1, 0);
+        this._scratchVec3_1 = new THREE.Vector3();
+        this._scratchVec3_2 = new THREE.Vector3();
+        this._scratchVec3_3 = new THREE.Vector3();
+        this._scratchBox3 = new THREE.Box3();
+        this._scratchSphere = new THREE.Sphere();
+        this._scratchCurve = new THREE.QuadraticBezierCurve3();
 
         // Shared materials for hover/highlight states
         this.hoverEdgeMaterial = new THREE.LineBasicMaterial({
@@ -64,14 +89,13 @@ export class NetworkVisualizer {
             opacity: 1.0,
         });
 
-        const highlightColor = 0xffe600; // Electric Yellow
         this.highlightEdgeMaterial = new THREE.LineBasicMaterial({
-            color: highlightColor,
+            color: this.highlightColor,
             transparent: true,
             opacity: 1.0,
         });
         this.highlightConeMaterial = new THREE.MeshBasicMaterial({
-            color: highlightColor,
+            color: this.highlightColor,
             transparent: true,
             opacity: 1.0,
         });
@@ -87,7 +111,7 @@ export class NetworkVisualizer {
             this.container.clientWidth,
             this.container.clientHeight,
         );
-        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         this.container.appendChild(this.renderer.domElement);
 
         // Initial dummy camera setup for the empty scene.
@@ -133,6 +157,7 @@ export class NetworkVisualizer {
             const rect = this.renderer.domElement.getBoundingClientRect();
             this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            this.mouseMoved = true;
         });
     }
 
@@ -144,15 +169,50 @@ export class NetworkVisualizer {
             intensity: 1.5,
             luminanceThreshold: 0.1,
             luminanceSmoothing: 0.9,
+            mipmapBlur: true,
         });
 
         this.composer.addPass(new EffectPass(this.camera, bloomEffect));
     }
 
     clear() {
+        const edgeMats = new Set(this.edgeMaterialPool.values());
+        const coneMats = new Set(this.coneMaterialPool.values());
+        const nodeMats = new Set(this.nodeMaterialCache.values());
+        const sharedMats = new Set([
+            this.highlightEdgeMaterial,
+            this.highlightConeMaterial,
+            this.hoverEdgeMaterial,
+            this.hoverConeMaterial,
+        ]);
+
         while (this.graphGroup.children.length > 0) {
             const child = this.graphGroup.children[0];
-            if (child.geometry) child.geometry.dispose();
+            child.traverse((obj) => {
+                if (obj.geometry) obj.geometry.dispose();
+
+                if (obj.material) {
+                    const mats = Array.isArray(obj.material)
+                        ? obj.material
+                        : [obj.material];
+                    mats.forEach((mat) => {
+                        if (
+                            !edgeMats.has(mat) &&
+                            !coneMats.has(mat) &&
+                            !nodeMats.has(mat) &&
+                            !sharedMats.has(mat)
+                        ) {
+                            if (
+                                mat.map &&
+                                !this.emojiTextureCache.has(mat.map)
+                            ) {
+                                mat.map.dispose();
+                            }
+                            mat.dispose();
+                        }
+                    });
+                }
+            });
             this.graphGroup.remove(child);
         }
 
@@ -161,19 +221,28 @@ export class NetworkVisualizer {
         this.edgeMaterialPool.clear();
         this.coneMaterialPool.forEach((mat) => mat.dispose());
         this.coneMaterialPool.clear();
+        this.nodeMaterialCache.forEach((mat) => mat.dispose());
+        this.nodeMaterialCache.clear();
+
+        this.emojiPool.forEach((sprite) => {
+            if (sprite.material) sprite.material.dispose();
+        });
+        this.emojiPool = [];
+
+        // We don't dispose emojiTextureCache here because those are reusable across different MIDI files
+        // but we DO dispose the sprites in the clear() call if they are active.
 
         this.nodes.clear();
         this.edges = [];
         this.edgeMap.clear();
         this.playingNodes.clear();
         this.playingEdges.clear();
+        this.pickableObjects = [];
 
         // Clear active emojis
         this.activeEmojis.forEach((emojiData) => {
             this.scene.remove(emojiData.sprite);
-            if (emojiData.sprite.material.map)
-                emojiData.sprite.material.map.dispose();
-            emojiData.sprite.material.dispose();
+            if (emojiData.sprite.material) emojiData.sprite.material.dispose();
         });
         this.activeEmojis = [];
 
@@ -229,7 +298,18 @@ export class NetworkVisualizer {
     }
 
     _renderNodes(graph, layoutScale, zDepthScale, maxDegree) {
-        const sphereGeo = new THREE.SphereGeometry(1, 32, 32);
+        const sphereSegments = 20; // Reduced from 32 for performance
+        const sphereGeo = new THREE.SphereGeometry(
+            1,
+            sphereSegments,
+            sphereSegments,
+        );
+
+        const outlineGeo = new THREE.SphereGeometry(1.08, 12, 12);
+        let outlineMat = new THREE.MeshBasicMaterial({
+            color: 0x000000,
+            side: THREE.BackSide,
+        });
 
         graph.forEachNode((node) => {
             const pos = this.layout.getNodePosition(node.id);
@@ -237,18 +317,26 @@ export class NetworkVisualizer {
             const normDegree = Math.min(1, degree / maxDegree);
 
             const pitchClass = noteToSemitone(node.id) % 12;
-            const hue = pitchClass / 12;
-            const nodeColor = new THREE.Color().setHSL(hue, 1.0, 0.6);
 
-            const material = new THREE.MeshStandardMaterial({
-                color: nodeColor,
-                emissive: nodeColor,
-                emissiveIntensity: 0.2,
-                roughness: 0.3,
-                metalness: 0.2,
-                transparent: false,
-                opacity: 1.0,
-            });
+            let baseMaterial = this.nodeMaterialCache.get(pitchClass);
+            if (!baseMaterial) {
+                const hue = pitchClass / 12;
+                const nodeColor = new THREE.Color().setHSL(hue, 1.0, 0.6);
+
+                baseMaterial = new THREE.MeshStandardMaterial({
+                    color: nodeColor,
+                    emissive: nodeColor,
+                    emissiveIntensity: 0.2,
+                    roughness: 0.3,
+                    metalness: 0.2,
+                    transparent: false,
+                    opacity: 1.0,
+                });
+                this.nodeMaterialCache.set(pitchClass, baseMaterial);
+            }
+
+            // Must clone so each node can have independent highlight state (emissiveIntensity)
+            const material = baseMaterial.clone();
             const mesh = new THREE.Mesh(sphereGeo, material);
 
             const scale = 2 + normDegree * 6;
@@ -257,11 +345,6 @@ export class NetworkVisualizer {
             const zPos = normDegree * zDepthScale - zDepthScale * 0.25;
             mesh.position.set(pos.x * layoutScale, pos.y * layoutScale, zPos);
 
-            const outlineGeo = new THREE.SphereGeometry(1.08, 16, 16);
-            const outlineMat = new THREE.MeshBasicMaterial({
-                color: 0x000000,
-                side: THREE.BackSide,
-            });
             const outlineMesh = new THREE.Mesh(outlineGeo, outlineMat);
             mesh.add(outlineMesh);
 
@@ -278,41 +361,46 @@ export class NetworkVisualizer {
         });
     }
 
-    _createEdgeCurve(sPosRaw, tPosRaw, sZ, tZ, layoutScale) {
-        const sPos = new THREE.Vector3(
+    _updateEdgeCurve(curve, sPosRaw, tPosRaw, sZ, tZ, layoutScale) {
+        const sPos = curve.v0.set(
             sPosRaw.x * layoutScale,
             sPosRaw.y * layoutScale,
             sZ,
         );
-        const tPos = new THREE.Vector3(
+        const tPos = curve.v2.set(
             tPosRaw.x * layoutScale,
             tPosRaw.y * layoutScale,
             tZ,
         );
 
-        const midPoint = sPos.clone().add(tPos).multiplyScalar(0.5);
-        const xyDist = Math.sqrt(
-            Math.pow(tPos.x - sPos.x, 2) + Math.pow(tPos.y - sPos.y, 2),
-        );
+        const midPoint = this._scratchVec3_1
+            .copy(sPos)
+            .add(tPos)
+            .multiplyScalar(0.5);
         const dx = tPos.x - sPos.x;
         const dy = tPos.y - sPos.y;
-        const normal = new THREE.Vector3(-dy, dx, 0).normalize();
+        const xyDist = Math.sqrt(dx * dx + dy * dy);
 
-        const controlPoint = midPoint.add(normal.multiplyScalar(xyDist * 0.25));
+        const normal = this._scratchVec3_2.set(-dy, dx, 0).normalize();
+        const controlPoint = curve.v1
+            .copy(midPoint)
+            .add(normal.multiplyScalar(xyDist * 0.25));
         controlPoint.z = Math.max(sZ, tZ) + xyDist * 0.15;
 
-        return new THREE.QuadraticBezierCurve3(sPos, controlPoint, tPos);
+        return curve;
     }
 
     _getEdgeColor(normWeight) {
-        const colorLow = new THREE.Color(0xbbbbbb);
-        const colorMid = new THREE.Color(0xdddddd);
-        const colorHigh = new THREE.Color(0xffffff);
-
         if (normWeight < 0.5) {
-            return colorLow.clone().lerp(colorMid, normWeight * 2);
+            return this._scratchColor
+                .copy(this._colorLow)
+                .lerp(this._colorMid, normWeight * 2)
+                .clone();
         }
-        return colorMid.clone().lerp(colorHigh, (normWeight - 0.5) * 2);
+        return this._scratchColor
+            .copy(this._colorMid)
+            .lerp(this._colorHigh, (normWeight - 0.5) * 2)
+            .clone();
     }
 
     _renderEdge(link, layoutScale, maxWeight, coneGeo) {
@@ -321,7 +409,8 @@ export class NetworkVisualizer {
         const sZ = this.nodes.get(link.fromId).z;
         const tZ = this.nodes.get(link.toId).z;
 
-        const curve = this._createEdgeCurve(
+        const curve = this._updateEdgeCurve(
+            this._scratchCurve,
             sPosRaw,
             tPosRaw,
             sZ,
@@ -329,8 +418,19 @@ export class NetworkVisualizer {
             layoutScale,
         );
 
-        const pts = curve.getPoints(20);
-        const geometry = new THREE.BufferGeometry().setFromPoints(pts);
+        const segments = 20;
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array((segments + 1) * 3);
+        for (let i = 0; i <= segments; i++) {
+            curve.getPoint(i / segments, this._scratchVec3_1);
+            positions[i * 3] = this._scratchVec3_1.x;
+            positions[i * 3 + 1] = this._scratchVec3_1.y;
+            positions[i * 3 + 2] = this._scratchVec3_1.z;
+        }
+        geometry.setAttribute(
+            'position',
+            new THREE.BufferAttribute(positions, 3),
+        );
 
         const normWeight = Math.min(1, link.data.weight / maxWeight);
         const weightBucket = Math.round(normWeight * 100);
@@ -370,12 +470,14 @@ export class NetworkVisualizer {
         this.pickableObjects.push(line);
 
         const tMid = 0.5;
-        const arrowPos = curve.getPoint(tMid);
-        const arrowDir = curve.getTangent(tMid).normalize();
+        curve.getPoint(tMid, this._scratchVec3_1);
+        const arrowPos = this._scratchVec3_1;
+        curve.getTangent(tMid, this._scratchVec3_2).normalize();
+        const arrowDir = this._scratchVec3_2;
 
         const cone = new THREE.Mesh(coneGeo, coneMat);
         cone.position.copy(arrowPos);
-        cone.lookAt(arrowPos.clone().add(arrowDir));
+        cone.lookAt(this._scratchVec3_3.copy(arrowPos).add(arrowDir));
         cone.userData = {
             origMaterial: coneMat,
         };
@@ -430,15 +532,14 @@ export class NetworkVisualizer {
     fitCameraToGraph() {
         if (this.graphGroup.children.length === 0) return;
 
-        const box = new THREE.Box3().setFromObject(this.graphGroup);
-        const center = new THREE.Vector3();
-        box.getCenter(center);
+        this._scratchBox3.setFromObject(this.graphGroup);
+        const center = this._scratchVec3_1;
+        this._scratchBox3.getCenter(center);
 
         // Use bounding sphere to ensure the graph never clips when rotated
-        const sphere = new THREE.Sphere();
-        box.getBoundingSphere(sphere);
+        this._scratchBox3.getBoundingSphere(this._scratchSphere);
 
-        const radius = sphere.radius;
+        const radius = this._scratchSphere.radius;
         let frustumSize = radius * 2 * 1.05; // Add 5% padding
 
         const aspect = this.container.clientWidth / this.container.clientHeight;
@@ -471,28 +572,43 @@ export class NetworkVisualizer {
         this.controls.update();
     }
 
-    _clearHoverObjectState(obj) {
-        if (obj.userData.type === 'node') {
+    _clearNodeHoverState(obj) {
+        const nodeData = this.nodes.get(obj.userData.id);
+        const isPlaying = nodeData && nodeData.playCount > 0;
+
+        if (isPlaying) {
+            obj.material.emissive.setHex(this.highlightColor);
+            obj.material.emissiveIntensity = 1.0;
+        } else {
             obj.material.emissive.setHex(obj.userData.origEmissive);
             obj.material.emissiveIntensity = obj.userData.origEmissiveIntensity;
-        } else if (obj.userData.type === 'edge') {
-            // Restore original shared material instead of mutating
-            // Check if it should be highlighted instead of normal
-            const edgeId = `${obj.userData.sourceId}->${obj.userData.targetId}`;
-            const edgeData = this.edgeMap.get(edgeId);
+        }
+    }
 
-            if (edgeData && edgeData.playCount > 0) {
-                obj.material = this.highlightEdgeMaterial;
-                if (obj.userData.cone) {
-                    obj.userData.cone.material = this.highlightConeMaterial;
-                }
-            } else {
-                obj.material = obj.userData.origMaterial;
-                if (obj.userData.cone) {
-                    obj.userData.cone.material =
-                        obj.userData.cone.userData.origMaterial;
-                }
+    _clearEdgeHoverState(obj) {
+        const edgeId = `${obj.userData.sourceId}->${obj.userData.targetId}`;
+        const edgeData = this.edgeMap.get(edgeId);
+        const isPlaying = edgeData && edgeData.playCount > 0;
+
+        if (isPlaying) {
+            obj.material = this.highlightEdgeMaterial;
+            if (obj.userData.cone) {
+                obj.userData.cone.material = this.highlightConeMaterial;
             }
+        } else {
+            obj.material = obj.userData.origMaterial;
+            if (obj.userData.cone) {
+                obj.userData.cone.material =
+                    obj.userData.cone.userData.origMaterial;
+            }
+        }
+    }
+
+    _clearHoverObjectState(obj) {
+        if (obj.userData.type === 'node') {
+            this._clearNodeHoverState(obj);
+        } else if (obj.userData.type === 'edge') {
+            this._clearEdgeHoverState(obj);
         }
     }
 
@@ -529,68 +645,97 @@ export class NetworkVisualizer {
         }
     }
 
-    _updateEmojis() {
-        const upVec = new THREE.Vector3(0, 1, 0);
-        // Get the camera's up vector in world space to float "up" relative to the view
-        this.camera.getWorldDirection(upVec);
+    _updateEmojis(delta) {
         // We want to float "up" relative to the screen, which is the camera's up vector
-        const cameraUp = new THREE.Vector3(0, 1, 0).applyQuaternion(
-            this.camera.quaternion,
-        );
+        this._cameraUp
+            .set(0, 1, 0)
+            .applyQuaternion(this.camera.quaternion)
+            .normalize();
+
+        const lifeStep = delta * 1.25; // Expire over ~0.8s
+        const moveStep = delta * 30; // Move ~30 units/s
 
         for (let i = this.activeEmojis.length - 1; i >= 0; i--) {
             const emojiData = this.activeEmojis[i];
-            emojiData.life -= 0.02;
+            emojiData.life -= lifeStep;
 
             if (emojiData.life <= 0) {
-                this.scene.remove(emojiData.sprite);
-                emojiData.sprite.material.map.dispose();
-                emojiData.sprite.material.dispose();
-                this.activeEmojis.splice(i, 1);
+                this._recycleEmoji(i);
                 continue;
             }
 
             // Move up relative to camera view
-            emojiData.sprite.position.addScaledVector(cameraUp, 0.5);
+            emojiData.sprite.position.addScaledVector(this._cameraUp, moveStep);
             emojiData.sprite.material.opacity = emojiData.life;
         }
     }
 
-    animate() {
+    _recycleEmoji(index) {
+        const emojiData = this.activeEmojis[index];
+        this.scene.remove(emojiData.sprite);
+        this.emojiPool.push(emojiData.sprite);
+        this.activeEmojis.splice(index, 1);
+    }
+
+    animate(time) {
         requestAnimationFrame(this.animate);
 
-        // Raycasting Logic
-        this.raycaster.setFromCamera(this.mouse, this.camera);
-        const intersects = this.raycaster.intersectObjects(
-            this.pickableObjects,
-            false,
-        );
-        let target = null;
-        if (intersects.length > 0) {
-            const hit =
-                intersects.find((i) => i.object.userData.type === 'node') ||
-                intersects[0];
-            target = hit.object;
+        const delta = this._lastFrameTime
+            ? (time - this._lastFrameTime) / 1000
+            : 0.016;
+        this._lastFrameTime = time;
+
+        // Raycasting Logic - Only if mouse moved and throttled
+        if (
+            this.mouseMoved &&
+            time - this._lastRaycastTime > this._raycastThrottleMs
+        ) {
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+            const intersects = this.raycaster.intersectObjects(
+                this.pickableObjects,
+                false,
+            );
+            let target = null;
+            if (intersects.length > 0) {
+                const hit =
+                    intersects.find((i) => i.object.userData.type === 'node') ||
+                    intersects[0];
+                target = hit.object;
+            }
+
+            this._updateHoverState(target);
+            this.mouseMoved = false;
+            this._lastRaycastTime = time;
         }
 
-        this._updateHoverState(target);
-        this._updateEmojis();
+        this._updateEmojis(delta);
 
         this.controls.update();
         this.composer.render();
     }
 
-    _createEmojiSprite(emoji) {
-        const canvas = document.createElement('canvas');
-        canvas.width = 64;
-        canvas.height = 64;
-        const ctx = canvas.getContext('2d');
-        ctx.font = '48px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(emoji, 32, 32);
+    _getEmojiTexture(emoji) {
+        let texture = this.emojiTextureCache.get(emoji);
 
-        const texture = new THREE.CanvasTexture(canvas);
+        if (!texture) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.font = '48px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(emoji, 32, 32);
+
+            texture = new THREE.CanvasTexture(canvas);
+            this.emojiTextureCache.set(emoji, texture);
+        }
+        return texture;
+    }
+
+    _createEmojiSprite(emoji) {
+        const texture = this._getEmojiTexture(emoji);
+
         const material = new THREE.SpriteMaterial({
             map: texture,
             transparent: true,
@@ -605,7 +750,20 @@ export class NetworkVisualizer {
         const nodeData = this.nodes.get(nodeId);
         if (!nodeData) return;
 
-        const sprite = this._createEmojiSprite(emoji);
+        // Enforce limit - recycle oldest if needed
+        if (this.activeEmojis.length >= this.maxEmojis) {
+            this._recycleEmoji(0);
+        }
+
+        let sprite;
+        if (this.emojiPool.length > 0) {
+            sprite = this.emojiPool.pop();
+            sprite.material.map = this._getEmojiTexture(emoji);
+            sprite.material.opacity = 1.0;
+        } else {
+            sprite = this._createEmojiSprite(emoji);
+        }
+
         sprite.position.copy(nodeData.mesh.position);
         // Offset a bit so it's not buried in the node
         sprite.position.z += 10;
@@ -656,8 +814,7 @@ export class NetworkVisualizer {
     }
 
     highlightPlayingElement(nodeId, prevNodeId) {
-        const highlightColor = 0xffe600; // Electric Yellow
-        this._highlightNode(nodeId, highlightColor);
+        this._highlightNode(nodeId, this.highlightColor);
         this._highlightEdge(prevNodeId, nodeId);
     }
 

@@ -227,6 +227,41 @@ describe('NetworkVisualizer', () => {
         expect(visualizer.activeEmojis[0].sprite.position.y).toBe(20);
     });
 
+    it('should pool emoji sprites', () => {
+        const nodeMesh = new THREE.Mesh(new THREE.SphereGeometry());
+        visualizer.nodes.set('C4', { mesh: nodeMesh });
+
+        // Show 2 emojis
+        visualizer.showInstrumentEmoji('C4', '🎹');
+        visualizer.showInstrumentEmoji('C4', '🎹');
+        expect(visualizer.activeEmojis.length).toBe(2);
+
+        // Advance life to 0 for both
+        visualizer.activeEmojis[0].life = 0;
+        visualizer.activeEmojis[1].life = 0;
+
+        // Run _updateEmojis to move them to pool
+        // Note: _updateEmojis is called in animate, but we can call it directly
+        visualizer._updateEmojis(1.0); // Pass delta to ensure life <= 0
+        expect(visualizer.activeEmojis.length).toBe(0);
+        expect(visualizer.emojiPool.length).toBe(2);
+
+        // Show another emoji, it should reuse one from pool
+        visualizer.showInstrumentEmoji('C4', '🎹');
+        expect(visualizer.activeEmojis.length).toBe(1);
+        expect(visualizer.emojiPool.length).toBe(1);
+    });
+
+    it('should limit active emojis to 100', () => {
+        const nodeMesh = new THREE.Mesh(new THREE.SphereGeometry());
+        visualizer.nodes.set('C4', { mesh: nodeMesh });
+
+        for (let i = 0; i < 110; i++) {
+            visualizer.showInstrumentEmoji('C4', '🎹');
+        }
+        expect(visualizer.activeEmojis.length).toBe(100);
+    });
+
     it('should report layout progress during visualization building', async () => {
         const mockGraph = {
             forEachNode: vi.fn(),
@@ -318,6 +353,58 @@ describe('NetworkVisualizer', () => {
         expect(edgeData.playCount).toBe(0);
         expect(visualizer.playingNodes.size).toBe(0);
         expect(visualizer.playingEdges.size).toBe(0);
+    });
+
+    it('should highlight nodes independently even if they share a pitch class', async () => {
+        // C4 and C5 share pitch class 0
+        const mockGraph = {
+            forEachNode: vi.fn((cb) => {
+                cb({ id: 'C4', data: { degree: 5 } });
+                cb({ id: 'C5', data: { degree: 3 } });
+            }),
+            forEachLink: vi.fn(),
+        };
+
+        await visualizer.buildVisualization(mockGraph);
+
+        const node1 = visualizer.nodes.get('C4').mesh;
+        const node2 = visualizer.nodes.get('C5').mesh;
+
+        // Act: Highlight only C4
+        visualizer.highlightPlayingElement('C4', null);
+
+        // Assert: C4 should be bright, C5 should remain dim
+        expect(node1.material.emissiveIntensity).toBe(1.0);
+        expect(node2.material.emissiveIntensity).toBe(0.2);
+    });
+
+    it('should maintain playing highlight when hovering off a node', async () => {
+        const mockGraph = {
+            forEachNode: vi.fn((cb) => {
+                cb({ id: 'C4', data: { degree: 5 } });
+            }),
+            forEachLink: vi.fn(),
+        };
+
+        await visualizer.buildVisualization(mockGraph);
+        const nodeData = visualizer.nodes.get('C4');
+        const mesh = nodeData.mesh;
+
+        // 1. Play the node
+        visualizer.highlightPlayingElement('C4', null);
+        expect(mesh.material.emissiveIntensity).toBe(1.0);
+        const playingColor = mesh.material.emissive.getHex();
+
+        // 2. Hover over it
+        visualizer._updateHoverState(mesh);
+        expect(mesh.material.emissive.getHex()).toBe(0xffffff); // Hover state (white)
+
+        // 3. Hover off
+        visualizer._updateHoverState(null);
+
+        // 4. Should return to playing color and intensity, NOT original
+        expect(mesh.material.emissiveIntensity).toBe(1.0);
+        expect(mesh.material.emissive.getHex()).toBe(playingColor);
     });
 
     it('should handle window resize', () => {

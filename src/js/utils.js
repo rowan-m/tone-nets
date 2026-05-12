@@ -81,7 +81,7 @@ export const INSTRUMENT_EMOJIS = {
     // Chromatic Percussion
     8: '🔔',
     // Organ
-    16: '⛪',
+    16: '❇',
     // Guitar
     24: '🎸',
     // Bass
@@ -97,9 +97,9 @@ export const INSTRUMENT_EMOJIS = {
     // Pipe
     72: '🎷',
     // Synth Lead
-    80: '⌨️',
+    80: '⚡',
     // Synth Pad
-    88: '☁️',
+    88: '💠',
     // Synth Effects
     96: '✨',
     // Ethnic
@@ -107,7 +107,7 @@ export const INSTRUMENT_EMOJIS = {
     // Percussive
     112: '🥁',
     // Sound Effects
-    120: '📢',
+    120: '🔈',
     // Drums (Channel 10 special)
     drums: '🥁',
 };

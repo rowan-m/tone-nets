@@ -155,6 +155,8 @@ describe('utils', () => {
             expect(getInstrumentEmoji(30)).toBe('🎸'); // Also Guitar family (24-31)
             expect(getInstrumentEmoji(40)).toBe('🎻'); // Strings
             expect(getInstrumentEmoji(47)).toBe('🎻'); // Strings
+            expect(getInstrumentEmoji(80)).toBe('⚡'); // Synth Lead
+            expect(getInstrumentEmoji(88)).toBe('💠'); // Synth Pad
             expect(getInstrumentEmoji(112)).toBe('🥁'); // Percussive
         });
 

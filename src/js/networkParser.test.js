@@ -110,9 +110,9 @@ describe('networkParser', () => {
         expect(summary.reciprocity).toBe('0.6667');
 
         // Weighted Efficiency:
-        // sum(1/d_w) = 1/2 + 1/1 = 1.5
-        // Weighted Efficiency = 1.5 / (2 * 1) = 0.75
-        expect(summary.weightedEfficiency).toBe('0.7500');
+        // sum(1/d_w) = 1/(1/2) + 1/(1/1) = 2 + 1 = 3
+        // Weighted Efficiency = 3 / (2 * 1) = 1.5
+        expect(summary.weightedEfficiency).toBe('1.5000');
     });
 
     it('should calculate non-zero mean node entropy correctly', async () => {

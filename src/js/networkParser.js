@@ -370,7 +370,7 @@ function dijkstraDistances(graph, startNodeId) {
             if (link.fromId !== u) return; // Only outgoing edges
             const v = linkedNode.id;
             const weight = link.data.weight || 1;
-            const alt = d + weight;
+            const alt = d + 1 / weight;
 
             if (distances[v] === undefined || alt < distances[v]) {
                 distances[v] = alt;

@@ -64,7 +64,11 @@
             <main id="canvas-container">
                 <!-- Three.js canvas will be injected here -->
                 <dialog id="status-modal">
-                    <p id="status-modal-text">
+                    <p
+                        id="status-modal-text"
+                        aria-live="polite"
+                        aria-atomic="true"
+                    >
                         Loading SoundFont (7.5MB)... Please wait.
                     </p>
                 </dialog>

@@ -81,10 +81,17 @@ const init = async () => {
         // Render Interval Signature
         metricEls.intervalBars.innerHTML = '';
         summary.embedding.forEach((val, i) => {
+            const percentage = Math.round(parseFloat(val) * 100);
             const bar = document.createElement('div');
             bar.className = 'bar';
-            bar.style.height = `${parseFloat(val) * 100}%`;
-            bar.title = `${INTERVAL_NAMES[i]}: ${Math.round(parseFloat(val) * 100)}%`;
+            bar.style.height = `${percentage}%`;
+            bar.title = `${INTERVAL_NAMES[i]}: ${percentage}%`;
+            bar.setAttribute('role', 'meter');
+            bar.setAttribute('aria-label', `Interval ${INTERVAL_NAMES[i]}`);
+            bar.setAttribute('aria-valuenow', percentage);
+            bar.setAttribute('aria-valuemin', '0');
+            bar.setAttribute('aria-valuemax', '100');
+            bar.setAttribute('tabindex', '0');
             metricEls.intervalBars.appendChild(bar);
         });
 

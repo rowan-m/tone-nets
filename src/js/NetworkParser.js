@@ -40,12 +40,14 @@ export class NetworkParser {
         graph.forEachNode((node) => {
             let nodeOutWeight = 0;
             const outWeights = [];
-            graph.forEachLinkedNode(node.id, (linkedNode, link) => {
-                if (link.fromId === node.id) {
+            graph.forEachLinkedNode(
+                node.id,
+                (linkedNode, link) => {
                     nodeOutWeight += link.data.weight;
                     outWeights.push(link.data.weight);
-                }
-            });
+                },
+                true,
+            ); // Pass oriented=true for performance
 
             if (nodeOutWeight > 0) {
                 let nodeEntropy = 0;
@@ -308,13 +310,17 @@ export class NetworkParser {
 
         while (head < queue.length) {
             const u = queue[head++];
-            graph.forEachLinkedNode(u, (linkedNode, link) => {
-                const v = linkedNode.id;
-                if (link.fromId === u && distances[v] === undefined) {
-                    distances[v] = distances[u] + 1;
-                    queue.push(v);
-                }
-            });
+            graph.forEachLinkedNode(
+                u,
+                (linkedNode) => {
+                    const v = linkedNode.id;
+                    if (distances[v] === undefined) {
+                        distances[v] = distances[u] + 1;
+                        queue.push(v);
+                    }
+                },
+                true,
+            ); // Pass oriented=true for performance
         }
         return distances;
     }
@@ -337,17 +343,20 @@ export class NetworkParser {
             if (visited.has(u)) continue;
             visited.add(u);
 
-            graph.forEachLinkedNode(u, (linkedNode, link) => {
-                if (link.fromId !== u) return; // Only outgoing edges
-                const v = linkedNode.id;
-                const weight = link.data.weight || 1;
-                const alt = d + 1 / weight;
+            graph.forEachLinkedNode(
+                u,
+                (linkedNode, link) => {
+                    const v = linkedNode.id;
+                    const weight = link.data.weight || 1;
+                    const alt = d + 1 / weight;
 
-                if (distances[v] === undefined || alt < distances[v]) {
-                    distances[v] = alt;
-                    pq.push([v, alt]);
-                }
-            });
+                    if (distances[v] === undefined || alt < distances[v]) {
+                        distances[v] = alt;
+                        pq.push([v, alt]);
+                    }
+                },
+                true,
+            ); // Pass oriented=true for performance
         }
         return distances;
     }

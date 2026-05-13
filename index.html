@@ -52,7 +52,14 @@
                     <label for="midi-upload" class="custom-file-upload btn">
                         <span aria-hidden="true">💾</span>Load MIDI
                     </label>
-                    <button id="play-pause-toggle" class="btn" disabled>
+                    <button
+                        id="play-btn"
+                        class="btn hidden paused-style"
+                        disabled
+                    >
+                        <span aria-hidden="true">▶️</span>Play
+                    </button>
+                    <button id="pause-btn" class="btn" disabled>
                         <span aria-hidden="true">⏸️</span>Pause
                     </button>
                     <div class="autoplay-control">

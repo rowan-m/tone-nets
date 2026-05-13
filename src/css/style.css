@@ -103,6 +103,12 @@ h1 {
     cursor: not-allowed;
 }
 
+.paused-style {
+    background-color: rgba(0, 255, 255, 0.2);
+    border-color: var(--accent-text);
+    color: var(--accent-text);
+}
+
 .autoplay-control {
     display: flex;
     align-items: center;

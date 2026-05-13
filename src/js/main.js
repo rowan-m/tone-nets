@@ -15,7 +15,8 @@ import { Utils } from './Utils.js';
 
 const init = async () => {
     const uploadInput = document.getElementById('midi-upload');
-    const playPauseToggle = document.getElementById('play-pause-toggle');
+    const playBtn = document.getElementById('play-btn');
+    const pauseBtn = document.getElementById('pause-btn');
     const restartBtn = document.getElementById('restart-btn');
     const toggleInfo = document.getElementById('toggle-info');
     const closeInfo = document.getElementById('close-info');
@@ -121,7 +122,13 @@ const init = async () => {
     };
     player.onNoteRelease = (nodeId, prevNodeId) =>
         visualizer.releasePlayingElement(nodeId, prevNodeId);
-    player.onStop = () => visualizer.resetPlayingHighlights();
+    player.onStop = () => {
+        visualizer.resetPlayingHighlights();
+        if (!player.isPlaying) {
+            playBtn.classList.remove('hidden');
+            pauseBtn.classList.add('hidden');
+        }
+    };
 
     visualizer.onHover = (data) => {
         if (!data) {
@@ -197,37 +204,25 @@ const init = async () => {
         }
     };
 
-    const updatePlayPauseButton = (icon, text) => {
-        playPauseToggle.textContent = '';
-        const span = document.createElement('span');
-        span.setAttribute('aria-hidden', 'true');
-        span.textContent = icon;
-        playPauseToggle.appendChild(span);
-        playPauseToggle.appendChild(document.createTextNode(text));
-    };
-
     const togglePlayPause = () => {
         if (player.isPlaying) {
             player.pause();
             visualizer.setPaused(true);
 
-            updatePlayPauseButton('▶️', 'Play');
-            playPauseToggle.style.backgroundColor = 'rgba(0, 255, 255, 0.2)';
-            playPauseToggle.style.borderColor = 'var(--accent-text)';
-            playPauseToggle.style.color = 'var(--accent-text)';
+            playBtn.classList.remove('hidden');
+            pauseBtn.classList.add('hidden');
         } else {
             player.resume();
             visualizer.setPaused(false);
 
-            updatePlayPauseButton('⏸️', 'Pause');
-            playPauseToggle.style.backgroundColor = '';
-            playPauseToggle.style.borderColor = '';
-            playPauseToggle.style.color = 'white';
+            playBtn.classList.add('hidden');
+            pauseBtn.classList.remove('hidden');
         }
     };
 
-    // Setup Play/Pause Toggle
-    playPauseToggle.addEventListener('click', togglePlayPause);
+    // Setup Play/Pause Toggles
+    playBtn.addEventListener('click', togglePlayPause);
+    pauseBtn.addEventListener('click', togglePlayPause);
 
     // Setup Restart Button
     restartBtn.addEventListener('click', () => {
@@ -244,7 +239,8 @@ const init = async () => {
 
         console.log('Processing MIDI:', fileName);
         showStatus('Parsing MIDI and building network...');
-        playPauseToggle.disabled = true;
+        playBtn.disabled = true;
+        pauseBtn.disabled = true;
         restartBtn.disabled = true;
         toggleInfo.disabled = true;
 
@@ -270,23 +266,19 @@ const init = async () => {
                 }
                 updateMetricsUI(summary, fileName);
                 updateMediaSession(summary.title, fileName);
-                playPauseToggle.disabled = false;
+                playBtn.disabled = false;
+                pauseBtn.disabled = false;
                 restartBtn.disabled = false;
                 toggleInfo.disabled = false;
 
                 // Set button state based on autoplay
                 if (autoplay) {
-                    updatePlayPauseButton('⏸️', 'Pause');
-                    playPauseToggle.style.backgroundColor = '';
-                    playPauseToggle.style.borderColor = '';
-                    playPauseToggle.style.color = 'white';
+                    playBtn.classList.add('hidden');
+                    pauseBtn.classList.remove('hidden');
                     visualizer.setPaused(false);
                 } else {
-                    updatePlayPauseButton('▶️', 'Play');
-                    playPauseToggle.style.backgroundColor =
-                        'rgba(0, 255, 255, 0.2)';
-                    playPauseToggle.style.borderColor = 'var(--accent-text)';
-                    playPauseToggle.style.color = 'var(--accent-text)';
+                    playBtn.classList.remove('hidden');
+                    pauseBtn.classList.add('hidden');
                     visualizer.setPaused(true);
                 }
 

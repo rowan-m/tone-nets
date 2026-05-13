@@ -127,9 +127,22 @@ export class MidiPlayer {
 
             this.sequencer.eventHandler.addEvent(
                 'songEnded',
-                'viz-stop',
+                'viz-loop-reset',
                 () => {
-                    this.stop();
+                    // Reset tracking and visualization for the loop
+                    this.lastNotePerChannel.clear();
+                    this.activeNotes.clear();
+                    if (this.onStop) {
+                        this.onStop();
+                    }
+
+                    // Explicitly restart the sequencer if we are still marked as playing
+                    if (this.isPlaying) {
+                        this.sequencer.currentTime = 0;
+                        this._hardResetSynth();
+                        this.sequencer.play();
+                    }
+                    this.updateMediaSessionPosition();
                 },
             );
         }
@@ -189,7 +202,8 @@ export class MidiPlayer {
         }
 
         // Loop settings
-        this.sequencer.loopCount = -1; // Infinite loop as per original behavior
+        this.sequencer.loop = true;
+        this.sequencer.loopCount = -1; // Try both properties to be safe
 
         if (autoplay) {
             // Ensure volume is up for playback

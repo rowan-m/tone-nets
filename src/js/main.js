@@ -343,7 +343,24 @@ const init = async () => {
 
         if (ext.endsWith('.mid') || ext.endsWith('.midi')) {
             const arrayBuffer = await file.arrayBuffer();
-            await processMidi(arrayBuffer, fileName);
+
+            // Security enhancement: Validate magic number to prevent processing malicious files
+            let isValidMidi = false;
+            if (arrayBuffer.byteLength >= 4) {
+                const dataView = new DataView(arrayBuffer);
+                const magicNumber = dataView.getUint32(0, false);
+                if (magicNumber === 0x4d546864) {
+                    // "MThd"
+                    isValidMidi = true;
+                }
+            }
+
+            if (isValidMidi) {
+                await processMidi(arrayBuffer, fileName);
+            } else {
+                showStatus('Invalid or corrupted MIDI file.');
+                setTimeout(hideStatus, 3000);
+            }
         } else {
             showStatus(
                 'Invalid file type. Please upload a .mid or .midi file.',

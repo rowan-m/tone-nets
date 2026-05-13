@@ -247,12 +247,21 @@ export class NetworkParser {
 
     static computeNodeDegrees(graph) {
         // Compute degree (in + out) for each node for visualization sizing
+        const nodeDataMap = new Map();
         graph.forEachNode((node) => {
-            let degree = 0;
-            graph.forEachLinkedNode(node.id, () => {
-                degree += 1;
-            });
-            node.data.degree = degree;
+            node.data.degree = 0;
+            nodeDataMap.set(node.id, node.data);
+        });
+
+        graph.forEachLink((link) => {
+            const fromData = nodeDataMap.get(link.fromId);
+            if (fromData) fromData.degree += 1;
+
+            // Only increment for toNode if it's different to avoid double-counting self-loops
+            if (link.toId !== link.fromId) {
+                const toData = nodeDataMap.get(link.toId);
+                if (toData) toData.degree += 1;
+            }
         });
     }
 

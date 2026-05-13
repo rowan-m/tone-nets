@@ -8,9 +8,7 @@ export class MinHeap {
         while (idx > 0) {
             let p = (idx - 1) >> 1;
             if (this.data[p][1] <= this.data[idx][1]) break;
-            const t = this.data[p];
-            this.data[p] = this.data[idx];
-            this.data[idx] = t;
+            [this.data[p], this.data[idx]] = [this.data[idx], this.data[p]];
             idx = p;
         }
     }
@@ -29,9 +27,7 @@ export class MinHeap {
             if (right < len && this.data[right][1] < this.data[min][1])
                 min = right;
             if (min === idx) break;
-            const t = this.data[idx];
-            this.data[idx] = this.data[min];
-            this.data[min] = t;
+            [this.data[idx], this.data[min]] = [this.data[min], this.data[idx]];
             idx = min;
         }
         return top;

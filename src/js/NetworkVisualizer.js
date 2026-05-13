@@ -51,6 +51,8 @@ export class NetworkVisualizer {
         this.playingNodes = new Set();
         this.playingEdges = new Set();
         this.isPaused = false;
+        this.autoTour = false;
+        this.autoTourTime = 0;
         this.scene.add(this.graphGroup);
 
         this._lastFrameTime = 0;
@@ -127,6 +129,7 @@ export class NetworkVisualizer {
         );
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
+        this.controls.addEventListener('start', () => this.stopAutoTour());
 
         // Lighting
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -528,6 +531,11 @@ export class NetworkVisualizer {
         this._renderEdges(graph, layoutScale, maxWeight);
 
         this.fitCameraToGraph();
+        this.graphCenter = new THREE.Vector3();
+        this._scratchBox3.setFromObject(this.graphGroup);
+        this._scratchBox3.getCenter(this.graphCenter);
+        this._scratchBox3.getBoundingSphere(this._scratchSphere);
+        this.graphRadius = this._scratchSphere.radius;
     }
 
     fitCameraToGraph() {
@@ -712,6 +720,45 @@ export class NetworkVisualizer {
 
         this._updateEmojis(delta);
 
+        if (this.autoTour && this.graphCenter && this.currentTourSpherical) {
+            this.autoTourTime += delta;
+            const speed = 0.4;
+            const targetDist = this.graphRadius * 3;
+
+            // Smoothly interpolate target back to the center of the graph
+            this.currentTourTarget.lerp(this.graphCenter, delta * 2.0);
+            this.controls.target.copy(this.currentTourTarget);
+
+            // Interpolate distance and zoom
+            this.currentTourSpherical.radius +=
+                (targetDist - this.currentTourSpherical.radius) * delta * 2.0;
+            this.camera.zoom += (1 - this.camera.zoom) * delta * 2.0;
+            this.camera.updateProjectionMatrix();
+
+            // Advance theta continuously from its current position
+            this.currentTourSpherical.theta -= delta * speed;
+
+            // Oscillate phi, smoothly interpolating towards the target sine wave
+            const targetPhi =
+                Math.PI / 2 +
+                Math.sin(this.autoTourTime * speed * 0.4) * (Math.PI / 2.5);
+            this.currentTourSpherical.phi +=
+                (targetPhi - this.currentTourSpherical.phi) * delta * 1.5;
+
+            // Prevent phi from going exactly to 0 or PI to avoid gimbal lock/flipping
+            this.currentTourSpherical.phi = Math.max(
+                0.01,
+                Math.min(Math.PI - 0.01, this.currentTourSpherical.phi),
+            );
+
+            // Apply the updated spherical coordinates
+            const offset = new THREE.Vector3().setFromSpherical(
+                this.currentTourSpherical,
+            );
+            this.camera.position.copy(this.currentTourTarget).add(offset);
+            this.camera.lookAt(this.currentTourTarget);
+        }
+
         this.controls.update();
         this.composer.render();
     }
@@ -886,6 +933,25 @@ export class NetworkVisualizer {
             }
         });
         this.playingEdges.clear();
+    }
+
+    startAutoTour() {
+        this.autoTour = true;
+        this.autoTourTime = 0;
+
+        // Capture current state to transition smoothly
+        this.currentTourTarget = this.controls.target.clone();
+        const offset = new THREE.Vector3().subVectors(
+            this.camera.position,
+            this.currentTourTarget,
+        );
+        this.currentTourSpherical = new THREE.Spherical().setFromVector3(
+            offset,
+        );
+    }
+
+    stopAutoTour() {
+        this.autoTour = false;
     }
 
     setPaused(paused) {

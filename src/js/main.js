@@ -18,6 +18,7 @@ const init = async () => {
     const playBtn = document.getElementById('play-btn');
     const pauseBtn = document.getElementById('pause-btn');
     const restartBtn = document.getElementById('restart-btn');
+    const tourBtn = document.getElementById('tour-btn');
     const toggleInfo = document.getElementById('toggle-info');
     const closeInfo = document.getElementById('close-info');
     const vCountEl = document.getElementById('v-count');
@@ -213,6 +214,10 @@ const init = async () => {
         player.restart();
     });
 
+    tourBtn.addEventListener('click', () => {
+        visualizer.startAutoTour();
+    });
+
     if ('mediaSession' in navigator) {
         navigator.mediaSession.setActionHandler('play', togglePlayPause);
         navigator.mediaSession.setActionHandler('pause', togglePlayPause);
@@ -226,6 +231,7 @@ const init = async () => {
         playBtn.disabled = true;
         pauseBtn.disabled = true;
         restartBtn.disabled = true;
+        tourBtn.disabled = true;
         toggleInfo.disabled = true;
 
         const autoplayToggle = document.getElementById('autoplay-toggle');
@@ -253,6 +259,7 @@ const init = async () => {
                 playBtn.disabled = false;
                 pauseBtn.disabled = false;
                 restartBtn.disabled = false;
+                tourBtn.disabled = false;
                 toggleInfo.disabled = false;
 
                 // Set button state based on autoplay

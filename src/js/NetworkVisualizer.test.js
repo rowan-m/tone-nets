@@ -56,7 +56,12 @@ vi.mock('three/examples/jsm/controls/OrbitControls.js', () => {
                 enableDamping: false,
                 dampingFactor: 0,
                 update: vi.fn(),
-                target: { copy: vi.fn() },
+                target: {
+                    copy: vi.fn(),
+                    set: vi.fn(),
+                    clone: vi.fn(() => new THREE.Vector3()),
+                },
+                addEventListener: vi.fn(),
             };
         }),
     };
@@ -452,6 +457,37 @@ describe('NetworkVisualizer', () => {
             visualizer._lastFrameTime = 1000;
             visualizer.animate(1500); // 500ms diff
             expect(updateSpy).toHaveBeenCalledWith(0.5);
+        });
+    });
+
+    describe('Auto Tour', () => {
+        it('should toggle autoTour state', () => {
+            expect(visualizer.autoTour).toBe(false);
+            visualizer.startAutoTour();
+            expect(visualizer.autoTour).toBe(true);
+            visualizer.stopAutoTour();
+            expect(visualizer.autoTour).toBe(false);
+        });
+
+        it('should stop autoTour on control interaction', () => {
+            visualizer.startAutoTour();
+            expect(visualizer.autoTour).toBe(true);
+
+            // Trigger the "start" event on controls
+            // In the real implementation we will add a listener
+            if (visualizer.controls.addEventListener) {
+                const startListener =
+                    visualizer.controls.addEventListener.mock.calls.find(
+                        (call) => call[0] === 'start',
+                    )[1];
+                if (startListener) startListener();
+            } else {
+                // If the mock doesn't support it yet, we might need to manually call the handler
+                // but let's assume we'll update the mock or implementation to make this work.
+                visualizer.stopAutoTour();
+            }
+
+            expect(visualizer.autoTour).toBe(false);
         });
     });
 });

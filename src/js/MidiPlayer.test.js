@@ -196,6 +196,33 @@ describe('MidiPlayer', () => {
 
             expect(player.duration).toBe(120);
         });
+
+        it('should log a warning if setPositionState fails', () => {
+            player.duration = 42;
+            player.sequencer = {
+                duration: 42,
+                playbackRate: 1,
+                currentTime: 10,
+            };
+            const mockError = new Error('Test Error');
+            vi.spyOn(
+                navigator.mediaSession,
+                'setPositionState',
+            ).mockImplementation(() => {
+                throw mockError;
+            });
+            const consoleSpy = vi
+                .spyOn(console, 'warn')
+                .mockImplementation(() => {});
+
+            player.updateMediaSessionPosition();
+
+            expect(consoleSpy).toHaveBeenCalledWith(
+                'Failed to set MediaSession position state:',
+                mockError,
+            );
+            consoleSpy.mockRestore();
+        });
     });
 
     describe('Control flow', () => {

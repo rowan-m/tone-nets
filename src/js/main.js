@@ -25,7 +25,14 @@ const init = async () => {
     const infoPanel = document.getElementById('info-panel');
     const welcomeMsg = document.getElementById('welcome-msg');
     const hoverPanel = document.getElementById('hover-panel');
-    const hoverContent = document.getElementById('hover-content');
+    const hoverNode = document.getElementById('hover-node');
+    const hoverNodeId = document.getElementById('hover-node-id');
+    const hoverNodeDegree = document.getElementById('hover-node-degree');
+    const hoverEdge = document.getElementById('hover-edge');
+    const hoverEdgeFrom = document.getElementById('hover-edge-from');
+    const hoverEdgeTo = document.getElementById('hover-edge-to');
+    const hoverEdgeInterval = document.getElementById('hover-edge-interval');
+    const hoverEdgeWeight = document.getElementById('hover-edge-weight');
     const appTitle = document.getElementById('app-title');
     const statusModal = document.getElementById('status-modal');
     const statusModalText = document.getElementById('status-modal-text');
@@ -41,7 +48,7 @@ const init = async () => {
         reciprocity: document.getElementById('metric-reciprocity'),
         reciprocityRho: document.getElementById('metric-reciprocity-rho'),
         density: document.getElementById('metric-density'),
-        intervalBars: document.getElementById('interval-bars'),
+        intervalBars: document.querySelectorAll('#interval-bars .bar'),
     };
 
     // Show non-dismissable status modal
@@ -76,24 +83,15 @@ const init = async () => {
             if (metricEls[key]) metricEls[key].innerText = summary[key];
         });
 
-        // Render Interval Signature
-        metricEls.intervalBars.textContent = '';
+        // Update Interval Signature Bars
         summary.embedding.forEach((val, i) => {
             const percentage = Math.round(parseFloat(val) * 100);
-            const bar = document.createElement('div');
-            bar.className = 'bar';
-            bar.style.height = `${percentage}%`;
-            bar.title = `${Utils.INTERVAL_NAMES[i]}: ${percentage}%`;
-            bar.setAttribute('role', 'meter');
-            bar.setAttribute(
-                'aria-label',
-                `Interval ${Utils.INTERVAL_NAMES[i]}`,
-            );
-            bar.setAttribute('aria-valuenow', percentage);
-            bar.setAttribute('aria-valuemin', '0');
-            bar.setAttribute('aria-valuemax', '100');
-            bar.setAttribute('tabindex', '0');
-            metricEls.intervalBars.appendChild(bar);
+            const bar = metricEls.intervalBars[i];
+            if (bar) {
+                bar.style.height = `${percentage}%`;
+                bar.title = `${Utils.INTERVAL_NAMES[i]}: ${percentage}%`;
+                bar.setAttribute('aria-valuenow', percentage);
+            }
         });
 
         if (window.innerWidth <= 768) {
@@ -137,37 +135,23 @@ const init = async () => {
         }
 
         hoverPanel.classList.remove('hidden');
-        hoverContent.textContent = ''; // Clear safely
-
-        const addMetric = (labelText, valueText) => {
-            const div = document.createElement('div');
-            div.className = 'metric';
-            const label = document.createElement('label');
-            label.textContent = labelText;
-            const span = document.createElement('span');
-            span.textContent = valueText;
-            div.appendChild(label);
-            div.appendChild(span);
-            hoverContent.appendChild(div);
-        };
 
         if (data.type === 'node') {
-            const h2 = document.createElement('h2');
-            h2.textContent = `Node: ${data.id}`;
-            hoverContent.appendChild(h2);
-            addMetric('Total Connections', data.degree);
+            hoverNode.classList.remove('hidden');
+            hoverEdge.classList.add('hidden');
+            hoverNodeId.textContent = `Node: ${data.id}`;
+            hoverNodeDegree.textContent = data.degree;
         } else if (data.type === 'edge') {
+            hoverNode.classList.add('hidden');
+            hoverEdge.classList.remove('hidden');
             const interval = Utils.getIntervalName(
                 data.sourceId,
                 data.targetId,
             );
-            const h2 = document.createElement('h2');
-            h2.textContent = 'Transition';
-            hoverContent.appendChild(h2);
-            addMetric('From', data.sourceId);
-            addMetric('To', data.targetId);
-            addMetric('Interval', interval);
-            addMetric('Frequency', data.weight);
+            hoverEdgeFrom.textContent = data.sourceId;
+            hoverEdgeTo.textContent = data.targetId;
+            hoverEdgeInterval.textContent = interval;
+            hoverEdgeWeight.textContent = data.weight;
         }
     };
 

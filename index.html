@@ -201,7 +201,114 @@
                     <section id="embedding-viz">
                         <h3>Interval signature</h3>
                         <div class="bar-chart" id="interval-bars">
-                            <!-- 12 bars will be injected here -->
+                            <div
+                                class="bar"
+                                role="meter"
+                                aria-label="Interval Perfect Unison"
+                                aria-valuenow="0"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                tabindex="0"
+                            ></div>
+                            <div
+                                class="bar"
+                                role="meter"
+                                aria-label="Interval Minor Second"
+                                aria-valuenow="0"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                tabindex="0"
+                            ></div>
+                            <div
+                                class="bar"
+                                role="meter"
+                                aria-label="Interval Major Second"
+                                aria-valuenow="0"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                tabindex="0"
+                            ></div>
+                            <div
+                                class="bar"
+                                role="meter"
+                                aria-label="Interval Minor Third"
+                                aria-valuenow="0"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                tabindex="0"
+                            ></div>
+                            <div
+                                class="bar"
+                                role="meter"
+                                aria-label="Interval Major Third"
+                                aria-valuenow="0"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                tabindex="0"
+                            ></div>
+                            <div
+                                class="bar"
+                                role="meter"
+                                aria-label="Interval Perfect Fourth"
+                                aria-valuenow="0"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                tabindex="0"
+                            ></div>
+                            <div
+                                class="bar"
+                                role="meter"
+                                aria-label="Interval Tritone"
+                                aria-valuenow="0"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                tabindex="0"
+                            ></div>
+                            <div
+                                class="bar"
+                                role="meter"
+                                aria-label="Interval Perfect Fifth"
+                                aria-valuenow="0"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                tabindex="0"
+                            ></div>
+                            <div
+                                class="bar"
+                                role="meter"
+                                aria-label="Interval Minor Sixth"
+                                aria-valuenow="0"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                tabindex="0"
+                            ></div>
+                            <div
+                                class="bar"
+                                role="meter"
+                                aria-label="Interval Major Sixth"
+                                aria-valuenow="0"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                tabindex="0"
+                            ></div>
+                            <div
+                                class="bar"
+                                role="meter"
+                                aria-label="Interval Minor Seventh"
+                                aria-valuenow="0"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                tabindex="0"
+                            ></div>
+                            <div
+                                class="bar"
+                                role="meter"
+                                aria-label="Interval Major Seventh"
+                                aria-valuenow="0"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                tabindex="0"
+                            ></div>
                         </div>
                     </section>
                 </section>
@@ -209,7 +316,32 @@
 
             <aside id="hover-panel" class="hidden">
                 <section id="hover-content">
-                    <!-- Dynamically populated on hover -->
+                    <div id="hover-node" class="hidden">
+                        <h2 id="hover-node-id">Node: -</h2>
+                        <div class="metric">
+                            <label>Total Connections</label>
+                            <span id="hover-node-degree">-</span>
+                        </div>
+                    </div>
+                    <div id="hover-edge" class="hidden">
+                        <h2>Transition</h2>
+                        <div class="metric">
+                            <label>From</label>
+                            <span id="hover-edge-from">-</span>
+                        </div>
+                        <div class="metric">
+                            <label>To</label>
+                            <span id="hover-edge-to">-</span>
+                        </div>
+                        <div class="metric">
+                            <label>Interval</label>
+                            <span id="hover-edge-interval">-</span>
+                        </div>
+                        <div class="metric">
+                            <label>Frequency</label>
+                            <span id="hover-edge-weight">-</span>
+                        </div>
+                    </div>
                 </section>
             </aside>
         </div>

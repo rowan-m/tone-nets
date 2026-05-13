@@ -72,7 +72,10 @@ const init = async () => {
         // Populate metrics
         Object.keys(metricEls).forEach((key) => {
             if (key === 'intervalBars') return;
-            if (metricEls[key]) metricEls[key].innerText = summary[key];
+            const el = metricEls[key];
+            if (el && Object.hasOwn(summary, key)) {
+                el.innerText = summary[key];
+            }
         });
 
         // Render Interval Signature

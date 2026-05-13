@@ -17,77 +17,76 @@ export class Utils {
         'Major Seventh',
     ];
 
-    static INSTRUMENT_EMOJIS = {
+    static INSTRUMENT_EMOJIS = new Map([
         // Piano
-        0: '🎹',
+        [0, '🎹'],
         // Chromatic Percussion
-        8: '🔔',
+        [8, '🔔'],
         // Organ
-        16: '❇',
+        [16, '❇'],
         // Guitar
-        24: '🎸',
+        [24, '🎸'],
         // Bass
-        32: '🎸',
+        [32, '🎸'],
         // Strings
-        40: '🎻',
+        [40, '🎻'],
         // Ensemble
-        48: '🎻',
+        [48, '🎻'],
         // Brass
-        56: '🎺',
+        [56, '🎺'],
         // Reed
-        64: '🎷',
+        [64, '🎷'],
         // Pipe
-        72: '🎷',
+        [72, '🎷'],
         // Synth Lead
-        80: '⚡',
+        [80, '⚡'],
         // Synth Pad
-        88: '💠',
+        [88, '💠'],
         // Synth Effects
-        96: '✨',
+        [96, '✨'],
         // Ethnic
-        104: '🪕',
+        [104, '🪕'],
         // Percussive
-        112: '🥁',
+        [112, '🥁'],
         // Sound Effects
-        120: '🔈',
+        [120, '🔈'],
         // Drums (Channel 10 special)
-        drums: '🥁',
-    };
+        ['drums', '🥁'],
+    ]);
 
     static noteToSemitone(note) {
         if (NOTE_CACHE.has(note)) return NOTE_CACHE.get(note);
 
-        const pcMap = {
-            C: 0,
-            'B#': 0,
-            'C#': 1,
-            DB: 1,
-            D: 2,
-            'D#': 3,
-            EB: 3,
-            E: 4,
-            FB: 4,
-            F: 5,
-            'E#': 5,
-            'F#': 6,
-            GB: 6,
-            G: 7,
-            'G#': 8,
-            AB: 8,
-            A: 9,
-            'A#': 10,
-            BB: 10,
-            B: 11,
-            CB: 11,
-        };
+        const pcMap = new Map([
+            ['C', 0],
+            ['B#', 0],
+            ['C#', 1],
+            ['DB', 1],
+            ['D', 2],
+            ['D#', 3],
+            ['EB', 3],
+            ['E', 4],
+            ['FB', 4],
+            ['F', 5],
+            ['E#', 5],
+            ['F#', 6],
+            ['GB', 6],
+            ['G', 7],
+            ['G#', 8],
+            ['AB', 8],
+            ['A', 9],
+            ['A#', 10],
+            ['BB', 10],
+            ['B', 11],
+            ['CB', 11],
+        ]);
 
         const match = note.toUpperCase().match(/^([A-G][#B]?)(-?\d{1,2})?$/);
         let result = 0;
         if (match) {
             const pitchClassStr = match[1];
 
-            const val =
-                pcMap[pitchClassStr] !== undefined ? pcMap[pitchClassStr] : 0;
+            const val = pcMap.get(pitchClassStr) ?? 0;
             const oct = match[2] ? parseInt(match[2], 10) : 4;
             result = oct * 12 + val;
         }
@@ -129,8 +128,8 @@ export class Utils {
     }
 
     static getInstrumentEmoji(programNumber, isDrums = false) {
-        if (isDrums) return this.INSTRUMENT_EMOJIS['drums'];
+        if (isDrums) return this.INSTRUMENT_EMOJIS.get('drums');
         const familyIndex = Math.floor(programNumber / 8) * 8;
-        return this.INSTRUMENT_EMOJIS[familyIndex] || '🎵';
+        return this.INSTRUMENT_EMOJIS.get(familyIndex) || '🎵';
     }
 }

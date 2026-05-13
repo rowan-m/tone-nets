@@ -347,11 +347,22 @@ const init = async () => {
 
     // Setup Info Panel Toggle
     toggleInfo.addEventListener('click', () => {
-        infoPanel.classList.toggle('hidden');
+        const isHidden = infoPanel.classList.toggle('hidden');
+        toggleInfo.setAttribute('aria-expanded', !isHidden);
     });
 
     closeInfo.addEventListener('click', () => {
         infoPanel.classList.add('hidden');
+        toggleInfo.setAttribute('aria-expanded', 'false');
+    });
+
+    // Close info panel on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !infoPanel.classList.contains('hidden')) {
+            infoPanel.classList.add('hidden');
+            toggleInfo.setAttribute('aria-expanded', 'false');
+            toggleInfo.focus();
+        }
     });
 
     // Handle Example MIDI clicks

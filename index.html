@@ -69,7 +69,13 @@
                     <button id="restart-btn" class="btn" disabled>
                         <span aria-hidden="true">⏮️</span>Restart
                     </button>
-                    <button id="toggle-info" class="btn" disabled>
+                    <button
+                        id="toggle-info"
+                        class="btn"
+                        disabled
+                        aria-expanded="false"
+                        aria-controls="info-panel"
+                    >
                         <span aria-hidden="true">📊</span>Stats
                     </button>
                 </div>
@@ -132,24 +138,30 @@
             </main>
 
             <footer class="app-footer">
-                <a href="https://github.com/rowan-m/tone-nets" _target="blank"
+                <a
+                    href="https://github.com/rowan-m/tone-nets"
+                    target="_blank"
+                    rel="noopener"
                     ><span aria-hidden="true">🧑‍💻</span> Code</a
                 >
                 <a
                     href="https://rowan.fyi"
-                    _target="blank"
+                    target="_blank"
+                    rel="noopener"
                     aria-label="Website rowan.fyi"
                     ><span aria-hidden="true">🌐</span> rowan.fyi</a
                 >
                 <a
                     href="https://bsky.app/profile/rowan.fyi"
-                    _target="blank"
+                    target="_blank"
+                    rel="noopener"
                     aria-label="Bluesky profile rowan.fyi"
                     ><span aria-hidden="true">🦋</span> rowan.fyi</a
                 >
                 <a
                     href="https://mastodon.social/@rowan_m"
-                    _target="blank"
+                    target="_blank"
+                    rel="noopener"
                     aria-label="Mastodon profile rowan_m@mastodon.social"
                     ><span aria-hidden="true">🦣</span>rowan_m</a
                 >

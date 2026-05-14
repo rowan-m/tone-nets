@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js';
+import { ArcballControls } from 'three/examples/jsm/controls/ArcballControls.js';
 import createLayout from 'ngraph.forcelayout';
 import {
     EffectComposer,
@@ -123,14 +123,13 @@ export class NetworkVisualizer {
         this.camera.position.set(0, 800, 800);
         this.camera.lookAt(0, 0, 0);
 
-        this.controls = new TrackballControls(
+        this.controls = new ArcballControls(
             this.camera,
             this.renderer.domElement,
+            this.scene
         );
-        this.controls.rotateSpeed = 4.0;
-        this.controls.zoomSpeed = 1.2;
-        this.controls.panSpeed = 0.8;
-        this.controls.dynamicDampingFactor = 0.1;
+        this.controls.enableDamping = true;
+        this.controls.dampingFactor = 0.05;
         this.controls.addEventListener('start', () => this.stopAutoTour());
 
         // Lighting
@@ -570,13 +569,15 @@ export class NetworkVisualizer {
         this.camera.zoom = 1; // Reset zoom from any previous user interaction
         this.camera.updateProjectionMatrix();
 
-        // Set camera to an isometric angle
-        const isoDist = radius * 3; // Move far enough back to avoid near-plane clipping
-        // For Y-up, an isometric view typically comes from above and to the side
+        // Set camera to a top-down view
+        const viewDist = radius * 3;
+        
+        // ArcballControls handles quaternion math and doesn't suffer from the same 
+        // gimbal lock issues as TrackballControls or OrbitControls.
         this.camera.position.set(
-            center.x + isoDist,
-            center.y + isoDist,
-            center.z + isoDist,
+            center.x,
+            center.y + viewDist,
+            center.z 
         );
         this.camera.lookAt(center);
 

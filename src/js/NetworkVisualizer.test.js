@@ -491,28 +491,27 @@ describe('NetworkVisualizer', () => {
             expect(visualizer.autoTour).toBe(false);
         });
 
-        it('should have variable rotational speed (theta) over time', () => {
+        it('should have variable rotational movement over time', () => {
             visualizer.graphCenter = new THREE.Vector3(0, 0, 0);
             visualizer.graphRadius = 100;
             visualizer.startAutoTour();
 
             // Establish baseline and first measurement
-            visualizer.animate(1000); // delta 0
-            const thetaStart1 = visualizer.currentTourSpherical.theta;
-            visualizer.animate(2000); // delta 1
-            const thetaEnd1 = visualizer.currentTourSpherical.theta;
-            const diff1 = thetaStart1 - thetaEnd1;
+            visualizer.animate(1000);
+            const pos1 = visualizer.camera.position.clone();
+            visualizer.animate(2000);
+            const pos2 = visualizer.camera.position.clone();
+            const dist1 = pos1.distanceTo(pos2);
 
             // Animate much later and second measurement
-            visualizer.animate(11000); // delta 9
-            const thetaStart2 = visualizer.currentTourSpherical.theta;
-            visualizer.animate(12000); // delta 1
-            const thetaEnd2 = visualizer.currentTourSpherical.theta;
-            const diff2 = thetaStart2 - thetaEnd2;
+            visualizer.animate(11000);
+            const pos3 = visualizer.camera.position.clone();
+            visualizer.animate(12000);
+            const pos4 = visualizer.camera.position.clone();
+            const dist2 = pos3.distanceTo(pos4);
 
-            // In the current implementation, both diff1 and diff2 should be 0.4
-            // So this test should FAIL now.
-            expect(diff1).not.toBeCloseTo(diff2, 5);
+            // Verify that movement speed varies
+            expect(dist1).not.toBeCloseTo(dist2, 5);
         });
     });
 });

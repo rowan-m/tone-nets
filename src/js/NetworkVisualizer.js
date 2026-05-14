@@ -53,6 +53,10 @@ export class NetworkVisualizer {
         this.isPaused = false;
         this.autoTour = false;
         this.autoTourTime = 0;
+        this.tourCurrentVelocity = new THREE.Vector3();
+        this.tourTargetVelocity = new THREE.Vector3();
+        this.tourRotation = new THREE.Quaternion();
+        this.tourSpeedChangeTimer = 0;
         this.scene.add(this.graphGroup);
 
         this._lastFrameTime = 0;
@@ -722,62 +726,71 @@ export class NetworkVisualizer {
 
         this._updateEmojis(delta);
 
-        if (this.autoTour && this.graphCenter && this.currentTourSpherical) {
+        if (this.autoTour && this.graphCenter) {
             this.autoTourTime += delta;
+            this.tourSpeedChangeTimer -= delta;
 
-            // Use multiple sine waves to create complex, non-repeating variation
-            const slowVar = Math.sin(this.autoTourTime * 0.1);
-            const fastVar = Math.sin(this.autoTourTime * 0.5);
+            // Determine if it's time to pick new random rotational velocities for each axis
+            if (this.tourSpeedChangeTimer <= 0) {
+                // Random target velocities for pitch, yaw, and roll (radians per second)
+                // Keep speeds gentle (e.g., max 0.2 rad/s)
+                this.tourTargetVelocity.set(
+                    Math.random() * 0.4 - 0.2, // X axis (Pitch)
+                    Math.random() * 0.4 - 0.2, // Y axis (Yaw)
+                    Math.random() * 0.4 - 0.2, // Z axis (Roll)
+                );
 
-            // Periodically vary the rotational speed (theta)
-            // This ensures it repeatedly fully loops around but with smooth variations in pace
-            const baseThetaSpeed = 0.4;
-            const thetaSpeed = baseThetaSpeed + slowVar * 0.15 + fastVar * 0.05;
-            this.currentTourSpherical.theta -= delta * thetaSpeed;
+                // Set a timer for the next change (minimum 8 seconds, up to 12 seconds)
+                this.tourSpeedChangeTimer = 8.0 + Math.random() * 4.0;
+            }
 
-            // Periodically vary the vertical oscillation (phi)
-            // Varying amplitude and frequency provides more organic movement than a fixed sine
-            const phiAmplitude =
-                Math.PI / 3 +
-                Math.cos(this.autoTourTime * 0.15) * (Math.PI / 8);
-            const phiFrequency = 0.3 + Math.sin(this.autoTourTime * 0.1) * 0.1;
-            const targetPhi =
-                Math.PI / 2 +
-                Math.sin(this.autoTourTime * phiFrequency) * phiAmplitude;
+            // Smoothly interpolate current velocity towards target velocity
+            this.tourCurrentVelocity.lerp(this.tourTargetVelocity, delta * 0.5);
 
-            this.currentTourSpherical.phi +=
-                (targetPhi - this.currentTourSpherical.phi) * delta * 1.2;
+            // Create a quaternion representing the rotation for this specific frame
+            const frameRotation = new THREE.Quaternion().setFromEuler(
+                new THREE.Euler(
+                    this.tourCurrentVelocity.x * delta,
+                    this.tourCurrentVelocity.y * delta,
+                    this.tourCurrentVelocity.z * delta,
+                    'XYZ',
+                ),
+            );
 
-            // Variate the distance slightly for a "breathing" effect
-            const targetDist = this.graphRadius * (3 + slowVar * 0.5);
-            this.currentTourSpherical.radius +=
-                (targetDist - this.currentTourSpherical.radius) * delta * 1.5;
+            // Accumulate the rotation
+            this.tourRotation.multiply(frameRotation);
 
-            // Smoothly interpolate target back to the center of the graph
+            // Base radius for the orbit
+            const radius = this.graphRadius * 3;
+
+            // Start with a base vector pointing straight out, then rotate it
+            const offset = new THREE.Vector3(0, 0, radius).applyQuaternion(
+                this.tourRotation,
+            );
+
+            // Calculate final target position
+            this._scratchVec3_1.copy(this.graphCenter).add(offset);
+
+            // Smoothly interpolate target back to center
             this.currentTourTarget.lerp(this.graphCenter, delta * 2.0);
             this.controls.target.copy(this.currentTourTarget);
 
-            // Interpolate zoom
+            // Interpolate zoom and camera position
             this.camera.zoom += (1 - this.camera.zoom) * delta * 2.0;
             this.camera.updateProjectionMatrix();
 
-            // Prevent phi from going exactly to 0 or PI to avoid gimbal lock/flipping
-            this.currentTourSpherical.phi = Math.max(
-                0.01,
-                Math.min(Math.PI - 0.01, this.currentTourSpherical.phi),
-            );
+            // Lerp camera position for absolute smoothness
+            this.camera.position.lerp(this._scratchVec3_1, delta * 1.5);
 
-            // Apply the updated spherical coordinates
-            const offset = new THREE.Vector3().setFromSpherical(
-                this.currentTourSpherical,
+            // Crucial: ArcballControls requires us to update the camera's up vector based on the rotation
+            // to prevent the view from "twisting" relative to the controls.
+            const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(
+                this.tourRotation,
             );
-            this.camera.position.copy(this.currentTourTarget).add(offset);
+            this.camera.up.copy(upVector);
 
-            // For TrackballControls, we just ensure it looks at the target
-            // It will manage its own up vector based on the drag history
             this.camera.lookAt(this.currentTourTarget);
         }
-
         this.controls.update();
         this.composer.render();
     }
@@ -957,15 +970,24 @@ export class NetworkVisualizer {
     startAutoTour() {
         this.autoTour = true;
         this.autoTourTime = 0;
+        this.tourCurrentVelocity.set(0, 0, 0);
+        this.tourTargetVelocity.set(0, 0, 0);
+        this.tourSpeedChangeTimer = 0; // Trigger immediately
 
         // Capture current state to transition smoothly
         this.currentTourTarget = this.controls.target.clone();
+
+        // Initialize the rotation quaternion based on current camera offset
         const offset = new THREE.Vector3().subVectors(
             this.camera.position,
             this.currentTourTarget,
         );
-        this.currentTourSpherical = new THREE.Spherical().setFromVector3(
-            offset,
+
+        // We calculate a base rotation. Assuming default is looking down Z.
+        const defaultLook = new THREE.Vector3(0, 0, 1);
+        this.tourRotation.setFromUnitVectors(
+            defaultLook,
+            offset.clone().normalize(),
         );
     }
 

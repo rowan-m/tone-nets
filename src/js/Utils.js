@@ -96,23 +96,24 @@ export class Utils {
         return result;
     }
 
+    static NOTE_NAMES = [
+        'C',
+        'C#',
+        'D',
+        'D#',
+        'E',
+        'F',
+        'F#',
+        'G',
+        'G#',
+        'A',
+        'A#',
+        'B',
+    ];
+
     static midiNoteToName(midiNote) {
-        const names = [
-            'C',
-            'C#',
-            'D',
-            'D#',
-            'E',
-            'F',
-            'F#',
-            'G',
-            'G#',
-            'A',
-            'A#',
-            'B',
-        ];
         const octave = Math.floor(midiNote / 12) - 1;
-        const name = names[midiNote % 12];
+        const name = this.NOTE_NAMES[midiNote % 12];
         return `${name}${octave}`;
     }
 

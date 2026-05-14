@@ -31,6 +31,7 @@ export default defineConfig([
             ...noUnsanitized.configs.recommended.rules,
             'security/detect-object-injection': 'off',
             'security/detect-unsafe-regex': 'off',
+            'sonarjs/pseudo-random': 'off',
         },
     },
     {

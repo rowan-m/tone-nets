@@ -8,7 +8,6 @@ import { NetworkVisualizer } from './NetworkVisualizer.js';
 // --- Mocks ---
 // ... (keep other mocks intact)
 
-
 const mockContainer = {
     appendChild: vi.fn(),
     clientWidth: 1000,

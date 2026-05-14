@@ -739,7 +739,8 @@ export class NetworkVisualizer {
             // Periodically vary the vertical oscillation (phi)
             // Varying amplitude and frequency provides more organic movement than a fixed sine
             const phiAmplitude =
-                Math.PI / 3 + Math.cos(this.autoTourTime * 0.15) * (Math.PI / 8);
+                Math.PI / 3 +
+                Math.cos(this.autoTourTime * 0.15) * (Math.PI / 8);
             const phiFrequency = 0.3 + Math.sin(this.autoTourTime * 0.1) * 0.1;
             const targetPhi =
                 Math.PI / 2 +
@@ -772,7 +773,7 @@ export class NetworkVisualizer {
                 this.currentTourSpherical,
             );
             this.camera.position.copy(this.currentTourTarget).add(offset);
-            
+
             // For TrackballControls, we just ensure it looks at the target
             // It will manage its own up vector based on the drag history
             this.camera.lookAt(this.currentTourTarget);

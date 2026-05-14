@@ -13,6 +13,7 @@ export class MinHeap {
         }
     }
     pop() {
+        if (this.data.length === 0) return undefined;
         if (this.data.length === 1) return this.data.pop();
         const top = this.data[0];
         this.data[0] = this.data.pop();

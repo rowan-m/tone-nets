@@ -29,6 +29,10 @@ Object.defineProperty(global.navigator, 'mediaSession', {
     writable: true,
 });
 
+// Helper to capture events
+const synthEvents = {};
+const sequencerEvents = {};
+
 // We must mock processorUrl since it's an import with a query parameter (?url)
 vi.mock('spessasynth_lib/dist/spessasynth_processor.min.js?url', () => {
     return { default: 'mock-processor-url' };
@@ -42,7 +46,9 @@ vi.mock('spessasynth_lib', () => {
                 addSoundBank: vi.fn().mockResolvedValue(),
             },
             eventHandler: {
-                addEvent: vi.fn(),
+                addEvent: vi.fn((name, id, cb) => {
+                    synthEvents[name] = cb;
+                }),
             },
             connect: vi.fn(),
             noteOn: vi.fn(),
@@ -64,7 +70,9 @@ vi.mock('spessasynth_lib', () => {
             playbackRate: 1,
             loopCount: 0,
             eventHandler: {
-                addEvent: vi.fn(),
+                addEvent: vi.fn((name, id, cb) => {
+                    sequencerEvents[name] = cb;
+                }),
             },
         };
     });
@@ -110,10 +118,18 @@ describe('MidiPlayer', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        for (const key in synthEvents) delete synthEvents[key];
+        for (const key in sequencerEvents) delete sequencerEvents[key];
         player = new MidiPlayer();
     });
 
     describe('Initialization', () => {
+        it('should load soundfont and set buffer', async () => {
+            await player.loadSoundfont();
+            expect(player.sf2Buffer).toBeDefined();
+            expect(player.sf2Buffer.byteLength).toBe(8);
+        });
+
         it('should load soundfont and initialize synth', async () => {
             player.sf2Buffer = new ArrayBuffer(8);
             await player.initialize();
@@ -123,6 +139,33 @@ describe('MidiPlayer', () => {
             expect(player.sf2Buffer).toBeDefined();
         });
 
+        it('should resume raw context if suspended', async () => {
+            const { context } = await import('tone');
+            context.rawContext.state = 'suspended';
+            player.sf2Buffer = new ArrayBuffer(8);
+            await player.initialize();
+            expect(context.rawContext.resume).toHaveBeenCalled();
+            context.rawContext.state = 'running'; // Reset for other tests
+        });
+
+        it('should fetch soundfont if buffer is missing', async () => {
+            const loadSpy = vi
+                .spyOn(player, 'loadSoundfont')
+                .mockResolvedValue();
+            await player.initialize();
+            expect(loadSpy).toHaveBeenCalled();
+        });
+
+        it('should throw error if soundfont fails to load', async () => {
+            global.fetch.mockResolvedValueOnce({
+                ok: false,
+                statusText: 'Not Found',
+            });
+            await expect(player.loadSoundfont()).rejects.toThrow(
+                'Failed to load soundfont: Not Found',
+            );
+        });
+
         it('should not re-initialize if synth already exists', async () => {
             player.sf2Buffer = new ArrayBuffer(8);
             await player.initialize();
@@ -130,6 +173,129 @@ describe('MidiPlayer', () => {
 
             await player.initialize();
             expect(player.synth).toBe(firstSynth);
+        });
+
+        it('should handle synth events correctly', async () => {
+            player.sf2Buffer = new ArrayBuffer(8);
+            const onNotePlay = vi.fn();
+            const onNoteRelease = vi.fn();
+            player.onNotePlay = onNotePlay;
+            player.onNoteRelease = onNoteRelease;
+
+            await player.initialize();
+
+            // Trigger noteOn
+            synthEvents['noteOn']({ midiNote: 60, channel: 0 });
+            expect(onNotePlay).toHaveBeenCalledWith('C4', undefined, 0, false);
+            expect(player.lastNotePerChannel.get(0)).toBe('C4');
+
+            // Trigger noteOff
+            synthEvents['noteOff']({ midiNote: 60, channel: 0 });
+            expect(onNoteRelease).toHaveBeenCalledWith('C4', undefined);
+
+            // Trigger programChange
+            synthEvents['programChange']({ channel: 1, program: 12 });
+            expect(player.channelInstruments[1]).toBe(12);
+        });
+
+        it('should handle noteOff without matching noteOn', async () => {
+            player.sf2Buffer = new ArrayBuffer(8);
+            const onNoteRelease = vi.fn();
+            player.onNoteRelease = onNoteRelease;
+            await player.initialize();
+
+            synthEvents['noteOff']({ midiNote: 60, channel: 0 });
+            expect(onNoteRelease).toHaveBeenCalledWith('C4', undefined);
+        });
+
+        it('should handle drum channel correctly in noteOn', async () => {
+            player.sf2Buffer = new ArrayBuffer(8);
+            const onNotePlay = vi.fn();
+            player.onNotePlay = onNotePlay;
+            await player.initialize();
+
+            synthEvents['noteOn']({ midiNote: 36, channel: 9 }); // Channel 10 is index 9
+            expect(onNotePlay).toHaveBeenCalledWith('C2', undefined, 0, true);
+        });
+
+        it('should handle multiple note events on same channel', async () => {
+            player.sf2Buffer = new ArrayBuffer(8);
+            await player.initialize();
+
+            // Note On C4
+            synthEvents['noteOn']({ midiNote: 60, channel: 0 });
+            // Note On E4 (previous was C4)
+            synthEvents['noteOn']({ midiNote: 64, channel: 0 });
+
+            expect(player.lastNotePerChannel.get(0)).toBe('E4');
+
+            // Check activeNotes stack
+            const noteKeyE = '0-64';
+            expect(player.activeNotes.get(noteKeyE)).toEqual(['C4']);
+        });
+
+        it('should handle songEnded and loop if playing', async () => {
+            player.sf2Buffer = new ArrayBuffer(8);
+            const onStop = vi.fn();
+            player.onStop = onStop;
+            await player.initialize();
+            player.isPlaying = true;
+
+            sequencerEvents['songEnded']();
+
+            expect(onStop).toHaveBeenCalled();
+            expect(player.sequencer.currentTime).toBe(0);
+            expect(player.sequencer.play).toHaveBeenCalled();
+        });
+    });
+
+    describe('Playback', () => {
+        beforeEach(async () => {
+            player.sf2Buffer = new ArrayBuffer(8);
+            await player.initialize();
+        });
+
+        it('should start playback when play is called with autoplay=true', async () => {
+            await player.play(new ArrayBuffer(8), true);
+
+            expect(player.sequencer.loadNewSongList).toHaveBeenCalled();
+            expect(player.sequencer.play).toHaveBeenCalled();
+            expect(player.isPlaying).toBe(true);
+            expect(mockAudioInstance.play).toHaveBeenCalled();
+        });
+
+        it('should handle dummy audio play failure in play()', async () => {
+            const consoleSpy = vi
+                .spyOn(console, 'warn')
+                .mockImplementation(() => {});
+            mockAudioInstance.play.mockRejectedValueOnce(
+                new Error('Audio Fail'),
+            );
+
+            await player.play(new ArrayBuffer(8), true);
+
+            // Wait for promise microtasks
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(consoleSpy).toHaveBeenCalledWith(
+                'Dummy audio play failed:',
+                expect.any(Error),
+            );
+            consoleSpy.mockRestore();
+        });
+
+        it('should not start playback when play is called with autoplay=false', async () => {
+            await player.play(new ArrayBuffer(8), false);
+
+            expect(player.sequencer.play).not.toHaveBeenCalled();
+            expect(player.sequencer.pause).toHaveBeenCalled();
+            expect(player.isPlaying).toBe(false);
+        });
+
+        it('should stop existing playback when play is called', async () => {
+            const stopSpy = vi.spyOn(player, 'stop');
+            await player.play(new ArrayBuffer(8));
+            expect(stopSpy).toHaveBeenCalled();
         });
     });
 
@@ -154,6 +320,55 @@ describe('MidiPlayer', () => {
                     position: 10,
                 });
             }
+        });
+
+        it('should update duration if difference is significant', () => {
+            player.duration = 42;
+            player.sequencer = {
+                duration: 43,
+                playbackRate: 1,
+                currentTime: 10,
+            };
+
+            player.updateMediaSessionPosition();
+            expect(player.duration).toBe(43);
+        });
+
+        it('should not update duration if difference is small', () => {
+            player.duration = 42;
+            player.sequencer = {
+                duration: 42.05,
+                playbackRate: 1,
+                currentTime: 10,
+            };
+
+            player.updateMediaSessionPosition();
+            expect(player.duration).toBe(42);
+        });
+
+        it('should update position state periodically when playing', () => {
+            vi.useFakeTimers();
+            player.sequencer = {
+                duration: 100,
+                playbackRate: 1,
+                currentTime: 10,
+            };
+            player.isPlaying = true;
+            const updateSpy = vi.spyOn(player, 'updateMediaSessionPosition');
+
+            player._startMediaSessionInterval();
+
+            vi.advanceTimersByTime(1000);
+            expect(updateSpy).toHaveBeenCalledTimes(1);
+
+            vi.advanceTimersByTime(1000);
+            expect(updateSpy).toHaveBeenCalledTimes(2);
+
+            player.isPlaying = false;
+            vi.advanceTimersByTime(1000);
+            expect(updateSpy).toHaveBeenCalledTimes(2); // Should have stopped
+
+            vi.useRealTimers();
         });
 
         it('should not overwrite duration with 0 if sequencer duration is not yet available', () => {
@@ -205,12 +420,11 @@ describe('MidiPlayer', () => {
                 currentTime: 10,
             };
             const mockError = new Error('Test Error');
-            vi.spyOn(
-                navigator.mediaSession,
-                'setPositionState',
-            ).mockImplementation(() => {
-                throw mockError;
-            });
+            const setPositionStateSpy = vi
+                .spyOn(navigator.mediaSession, 'setPositionState')
+                .mockImplementation(() => {
+                    throw mockError;
+                });
             const consoleSpy = vi
                 .spyOn(console, 'warn')
                 .mockImplementation(() => {});
@@ -222,6 +436,7 @@ describe('MidiPlayer', () => {
                 mockError,
             );
             consoleSpy.mockRestore();
+            setPositionStateSpy.mockRestore();
         });
     });
 
@@ -233,13 +448,26 @@ describe('MidiPlayer', () => {
         });
 
         it('should pause playback correctly', () => {
+            vi.useFakeTimers();
             player.pause();
             expect(player.sequencer.pause).toHaveBeenCalled();
             expect(mockAudioInstance.pause).toHaveBeenCalled();
             expect(player.isPlaying).toBe(false);
+
+            // Trigger timeout
+            vi.advanceTimersByTime(150);
+            expect(player.synth.stopAll).toHaveBeenCalled();
+
             if ('mediaSession' in navigator) {
                 expect(navigator.mediaSession.playbackState).toBe('paused');
             }
+            vi.useRealTimers();
+        });
+
+        it('should not pause if not playing', () => {
+            player.isPlaying = false;
+            player.pause();
+            expect(player.sequencer.pause).not.toHaveBeenCalled();
         });
 
         it('should resume playback correctly', () => {
@@ -253,15 +481,53 @@ describe('MidiPlayer', () => {
             }
         });
 
+        it('should not resume if already playing', () => {
+            player.isPlaying = true;
+            player.resume();
+            expect(player.sequencer.play).not.toHaveBeenCalled();
+        });
+
+        it('should handle dummy audio play failure in resume()', async () => {
+            player.isPlaying = false;
+            const consoleSpy = vi
+                .spyOn(console, 'warn')
+                .mockImplementation(() => {});
+            mockAudioInstance.play.mockRejectedValueOnce(
+                new Error('Audio Fail'),
+            );
+
+            player.resume();
+
+            // Wait for promise microtasks
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(consoleSpy).toHaveBeenCalledWith(
+                'Dummy audio play failed:',
+                expect.any(Error),
+            );
+            consoleSpy.mockRestore();
+        });
+
         it('should stop playback and reset state', () => {
+            vi.useFakeTimers();
+            const onStopCb = vi.fn();
+            player.onStop = onStopCb;
+
             player.stop();
             expect(player.sequencer.pause).toHaveBeenCalled();
             expect(player.sequencer.currentTime).toBe(0);
             expect(mockAudioInstance.pause).toHaveBeenCalled();
             expect(player.isPlaying).toBe(false);
+            expect(onStopCb).toHaveBeenCalled();
+
+            // Trigger timeout
+            vi.advanceTimersByTime(150);
+            expect(player.synth.stopAll).toHaveBeenCalled();
+
             if ('mediaSession' in navigator) {
                 expect(navigator.mediaSession.playbackState).toBe('none');
             }
+            vi.useRealTimers();
         });
 
         it('should restart playback', () => {
@@ -275,6 +541,11 @@ describe('MidiPlayer', () => {
             expect(player.synth.stopAll).toHaveBeenCalled();
             expect(onStopCb).toHaveBeenCalled();
             expect(player.isPlaying).toBe(true); // Should maintain playing state
+        });
+
+        it('should handle restart without sequencer', () => {
+            player.sequencer = null;
+            expect(() => player.restart()).not.toThrow();
         });
     });
 

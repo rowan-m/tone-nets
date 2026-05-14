@@ -187,6 +187,7 @@ export class NetworkVisualizer {
     }
 
     clear() {
+        this.stopAutoTour();
         const edgeMats = new Set(this.edgeMaterialPool.values());
         const coneMats = new Set(this.coneMaterialPool.values());
         const nodeMats = new Set(this.nodeMaterialCache.values());

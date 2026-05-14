@@ -491,6 +491,13 @@ describe('NetworkVisualizer', () => {
             expect(visualizer.autoTour).toBe(false);
         });
 
+        it('should stop autoTour when clear() is called', () => {
+            visualizer.startAutoTour();
+            expect(visualizer.autoTour).toBe(true);
+            visualizer.clear();
+            expect(visualizer.autoTour).toBe(false);
+        });
+
         it('should have variable rotational movement over time', () => {
             visualizer.graphCenter = new THREE.Vector3(0, 0, 0);
             visualizer.graphRadius = 100;

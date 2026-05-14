@@ -36,31 +36,33 @@ export class NetworkParser {
     }
 
     static calculateEntropy(graph, n) {
-        let totalEntropy = 0;
-        graph.forEachNode((node) => {
-            let nodeOutWeight = 0;
-            const outWeights = [];
-            graph.forEachLinkedNode(
-                node.id,
-                (linkedNode, link) => {
-                    nodeOutWeight += link.data.weight;
-                    outWeights.push(link.data.weight);
-                },
-                true,
-            ); // Pass oriented=true for performance
+        const nodeStats = new Map();
 
-            if (nodeOutWeight > 0) {
-                let nodeEntropy = 0;
-                outWeights.forEach((w) => {
-                    const p = w / nodeOutWeight;
-                    if (p > 0) {
-                        nodeEntropy -= p * Math.log2(p);
-                    }
-                });
-                totalEntropy += nodeEntropy;
+        // Optimize: Iterate all links once instead of nested forEachNode + forEachLinkedNode
+        // to reduce ngraph.graph API allocation overhead
+        graph.forEachLink((link) => {
+            let stats = nodeStats.get(link.fromId);
+            if (!stats) {
+                stats = { weight: 0, weights: [] };
+                nodeStats.set(link.fromId, stats);
             }
+            stats.weight += link.data.weight;
+            stats.weights.push(link.data.weight);
         });
-        return (totalEntropy / n).toFixed(4);
+
+        let totalEntropy = 0;
+        nodeStats.forEach((stats) => {
+            let nodeEntropy = 0;
+            stats.weights.forEach((w) => {
+                const p = w / stats.weight;
+                if (p > 0) {
+                    nodeEntropy -= p * Math.log2(p);
+                }
+            });
+            totalEntropy += nodeEntropy;
+        });
+
+        return n > 0 ? (totalEntropy / n).toFixed(4) : '0.0000';
     }
 
     static _sumEfficiencyForNode(
@@ -90,10 +92,22 @@ export class NetworkParser {
             nodes.push(node.id);
         });
 
+        // Optimize: Precompute adjacency list for O(1) neighbor lookups
+        // to avoid expensive ngraph.graph.forEachLinkedNode calls inside V^2 loops
+        const adj = new Map();
+        graph.forEachLink((link) => {
+            let list = adj.get(link.fromId);
+            if (!list) {
+                list = [];
+                adj.set(link.fromId, list);
+            }
+            list.push({ to: link.toId, weight: link.data.weight });
+        });
+
         for (let i = 0; i < nodes.length; i++) {
             const startNode = nodes[i];
-            const uDistances = this.bfsDistances(graph, startNode);
-            const wDistances = this.dijkstraDistances(graph, startNode);
+            const uDistances = this.bfsDistances(adj, startNode);
+            const wDistances = this.dijkstraDistances(adj, startNode);
 
             this._sumEfficiencyForNode(
                 nodes,
@@ -311,7 +325,7 @@ export class NetworkParser {
     /**
      * Helper for Breadth-First Search distances (Unweighted)
      */
-    static bfsDistances(graph, startNodeId) {
+    static bfsDistances(adj, startNodeId) {
         const distances = {};
         distances[startNodeId] = 0;
         const queue = [startNodeId];
@@ -319,17 +333,16 @@ export class NetworkParser {
 
         while (head < queue.length) {
             const u = queue[head++];
-            graph.forEachLinkedNode(
-                u,
-                (linkedNode) => {
-                    const v = linkedNode.id;
-                    if (distances[v] === undefined) {
-                        distances[v] = distances[u] + 1;
-                        queue.push(v);
-                    }
-                },
-                true,
-            ); // Pass oriented=true for performance
+            const neighbors = adj.get(u);
+            if (!neighbors) continue;
+
+            for (let i = 0; i < neighbors.length; i++) {
+                const v = neighbors[i].to;
+                if (distances[v] === undefined) {
+                    distances[v] = distances[u] + 1;
+                    queue.push(v);
+                }
+            }
         }
         return distances;
     }
@@ -338,7 +351,7 @@ export class NetworkParser {
      * Helper for Dijkstra's distances (Weighted)
      * Uses edge weights as cost.
      */
-    static dijkstraDistances(graph, startNodeId) {
+    static dijkstraDistances(adj, startNodeId) {
         const distances = {};
         const visited = new Set();
         const pq = new MinHeap(); // MinHeap of [nodeId, distance]
@@ -352,20 +365,19 @@ export class NetworkParser {
             if (visited.has(u)) continue;
             visited.add(u);
 
-            graph.forEachLinkedNode(
-                u,
-                (linkedNode, link) => {
-                    const v = linkedNode.id;
-                    const weight = link.data.weight || 1;
-                    const alt = d + 1 / weight;
+            const neighbors = adj.get(u);
+            if (!neighbors) continue;
 
-                    if (distances[v] === undefined || alt < distances[v]) {
-                        distances[v] = alt;
-                        pq.push([v, alt]);
-                    }
-                },
-                true,
-            ); // Pass oriented=true for performance
+            for (let i = 0; i < neighbors.length; i++) {
+                const v = neighbors[i].to;
+                const weight = neighbors[i].weight || 1;
+                const alt = d + 1 / weight;
+
+                if (distances[v] === undefined || alt < distances[v]) {
+                    distances[v] = alt;
+                    pq.push([v, alt]);
+                }
+            }
         }
         return distances;
     }

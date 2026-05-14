@@ -126,8 +126,10 @@ export class NetworkVisualizer {
         this.controls = new ArcballControls(
             this.camera,
             this.renderer.domElement,
-            this.scene
         );
+        if (this.controls.setGizmosVisible) {
+            this.controls.setGizmosVisible(false);
+        }
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
         this.controls.addEventListener('start', () => this.stopAutoTour());
@@ -569,16 +571,12 @@ export class NetworkVisualizer {
         this.camera.zoom = 1; // Reset zoom from any previous user interaction
         this.camera.updateProjectionMatrix();
 
-        // Set camera to a top-down view
+        // Set camera to a top-down view (looking down the Z axis at the XY plane)
+        // Since ngraph layout uses X and Y, and we map degree to Z,
+        // looking down Z provides the clearest 2D view of the network structure.
         const viewDist = radius * 3;
-        
-        // ArcballControls handles quaternion math and doesn't suffer from the same 
-        // gimbal lock issues as TrackballControls or OrbitControls.
-        this.camera.position.set(
-            center.x,
-            center.y + viewDist,
-            center.z 
-        );
+
+        this.camera.position.set(center.x, center.y, center.z + viewDist);
         this.camera.lookAt(center);
 
         this.controls.target.copy(center);

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js';
 import createLayout from 'ngraph.forcelayout';
 import {
     EffectComposer,
@@ -119,16 +119,18 @@ export class NetworkVisualizer {
 
         // Initial dummy camera setup for the empty scene.
         // This will be completely overridden by fitCameraToGraph() once a MIDI is loaded.
-        this.camera.up.set(0, 0, 1);
-        this.camera.position.set(0, -800, 800);
+        this.camera.up.set(0, 1, 0); // Y-up
+        this.camera.position.set(0, 800, 800);
         this.camera.lookAt(0, 0, 0);
 
-        this.controls = new OrbitControls(
+        this.controls = new TrackballControls(
             this.camera,
             this.renderer.domElement,
         );
-        this.controls.enableDamping = true;
-        this.controls.dampingFactor = 0.05;
+        this.controls.rotateSpeed = 4.0;
+        this.controls.zoomSpeed = 1.2;
+        this.controls.panSpeed = 0.8;
+        this.controls.dynamicDampingFactor = 0.1;
         this.controls.addEventListener('start', () => this.stopAutoTour());
 
         // Lighting
@@ -570,9 +572,10 @@ export class NetworkVisualizer {
 
         // Set camera to an isometric angle
         const isoDist = radius * 3; // Move far enough back to avoid near-plane clipping
+        // For Y-up, an isometric view typically comes from above and to the side
         this.camera.position.set(
             center.x + isoDist,
-            center.y - isoDist,
+            center.y + isoDist,
             center.z + isoDist,
         );
         this.camera.lookAt(center);
@@ -722,28 +725,41 @@ export class NetworkVisualizer {
 
         if (this.autoTour && this.graphCenter && this.currentTourSpherical) {
             this.autoTourTime += delta;
-            const speed = 0.4;
-            const targetDist = this.graphRadius * 3;
+
+            // Use multiple sine waves to create complex, non-repeating variation
+            const slowVar = Math.sin(this.autoTourTime * 0.1);
+            const fastVar = Math.sin(this.autoTourTime * 0.5);
+
+            // Periodically vary the rotational speed (theta)
+            // This ensures it repeatedly fully loops around but with smooth variations in pace
+            const baseThetaSpeed = 0.4;
+            const thetaSpeed = baseThetaSpeed + slowVar * 0.15 + fastVar * 0.05;
+            this.currentTourSpherical.theta -= delta * thetaSpeed;
+
+            // Periodically vary the vertical oscillation (phi)
+            // Varying amplitude and frequency provides more organic movement than a fixed sine
+            const phiAmplitude =
+                Math.PI / 3 + Math.cos(this.autoTourTime * 0.15) * (Math.PI / 8);
+            const phiFrequency = 0.3 + Math.sin(this.autoTourTime * 0.1) * 0.1;
+            const targetPhi =
+                Math.PI / 2 +
+                Math.sin(this.autoTourTime * phiFrequency) * phiAmplitude;
+
+            this.currentTourSpherical.phi +=
+                (targetPhi - this.currentTourSpherical.phi) * delta * 1.2;
+
+            // Variate the distance slightly for a "breathing" effect
+            const targetDist = this.graphRadius * (3 + slowVar * 0.5);
+            this.currentTourSpherical.radius +=
+                (targetDist - this.currentTourSpherical.radius) * delta * 1.5;
 
             // Smoothly interpolate target back to the center of the graph
             this.currentTourTarget.lerp(this.graphCenter, delta * 2.0);
             this.controls.target.copy(this.currentTourTarget);
 
-            // Interpolate distance and zoom
-            this.currentTourSpherical.radius +=
-                (targetDist - this.currentTourSpherical.radius) * delta * 2.0;
+            // Interpolate zoom
             this.camera.zoom += (1 - this.camera.zoom) * delta * 2.0;
             this.camera.updateProjectionMatrix();
-
-            // Advance theta continuously from its current position
-            this.currentTourSpherical.theta -= delta * speed;
-
-            // Oscillate phi, smoothly interpolating towards the target sine wave
-            const targetPhi =
-                Math.PI / 2 +
-                Math.sin(this.autoTourTime * speed * 0.4) * (Math.PI / 2.5);
-            this.currentTourSpherical.phi +=
-                (targetPhi - this.currentTourSpherical.phi) * delta * 1.5;
 
             // Prevent phi from going exactly to 0 or PI to avoid gimbal lock/flipping
             this.currentTourSpherical.phi = Math.max(
@@ -756,6 +772,9 @@ export class NetworkVisualizer {
                 this.currentTourSpherical,
             );
             this.camera.position.copy(this.currentTourTarget).add(offset);
+            
+            // For TrackballControls, we just ensure it looks at the target
+            // It will manage its own up vector based on the drag history
             this.camera.lookAt(this.currentTourTarget);
         }
 

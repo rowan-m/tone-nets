@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js';
 import createLayout from 'ngraph.forcelayout';
 import { EffectComposer } from 'postprocessing';
 import { NetworkVisualizer } from './NetworkVisualizer.js';
 
 // --- Mocks ---
+// ... (keep other mocks intact)
+
 
 const mockContainer = {
     appendChild: vi.fn(),
@@ -49,12 +51,14 @@ vi.mock('three', async (importOriginal) => {
     };
 });
 
-vi.mock('three/examples/jsm/controls/OrbitControls.js', () => {
+vi.mock('three/examples/jsm/controls/TrackballControls.js', () => {
     return {
-        OrbitControls: vi.fn().mockImplementation(function () {
+        TrackballControls: vi.fn().mockImplementation(function () {
             return {
-                enableDamping: false,
-                dampingFactor: 0,
+                rotateSpeed: 1,
+                zoomSpeed: 1,
+                panSpeed: 1,
+                dynamicDampingFactor: 0.1,
                 update: vi.fn(),
                 target: {
                     copy: vi.fn(),
@@ -139,7 +143,7 @@ describe('NetworkVisualizer', () => {
         expect(visualizer.controls).toBeDefined();
         expect(visualizer.composer).toBeDefined();
         expect(THREE.WebGLRenderer).toHaveBeenCalled();
-        expect(OrbitControls).toHaveBeenCalled();
+        expect(TrackballControls).toHaveBeenCalled();
         expect(EffectComposer).toHaveBeenCalled();
     });
 
@@ -488,6 +492,30 @@ describe('NetworkVisualizer', () => {
             }
 
             expect(visualizer.autoTour).toBe(false);
+        });
+
+        it('should have variable rotational speed (theta) over time', () => {
+            visualizer.graphCenter = new THREE.Vector3(0, 0, 0);
+            visualizer.graphRadius = 100;
+            visualizer.startAutoTour();
+
+            // Establish baseline and first measurement
+            visualizer.animate(1000); // delta 0
+            const thetaStart1 = visualizer.currentTourSpherical.theta;
+            visualizer.animate(2000); // delta 1
+            const thetaEnd1 = visualizer.currentTourSpherical.theta;
+            const diff1 = thetaStart1 - thetaEnd1;
+
+            // Animate much later and second measurement
+            visualizer.animate(11000); // delta 9
+            const thetaStart2 = visualizer.currentTourSpherical.theta;
+            visualizer.animate(12000); // delta 1
+            const thetaEnd2 = visualizer.currentTourSpherical.theta;
+            const diff2 = thetaStart2 - thetaEnd2;
+
+            // In the current implementation, both diff1 and diff2 should be 0.4
+            // So this test should FAIL now.
+            expect(diff1).not.toBeCloseTo(diff2, 5);
         });
     });
 });

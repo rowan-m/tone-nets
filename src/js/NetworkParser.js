@@ -159,14 +159,17 @@ export class NetworkParser {
 
         if (midi.header && midi.header.meta) {
             // Find the first meaningful text event (often the artist or a subtitle)
-            const firstTextEvent = midi.header.meta.find(
-                (m) =>
-                    (m.type === 'text' || m.type === 'trackName') &&
-                    m.text &&
-                    m.text.trim().length > 0 &&
-                    !m.text.trim().match(/^Track \d+$/i) &&
-                    m.text.trim() !== title,
-            );
+            const firstTextEvent = midi.header.meta.find((m) => {
+                if ((m.type === 'text' || m.type === 'trackName') && m.text) {
+                    const trimmedText = m.text.trim();
+                    return (
+                        trimmedText.length > 0 &&
+                        !/^Track \d+$/i.test(trimmedText) &&
+                        trimmedText !== title
+                    );
+                }
+                return false;
+            });
 
             if (firstTextEvent) {
                 const extraInfo = firstTextEvent.text.trim();

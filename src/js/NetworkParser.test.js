@@ -162,7 +162,10 @@ describe('NetworkParser', () => {
                 this.name = 'Moonlight Sonata';
                 this.duration = 10;
                 this.header = {
-                    meta: [{ type: 'text', text: 'Beethoven' }],
+                    meta: [
+                        { type: 'copyright', text: 'ignored' },
+                        { type: 'text', text: 'Beethoven' },
+                    ],
                 };
                 this.tracks = [];
             });

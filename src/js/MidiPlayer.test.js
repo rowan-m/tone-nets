@@ -27,6 +27,7 @@ Object.defineProperty(global.navigator, 'mediaSession', {
         playbackState: 'none',
     },
     writable: true,
+    configurable: true,
 });
 
 // Helper to capture events
@@ -300,6 +301,39 @@ describe('MidiPlayer', () => {
     });
 
     describe('MediaSession', () => {
+        it('should handle environments without MediaSession gracefully', async () => {
+            const originalMediaSession = navigator.mediaSession;
+            delete navigator.mediaSession; // simulate unsupported
+
+            expect(() => player.updateMediaSessionPosition()).not.toThrow();
+
+            // Should not throw during play, pause, stop either
+            player.sequencer = {
+                duration: 10,
+                pause: vi.fn(),
+                play: vi.fn(),
+                loadNewSongList: vi.fn(),
+            };
+            player.masterGain = { gain: { setTargetAtTime: vi.fn() } };
+            player.dummyAudio = mockAudioInstance;
+
+            expect(() => player.stop()).not.toThrow();
+            expect(() => player.pause()).not.toThrow();
+            player.isPlaying = true;
+            expect(() => player.resume()).not.toThrow();
+
+            // Cover play() without media session
+            await expect(
+                player.play(new ArrayBuffer(8), true),
+            ).resolves.not.toThrow();
+            await expect(
+                player.play(new ArrayBuffer(8), false),
+            ).resolves.not.toThrow();
+
+            // Restore
+            navigator.mediaSession = originalMediaSession;
+        });
+
         it('should update MediaSession position and refresh duration from sequencer', async () => {
             player.duration = 0;
             player.sequencer = {
@@ -441,6 +475,19 @@ describe('MidiPlayer', () => {
     });
 
     describe('Control flow', () => {
+        it('should handle calling stop, pause, and resume before initialization safely', () => {
+            const uninitializedPlayer = new MidiPlayer();
+            expect(() => uninitializedPlayer.stop()).not.toThrow();
+
+            uninitializedPlayer.isPlaying = true; // force the first condition to pass
+            expect(() => uninitializedPlayer.pause()).not.toThrow();
+
+            uninitializedPlayer.isPlaying = false; // force condition for resume
+            expect(() => uninitializedPlayer.resume()).not.toThrow();
+
+            expect(() => uninitializedPlayer.restart()).not.toThrow();
+        });
+
         beforeEach(async () => {
             player.sf2Buffer = new ArrayBuffer(8);
             await player.initialize();
@@ -546,6 +593,39 @@ describe('MidiPlayer', () => {
         it('should handle restart without sequencer', () => {
             player.sequencer = null;
             expect(() => player.restart()).not.toThrow();
+        });
+        it('should handle restarting without onStop callback', () => {
+            player.onStop = null;
+            player.isPlaying = true;
+            player.restart();
+            expect(player.sequencer.currentTime).toBe(0);
+            expect(player.synth.stopAll).toHaveBeenCalled();
+        });
+
+        it('should clear existing resetTimeout on stop, pause, and resume', () => {
+            vi.useFakeTimers();
+            const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
+
+            // Set a dummy timeout to trigger the clear branch
+            player._resetTimeout = setTimeout(() => {}, 1000);
+            player.stop();
+            expect(clearTimeoutSpy).toHaveBeenCalled();
+            // Should have cleared the previous one and set a new one
+
+            clearTimeoutSpy.mockClear();
+            player.isPlaying = true;
+            player._resetTimeout = setTimeout(() => {}, 1000);
+            player.pause();
+            expect(clearTimeoutSpy).toHaveBeenCalled();
+
+            clearTimeoutSpy.mockClear();
+            player.isPlaying = false;
+            player._resetTimeout = setTimeout(() => {}, 1000);
+            player.resume();
+            expect(clearTimeoutSpy).toHaveBeenCalled();
+
+            clearTimeoutSpy.mockRestore();
+            vi.useRealTimers();
         });
     });
 

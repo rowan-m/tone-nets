@@ -203,7 +203,12 @@ describe('NetworkVisualizer', () => {
             targetId: 'G4',
             origMaterial: edgeLine.material,
         };
-        const edgeData = { line: edgeLine, playCount: 0 };
+        const edgeCone = new THREE.Mesh(
+            new THREE.ConeGeometry(),
+            new THREE.MeshBasicMaterial(),
+        );
+        edgeCone.userData = { origMaterial: edgeCone.material };
+        const edgeData = { line: edgeLine, cone: edgeCone, playCount: 0 };
         visualizer.edgeMap.set('C4->G4', edgeData);
 
         visualizer.highlightPlayingElement('C4', null);
@@ -347,7 +352,12 @@ describe('NetworkVisualizer', () => {
             new THREE.LineBasicMaterial(),
         );
         edgeLine.userData = { type: 'edge', origMaterial: edgeLine.material };
-        const edgeData = { line: edgeLine, playCount: 3 };
+        const edgeCone = new THREE.Mesh(
+            new THREE.ConeGeometry(),
+            new THREE.MeshBasicMaterial(),
+        );
+        edgeCone.userData = { origMaterial: edgeCone.material };
+        const edgeData = { line: edgeLine, cone: edgeCone, playCount: 3 };
         visualizer.edgeMap.set('C4->G4', edgeData);
 
         visualizer.playingNodes.add(nodeData);
@@ -436,6 +446,50 @@ describe('NetworkVisualizer', () => {
         expect(updateProjectionSpy).toHaveBeenCalled();
     });
 
+    describe('Raycasting', () => {
+        it('should handle raycasting in animate loop', () => {
+            visualizer.mouseMoved = true;
+            visualizer._lastRaycastTime = 0;
+            visualizer._raycastThrottleMs = 50;
+
+            const dummyNode = new THREE.Mesh(
+                new THREE.BufferGeometry(),
+                new THREE.MeshStandardMaterial(),
+            );
+            dummyNode.userData = { type: 'node' };
+
+            vi.spyOn(visualizer.raycaster, 'intersectObjects').mockReturnValue([
+                { object: dummyNode },
+            ]);
+
+            const updateHoverSpy = vi.spyOn(visualizer, '_updateHoverState');
+
+            visualizer.animate(100);
+
+            expect(updateHoverSpy).toHaveBeenCalledWith(dummyNode);
+            expect(visualizer.mouseMoved).toBe(false);
+            expect(visualizer._lastRaycastTime).toBe(100);
+        });
+
+        it('should handle raycasting when no intersection', () => {
+            visualizer.mouseMoved = true;
+            visualizer._lastRaycastTime = 0;
+            visualizer._raycastThrottleMs = 50;
+
+            vi.spyOn(visualizer.raycaster, 'intersectObjects').mockReturnValue(
+                [],
+            );
+
+            const updateHoverSpy = vi.spyOn(visualizer, '_updateHoverState');
+
+            visualizer.animate(100);
+
+            expect(updateHoverSpy).toHaveBeenCalledWith(null);
+            expect(visualizer.mouseMoved).toBe(false);
+            expect(visualizer._lastRaycastTime).toBe(100);
+        });
+    });
+
     describe('Pausing', () => {
         it('should update isPaused state', () => {
             visualizer.setPaused(true);
@@ -456,8 +510,25 @@ describe('NetworkVisualizer', () => {
             const updateSpy = vi.spyOn(visualizer, '_updateEmojis');
             visualizer.setPaused(false);
             visualizer._lastFrameTime = 1000;
+
+            // Add a mock emoji to cover movement code
+            const mockEmoji = {
+                life: 1.0,
+                sprite: {
+                    position: { addScaledVector: vi.fn() },
+                    material: { opacity: 1 },
+                },
+            };
+            visualizer.activeEmojis.push(mockEmoji);
+
             visualizer.animate(1500); // 500ms diff
             expect(updateSpy).toHaveBeenCalledWith(0.5);
+
+            // Delta is 0.5, lifeStep is 1.25 * 0.5 = 0.625
+            expect(mockEmoji.life).toBe(1.0 - 0.625);
+            expect(
+                mockEmoji.sprite.position.addScaledVector,
+            ).toHaveBeenCalled();
         });
     });
 

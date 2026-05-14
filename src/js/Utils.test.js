@@ -74,6 +74,16 @@ describe('Utils', () => {
         });
     });
 
+    describe('midiNoteToName', () => {
+        it('should correctly convert midi notes to names', () => {
+            expect(Utils.midiNoteToName(60)).toBe('C4');
+            expect(Utils.midiNoteToName(61)).toBe('C#4');
+            expect(Utils.midiNoteToName(69)).toBe('A4');
+            expect(Utils.midiNoteToName(12)).toBe('C0');
+            expect(Utils.midiNoteToName(0)).toBe('C-1');
+        });
+    });
+
     describe('getInterval', () => {
         it('should calculate the directed pitch class interval (modulo 12)', () => {
             // Upward intervals

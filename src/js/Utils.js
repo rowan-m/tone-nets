@@ -86,8 +86,7 @@ export class Utils {
         if (match) {
             const pitchClassStr = match[1];
 
-            const val =
-                pcMap[pitchClassStr] !== undefined ? pcMap[pitchClassStr] : 0;
+            const val = pcMap[pitchClassStr];
             const oct = match[2] ? parseInt(match[2], 10) : 4;
             result = oct * 12 + val;
         }

@@ -347,6 +347,20 @@ describe('NetworkVisualizer', () => {
         expect(progressSpy).toHaveBeenCalledWith(100); // Final call
     });
 
+    it('should enable autoTour by default when buildVisualization is called', async () => {
+        const mockGraph = {
+            forEachNode: vi.fn(),
+            forEachLinkedNode: vi.fn(),
+            forEachLink: vi.fn(),
+            addLink: vi.fn(),
+            removeLink: vi.fn(),
+        };
+
+        expect(visualizer.autoTour).toBe(false);
+        await visualizer.buildVisualization(mockGraph);
+        expect(visualizer.autoTour).toBe(true);
+    });
+
     it('should completely reset camera and movement state when fitting to graph', () => {
         // Setup initial mutated state
         visualizer.autoTour = true;

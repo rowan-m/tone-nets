@@ -57,6 +57,8 @@ export class NetworkVisualizer {
         this.tourTargetVelocity = new THREE.Vector3();
         this.tourRotation = new THREE.Quaternion();
         this.tourSpeedChangeTimer = 0;
+        this.graphBoundingBox = new THREE.Box3();
+        this.graphCenter = new THREE.Vector3();
         this.scene.add(this.graphGroup);
 
         this._lastFrameTime = 0;
@@ -80,6 +82,8 @@ export class NetworkVisualizer {
         this._scratchVec3_1 = new THREE.Vector3();
         this._scratchVec3_2 = new THREE.Vector3();
         this._scratchVec3_3 = new THREE.Vector3();
+        this._scratchVec3_4 = new THREE.Vector3();
+        this._scratchVec3_5 = new THREE.Vector3();
         this._scratchBox3 = new THREE.Box3();
         this._scratchSphere = new THREE.Sphere();
         this._scratchCurve = new THREE.QuadraticBezierCurve3();
@@ -640,11 +644,8 @@ export class NetworkVisualizer {
         this._renderEdges(graph, layoutScale, maxWeight);
 
         this.fitCameraToGraph();
-        this.graphCenter = new THREE.Vector3();
-        this._scratchBox3.setFromObject(this.graphGroup);
-        this._scratchBox3.getCenter(this.graphCenter);
-        this._scratchBox3.getBoundingSphere(this._scratchSphere);
-        this.graphRadius = this._scratchSphere.radius;
+
+        this.startAutoTour();
     }
 
     fitCameraToGraph() {
@@ -655,13 +656,14 @@ export class NetworkVisualizer {
         this.camera.up.set(0, 1, 0); // Reset to default Y-up
 
         this._scratchBox3.setFromObject(this.graphGroup);
-        const center = this._scratchVec3_1;
-        this._scratchBox3.getCenter(center);
+        this.graphBoundingBox.copy(this._scratchBox3);
+        this._scratchBox3.getCenter(this.graphCenter);
 
         // Use bounding sphere to ensure the graph never clips when rotated
         this._scratchBox3.getBoundingSphere(this._scratchSphere);
 
         const radius = this._scratchSphere.radius;
+        this.graphRadius = radius;
         let frustumSize = radius * 2 * 1.05; // Add 5% padding
 
         const aspect = this.container.clientWidth / this.container.clientHeight;
@@ -684,11 +686,11 @@ export class NetworkVisualizer {
         // Set camera to an angled perspective to showcase the 3D structure
         const viewDist = radius * 2.5;
 
-        this.controls.target.copy(center);
+        this.controls.target.copy(this.graphCenter);
         this.camera.position.set(
-            center.x + viewDist * 0.5,
-            center.y + viewDist * 0.4,
-            center.z + viewDist * 0.8,
+            this.graphCenter.x + viewDist * 0.5,
+            this.graphCenter.y + viewDist * 0.4,
+            this.graphCenter.z + viewDist * 0.8,
         );
         this.controls.update();
     }
@@ -881,8 +883,53 @@ export class NetworkVisualizer {
             this.currentTourTarget.lerp(this.graphCenter, delta * 2.0);
             this.controls.target.copy(this.currentTourTarget);
 
-            // Interpolate zoom and camera position
-            this.camera.zoom += (1 - this.camera.zoom) * delta * 2.0;
+            // Dynamic Zoom Calculation to fit the current orientation
+            const aspect =
+                this.container.clientWidth / this.container.clientHeight;
+
+            // Camera axes in world space based on accumulated tourRotation
+            const right = this._scratchVec3_2
+                .set(1, 0, 0)
+                .applyQuaternion(this.tourRotation);
+            const up = this._scratchVec3_3
+                .set(0, 1, 0)
+                .applyQuaternion(this.tourRotation);
+
+            let maxW = 0;
+            let maxH = 0;
+
+            const min = this.graphBoundingBox.min;
+            const max = this.graphBoundingBox.max;
+
+            // Project 8 corners of the bounding box onto camera axes to find current extents
+            const check = (x, y, z) => {
+                const v = this._scratchVec3_4
+                    .set(x, y, z)
+                    .sub(this.graphCenter);
+                const w = Math.abs(v.dot(right));
+                const h = Math.abs(v.dot(up));
+                if (w > maxW) maxW = w;
+                if (h > maxH) maxH = h;
+            };
+
+            check(min.x, min.y, min.z);
+            check(min.x, min.y, max.z);
+            check(min.x, max.y, min.z);
+            check(min.x, max.y, max.z);
+            check(max.x, min.y, min.z);
+            check(max.x, min.y, max.z);
+            check(max.x, max.y, min.z);
+            check(max.x, max.y, max.z);
+
+            // Required frustum size to fit both height and width (considering aspect)
+            const requiredFrustumSize =
+                Math.max(maxH * 2, (maxW * 2) / aspect) * 1.15; // 15% padding
+
+            // Calculate target zoom relative to the base frustum size
+            const targetZoom = this.baseFrustumSize / requiredFrustumSize;
+
+            // Smoothly interpolate zoom
+            this.camera.zoom += (targetZoom - this.camera.zoom) * delta * 2.0;
             this.camera.updateProjectionMatrix();
 
             // Lerp camera position for absolute smoothness

@@ -248,21 +248,29 @@ export class NetworkParser {
 
     static _buildTransitionsForTimeStep(graph, sourceNotes, targetNotes) {
         let edgesAdded = 0;
-        for (let s = 0; s < sourceNotes.length; s++) {
-            const source = sourceNotes[s];
 
+        // Optimization: Ensure all nodes exist before the nested loop.
+        // This reduces getNode() calls from O(S*T) to O(S+T).
+        for (let i = 0; i < sourceNotes.length; i++) {
+            const source = sourceNotes[i];
             if (!graph.getNode(source)) {
                 graph.addNode(source, { name: source });
             }
+        }
+        for (let i = 0; i < targetNotes.length; i++) {
+            const target = targetNotes[i];
+            if (!graph.getNode(target)) {
+                graph.addNode(target, { name: target });
+            }
+        }
+
+        for (let s = 0; s < sourceNotes.length; s++) {
+            const source = sourceNotes[s];
 
             for (let tr = 0; tr < targetNotes.length; tr++) {
                 const target = targetNotes[tr];
                 // Scientific Parity: Skip self-loops (w_xx = 0) as per paper section "Network construction"
                 if (source === target) continue;
-
-                if (!graph.getNode(target)) {
-                    graph.addNode(target, { name: target });
-                }
 
                 const existingLink = graph.getLink(source, target);
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
-import { ArcballControls } from 'three/examples/jsm/controls/ArcballControls.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import createLayout from 'ngraph.forcelayout';
 import { EffectComposer } from 'postprocessing';
 import { NetworkVisualizer } from './NetworkVisualizer.js';
@@ -50,13 +50,14 @@ vi.mock('three', async (importOriginal) => {
     };
 });
 
-vi.mock('three/examples/jsm/controls/ArcballControls.js', () => {
+vi.mock('three/examples/jsm/controls/OrbitControls.js', () => {
     return {
-        ArcballControls: vi.fn().mockImplementation(function () {
+        OrbitControls: vi.fn().mockImplementation(function () {
             return {
                 enableDamping: false,
                 dampingFactor: 0,
                 update: vi.fn(),
+                reset: vi.fn(),
                 target: {
                     copy: vi.fn(),
                     set: vi.fn(),
@@ -73,9 +74,10 @@ vi.mock('ngraph.forcelayout', () => {
         default: vi.fn().mockImplementation(function () {
             return {
                 step: vi.fn(),
-                getNodePosition: vi.fn(() => ({ x: 0, y: 0 })),
+                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
                 dispose: vi.fn(),
                 simulator: {
+                    getBody: vi.fn(() => ({ mass: 1 })),
                     bodies: {
                         forEach: vi.fn(),
                     },
@@ -140,7 +142,7 @@ describe('NetworkVisualizer', () => {
         expect(visualizer.controls).toBeDefined();
         expect(visualizer.composer).toBeDefined();
         expect(THREE.WebGLRenderer).toHaveBeenCalled();
-        expect(ArcballControls).toHaveBeenCalled();
+        expect(OrbitControls).toHaveBeenCalled();
         expect(EffectComposer).toHaveBeenCalled();
     });
 
@@ -161,24 +163,67 @@ describe('NetworkVisualizer', () => {
         expect(disposeSpy).toHaveBeenCalled();
     });
 
-    it('should build visualization from a graph', async () => {
+    it('should build visualization from a graph with 3D layout', async () => {
         const mockGraph = {
             forEachNode: vi.fn((cb) => {
                 cb({ id: 'C4', data: { degree: 5 } });
                 cb({ id: 'G4', data: { degree: 3 } });
             }),
+            forEachLinkedNode: vi.fn((id, cb) => {
+                if (id === 'C4') cb({ id: 'G4' });
+                if (id === 'G4') cb({ id: 'C4' });
+            }),
             forEachLink: vi.fn((cb) => {
                 cb({ fromId: 'C4', toId: 'G4', data: { weight: 2 } });
             }),
+            addLink: vi.fn(),
+            removeLink: vi.fn(),
         };
 
         await visualizer.buildVisualization(mockGraph);
 
-        expect(createLayout).toHaveBeenCalled();
+        expect(createLayout).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+                dimensions: 3,
+            }),
+        );
         expect(visualizer.nodes.has('C4')).toBe(true);
         expect(visualizer.nodes.has('G4')).toBe(true);
+
+        const node = visualizer.nodes.get('C4');
+        // Mock returns {x:0, y:0, z:0}, layoutScale is 10.0
+        expect(node.mesh.position.z).toBe(0);
+
         expect(visualizer.edges.length).toBe(1);
         expect(visualizer.edgeMap.has('C4->G4')).toBe(true);
+    });
+
+    it('should handle isolated components by temporarily linking them during layout', async () => {
+        const fakeLink = { fromId: 'C4', toId: 'E4', data: { isFake: true } };
+        const mockGraph = {
+            forEachNode: vi.fn((cb) => {
+                cb({ id: 'C4', data: { degree: 1 } });
+                cb({ id: 'E4', data: { degree: 1 } });
+            }),
+            forEachLinkedNode: vi.fn(() => {
+                // No links, so completely isolated
+            }),
+            forEachLink: vi.fn(),
+            addLink: vi.fn(() => fakeLink),
+            removeLink: vi.fn(),
+        };
+
+        await visualizer.buildVisualization(mockGraph);
+
+        // It should have added a link to pull them together
+        expect(mockGraph.addLink).toHaveBeenCalledWith(
+            'C4',
+            'E4',
+            expect.objectContaining({ isFake: true }),
+        );
+        // It should have removed the link after layout so it doesn't render
+        expect(mockGraph.removeLink).toHaveBeenCalledWith(fakeLink);
     });
 
     it('should highlight and release playing elements', () => {
@@ -226,7 +271,7 @@ describe('NetworkVisualizer', () => {
         expect(edgeLine.material).toBe(edgeLine.userData.origMaterial);
     });
 
-    it('should show instrument emoji', () => {
+    it('should show instrument emoji centered and scaled', () => {
         const nodeMesh = new THREE.Mesh(new THREE.SphereGeometry());
         nodeMesh.position.set(10, 20, 30);
         visualizer.nodes.set('C4', { mesh: nodeMesh });
@@ -234,8 +279,16 @@ describe('NetworkVisualizer', () => {
         visualizer.showInstrumentEmoji('C4', '🎹');
 
         expect(visualizer.activeEmojis.length).toBe(1);
-        expect(visualizer.activeEmojis[0].sprite.position.x).toBe(10);
-        expect(visualizer.activeEmojis[0].sprite.position.y).toBe(20);
+        const sprite = visualizer.activeEmojis[0].sprite;
+
+        // Ensure the sprite is exactly at the node center
+        expect(sprite.position.x).toBe(10);
+        expect(sprite.position.y).toBe(20);
+        expect(sprite.position.z).toBe(30);
+
+        // Ensure the sprite is scaled up significantly (previously 15)
+        expect(sprite.scale.x).toBeGreaterThan(25);
+        expect(sprite.scale.y).toBeGreaterThan(25);
     });
 
     it('should pool emoji sprites', () => {
@@ -276,7 +329,10 @@ describe('NetworkVisualizer', () => {
     it('should report layout progress during visualization building', async () => {
         const mockGraph = {
             forEachNode: vi.fn(),
+            forEachLinkedNode: vi.fn(),
             forEachLink: vi.fn(),
+            addLink: vi.fn(),
+            removeLink: vi.fn(),
         };
         const progressSpy = vi.fn();
         visualizer.onLayoutProgress = progressSpy;
@@ -291,20 +347,35 @@ describe('NetworkVisualizer', () => {
         expect(progressSpy).toHaveBeenCalledWith(100); // Final call
     });
 
-    it('should fit camera to graph', () => {
-        // Arrange
-        const dummy = new THREE.Mesh(new THREE.SphereGeometry());
+    it('should completely reset camera and movement state when fitting to graph', () => {
+        // Setup initial mutated state
+        visualizer.autoTour = true;
+        visualizer.camera.zoom = 2.5;
+        visualizer.camera.position.set(100, 200, 300);
+        visualizer.camera.up.set(1, 0, 0); // mutated up vector
+
+        // Add dummy object to calculate a valid box
+        const dummy = new THREE.Mesh(new THREE.SphereGeometry(10));
+        dummy.position.set(0, 0, 0);
         visualizer.graphGroup.add(dummy);
 
-        // Mock camera projection matrix update
-        const updateSpy = vi.spyOn(visualizer.camera, 'updateProjectionMatrix');
+        const updateProjectionSpy = vi.spyOn(
+            visualizer.camera,
+            'updateProjectionMatrix',
+        );
+        const controlsUpdateSpy = vi.spyOn(visualizer.controls, 'update');
 
-        // Act
         visualizer.fitCameraToGraph();
 
-        // Assert
-        expect(updateSpy).toHaveBeenCalled();
+        // Assert resets
+        expect(visualizer.autoTour).toBe(false);
         expect(visualizer.camera.zoom).toBe(1);
+        // up vector should default back to standard Y-up
+        expect(visualizer.camera.up.x).toBe(0);
+        expect(visualizer.camera.up.y).toBe(1);
+        expect(visualizer.camera.up.z).toBe(0);
+        expect(updateProjectionSpy).toHaveBeenCalled();
+        expect(controlsUpdateSpy).toHaveBeenCalled();
     });
 
     it('should update hover state', () => {
@@ -378,7 +449,10 @@ describe('NetworkVisualizer', () => {
                 cb({ id: 'C4', data: { degree: 5 } });
                 cb({ id: 'C5', data: { degree: 3 } });
             }),
+            forEachLinkedNode: vi.fn(),
             forEachLink: vi.fn(),
+            addLink: vi.fn(),
+            removeLink: vi.fn(),
         };
 
         await visualizer.buildVisualization(mockGraph);
@@ -399,7 +473,10 @@ describe('NetworkVisualizer', () => {
             forEachNode: vi.fn((cb) => {
                 cb({ id: 'C4', data: { degree: 5 } });
             }),
+            forEachLinkedNode: vi.fn(),
             forEachLink: vi.fn(),
+            addLink: vi.fn(),
+            removeLink: vi.fn(),
         };
 
         await visualizer.buildVisualization(mockGraph);
@@ -487,6 +564,60 @@ describe('NetworkVisualizer', () => {
             expect(updateHoverSpy).toHaveBeenCalledWith(null);
             expect(visualizer.mouseMoved).toBe(false);
             expect(visualizer._lastRaycastTime).toBe(100);
+        });
+    });
+
+    describe('Edge Curvature', () => {
+        it('should have subtle curvature (peak displacement < 10% of chord distance)', async () => {
+            const mockGraph = {
+                forEachNode: vi.fn((cb) => {
+                    cb({ id: 'C4', data: { degree: 1 } });
+                    cb({ id: 'G4', data: { degree: 1 } });
+                }),
+                forEachLink: vi.fn((cb) => {
+                    cb({ fromId: 'C4', toId: 'G4', data: { weight: 1 } });
+                }),
+                forEachLinkedNode: vi.fn(),
+                addLink: vi.fn(),
+                removeLink: vi.fn(),
+            };
+
+            const mockLayout = {
+                step: vi.fn(),
+                getNodePosition: vi.fn((id) => {
+                    if (id === 'C4') return { x: 0, y: 0, z: 0 };
+                    if (id === 'G4') return { x: 100, y: 0, z: 0 };
+                    return { x: 0, y: 0, z: 0 };
+                }),
+                dispose: vi.fn(),
+                simulator: { getBody: vi.fn(() => ({ mass: 1 })) },
+            };
+            createLayout.mockReturnValue(mockLayout);
+
+            await visualizer.buildVisualization(mockGraph);
+
+            // layoutScale is 10.0, so C4 at (0,0,0) and G4 at (1000,0,0)
+            // Distance is 1000.
+            // Midpoint is (500,0,0)
+            // We want to check the control point of the curve used in _renderEdge.
+            // Since _renderEdge is internal, we check the line geometry.
+
+            const edge = visualizer.edges[0];
+            const positions = edge.line.geometry.attributes.position.array;
+
+            // The middle segment (index 10 of 20 segments) should be the peak of the curve
+            const midIndex = 10 * 3;
+            const midX = positions[midIndex];
+            const midY = positions[midIndex + 1];
+            const midZ = positions[midIndex + 2];
+
+            const midPoint = new THREE.Vector3(500, 0, 0);
+            const peakPoint = new THREE.Vector3(midX, midY, midZ);
+            const deviation = midPoint.distanceTo(peakPoint);
+
+            // Distance was 1000. 10% of 1000 is 100.
+            // Old peak displacement was ~20% to 40% (200 to 400).
+            expect(deviation).toBeLessThan(100);
         });
     });
 
@@ -590,6 +721,75 @@ describe('NetworkVisualizer', () => {
 
             // Verify that movement speed varies
             expect(dist1).not.toBeCloseTo(dist2, 5);
+        });
+    });
+
+    describe('Organic Layout', () => {
+        it('should assign higher mass to high-degree nodes in the simulator', async () => {
+            const mockGraph = {
+                forEachNode: vi.fn((cb) => {
+                    cb({ id: 'C4', data: { degree: 10 } }); // High degree
+                    cb({ id: 'E4', data: { degree: 1 } }); // Low degree
+                }),
+                forEachLink: vi.fn((cb) => {
+                    cb({ fromId: 'C4', toId: 'E4', data: { weight: 1 } });
+                }),
+                forEachLinkedNode: vi.fn(),
+                addLink: vi.fn(),
+                removeLink: vi.fn(),
+            };
+
+            const bodies = {
+                C4: { mass: 1 },
+                E4: { mass: 1 },
+            };
+
+            const mockLayout = {
+                step: vi.fn(),
+                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
+                dispose: vi.fn(),
+                simulator: {
+                    getBody: vi.fn((id) => bodies[id]),
+                    bodies: { forEach: vi.fn() },
+                },
+            };
+            createLayout.mockReturnValue(mockLayout);
+
+            await visualizer.buildVisualization(mockGraph);
+
+            // Expect: High degree node should have higher mass to push others away
+            expect(bodies['C4'].mass).toBeGreaterThan(bodies['E4'].mass);
+        });
+
+        it('should use a larger layout scale for better spacing', async () => {
+            const mockGraph = {
+                forEachNode: vi.fn((cb) =>
+                    cb({ id: 'C4', data: { degree: 5 } }),
+                ),
+                forEachLinkedNode: vi.fn(),
+                forEachLink: vi.fn(),
+                addLink: vi.fn(),
+                removeLink: vi.fn(),
+            };
+
+            // Mock the return value of createLayout to return a layout with a specific position
+            const mockLayout = {
+                step: vi.fn(),
+                getNodePosition: vi.fn(() => ({ x: 10, y: 10, z: 10 })),
+                dispose: vi.fn(),
+                simulator: {
+                    getBody: vi.fn(() => ({ mass: 1 })),
+                    bodies: [],
+                    settings: {},
+                },
+            };
+            createLayout.mockReturnValue(mockLayout);
+
+            await visualizer.buildVisualization(mockGraph);
+
+            const node = visualizer.nodes.get('C4');
+            // layoutScale is now 10.0, so 10 * 10 = 100.
+            expect(node.mesh.position.x).toBe(100);
         });
     });
 });

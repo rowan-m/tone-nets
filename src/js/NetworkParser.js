@@ -309,6 +309,7 @@ export class NetworkParser {
         // Compute degree (in + out) for each node for visualization sizing
         const nodeDataMap = new Map();
         graph.forEachNode((node) => {
+            if (!node.data) node.data = {};
             node.data.degree = 0;
             nodeDataMap.set(node.id, node.data);
         });

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ArcballControls } from 'three/examples/jsm/controls/ArcballControls.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import createLayout from 'ngraph.forcelayout';
 import {
     EffectComposer,
@@ -127,13 +127,10 @@ export class NetworkVisualizer {
         this.camera.position.set(0, 800, 800);
         this.camera.lookAt(0, 0, 0);
 
-        this.controls = new ArcballControls(
+        this.controls = new OrbitControls(
             this.camera,
             this.renderer.domElement,
         );
-        if (this.controls.setGizmosVisible) {
-            this.controls.setGizmosVisible(false);
-        }
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
         this.controls.addEventListener('start', () => this.stopAutoTour());
@@ -188,6 +185,16 @@ export class NetworkVisualizer {
 
     clear() {
         this.stopAutoTour();
+        if (this.controls) {
+            this.controls.reset();
+        }
+
+        // Reset tour-related state fully
+        this.tourCurrentVelocity.set(0, 0, 0);
+        this.tourTargetVelocity.set(0, 0, 0);
+        this.tourRotation.set(0, 0, 0, 1);
+        this.tourSpeedChangeTimer = 0;
+
         const edgeMats = new Set(this.edgeMaterialPool.values());
         const coneMats = new Set(this.coneMaterialPool.values());
         const nodeMats = new Set(this.nodeMaterialCache.values());
@@ -266,12 +273,12 @@ export class NetworkVisualizer {
 
     async _computeLayout(graph) {
         this.layout = createLayout(graph, {
-            dimensions: 2,
+            dimensions: 3,
             physicsSettings: {
-                springLength: 150,
-                springCoeff: 0.0001,
-                gravity: -10,
-                theta: 0.8,
+                springLength: 800,
+                springCoeff: 0.0002,
+                gravity: -1200,
+                theta: 0.5,
                 dragCoeff: 0.1,
                 timeStep: 20,
             },
@@ -282,19 +289,17 @@ export class NetworkVisualizer {
 
         const totalSteps = 3000;
         const batchSize = 100;
-        const bodies = this.layout.simulator.bodies;
-        const bodiesLen = bodies.length;
 
         for (let i = 0; i < totalSteps; i++) {
             if (this._buildToken !== currentToken) return false;
 
-            this.layout.step();
-
-            for (let j = 0; j < bodiesLen; j++) {
-                const pos = bodies[j].pos;
-                pos.x *= 0.995;
-                pos.y *= 0.995;
+            if (i === 0) {
+                // Assign higher mass to high-degree nodes so they push others away more strongly.
+                // We do this on the first step to ensure the simulator has initialized bodies.
+                this._applyMassScaling(graph);
             }
+
+            this.layout.step();
 
             if (i % batchSize === 0) {
                 await new Promise((resolve) => setTimeout(resolve, 0));
@@ -309,7 +314,27 @@ export class NetworkVisualizer {
         return true;
     }
 
-    _renderNodes(graph, layoutScale, zDepthScale, maxDegree) {
+    _applyMassScaling(graph) {
+        try {
+            const simulator = this.layout.simulator;
+            if (!simulator || typeof simulator.getBody !== 'function') return;
+
+            graph.forEachNode((node) => {
+                const body = simulator.getBody(node.id);
+                if (body) {
+                    const degree = (node.data && node.data.degree) || 1;
+                    body.mass = 1 + Math.log2(degree + 1) * 5;
+                }
+            });
+        } catch (error) {
+            console.warn(
+                'Mass scaling not supported by layout simulator:',
+                error,
+            );
+        }
+    }
+
+    _renderNodes(graph, layoutScale, maxDegree) {
         const sphereSegments = 20; // Reduced from 32 for performance
         const sphereGeo = new THREE.SphereGeometry(
             1,
@@ -325,7 +350,7 @@ export class NetworkVisualizer {
 
         graph.forEachNode((node) => {
             const pos = this.layout.getNodePosition(node.id);
-            const degree = node.data.degree || 1;
+            const degree = (node.data && node.data.degree) || 1;
             const normDegree = Math.min(1, degree / maxDegree);
 
             const pitchClass = Utils.noteToSemitone(node.id) % 12;
@@ -351,11 +376,14 @@ export class NetworkVisualizer {
             const material = baseMaterial.clone();
             const mesh = new THREE.Mesh(sphereGeo, material);
 
-            const scale = 2 + normDegree * 6;
+            // Increased scale variance to help hub nodes stand out without being overwhelmed.
+            const scale = 3 + normDegree * 15;
             mesh.scale.set(scale, scale, scale);
 
-            const zPos = normDegree * zDepthScale - zDepthScale * 0.25;
-            mesh.position.set(pos.x * layoutScale, pos.y * layoutScale, zPos);
+            const x = pos.x * layoutScale;
+            const y = pos.y * layoutScale;
+            const z = pos.z * layoutScale;
+            mesh.position.set(x, y, z);
 
             const outlineMesh = new THREE.Mesh(outlineGeo, outlineMat);
             mesh.add(outlineMesh);
@@ -369,35 +397,56 @@ export class NetworkVisualizer {
                 origEmissiveIntensity: material.emissiveIntensity,
             };
             this.pickableObjects.push(mesh);
-            this.nodes.set(node.id, { mesh: mesh, id: node.id, z: zPos });
+            this.nodes.set(node.id, { mesh: mesh, id: node.id });
         });
     }
 
-    _updateEdgeCurve(curve, sPosRaw, tPosRaw, sZ, tZ, layoutScale) {
+    _updateEdgeCurve(curve, sPosRaw, tPosRaw, layoutScale, link) {
         const sPos = curve.v0.set(
             sPosRaw.x * layoutScale,
             sPosRaw.y * layoutScale,
-            sZ,
+            sPosRaw.z * layoutScale,
         );
         const tPos = curve.v2.set(
             tPosRaw.x * layoutScale,
             tPosRaw.y * layoutScale,
-            tZ,
+            tPosRaw.z * layoutScale,
         );
 
+        const dist = sPos.distanceTo(tPos);
         const midPoint = this._scratchVec3_1
             .copy(sPos)
             .add(tPos)
             .multiplyScalar(0.5);
-        const dx = tPos.x - sPos.x;
-        const dy = tPos.y - sPos.y;
-        const xyDist = Math.sqrt(dx * dx + dy * dy);
 
-        const normal = this._scratchVec3_2.set(-dy, dx, 0).normalize();
-        const controlPoint = curve.v1
-            .copy(midPoint)
-            .add(normal.multiplyScalar(xyDist * 0.25));
-        controlPoint.z = Math.max(sZ, tZ) + xyDist * 0.15;
+        const edgeDir = this._scratchVec3_2.subVectors(tPos, sPos).normalize();
+        const pickAxis =
+            Math.abs(edgeDir.y) < 0.9
+                ? this._upVec
+                : this._scratchVec3_3.set(1, 0, 0);
+        const perp = this._scratchVec3_3
+            .crossVectors(edgeDir, pickAxis)
+            .normalize();
+
+        // Introduce organic variation by rotating the perpendicular vector around the edge direction.
+        // We use the sum of node IDs to create a stable but unique rotation for each edge pair.
+        const hash = (str) => {
+            let h = 0;
+            for (let i = 0; i < str.length; i++) {
+                h = (h << 5) - h + str.charCodeAt(i);
+                h |= 0;
+            }
+            return h;
+        };
+
+        const seed = link ? hash(link.fromId) + hash(link.toId) : 0;
+        const angle = (seed % 360) * (Math.PI / 180);
+        perp.applyAxisAngle(edgeDir, angle);
+
+        // Curvature amount: reduced to ~15% of distance for a cleaner, more readable network.
+        // We still keep a small random offset to avoid "parallel" curves in symmetric graphs.
+        const curveAmount = dist * (0.15 + (seed % 10) * 0.01);
+        curve.v1.copy(midPoint).add(perp.multiplyScalar(curveAmount));
 
         return curve;
     }
@@ -418,16 +467,13 @@ export class NetworkVisualizer {
     _renderEdge(link, layoutScale, maxWeight, coneGeo) {
         const sPosRaw = this.layout.getNodePosition(link.fromId);
         const tPosRaw = this.layout.getNodePosition(link.toId);
-        const sZ = this.nodes.get(link.fromId).z;
-        const tZ = this.nodes.get(link.toId).z;
 
         const curve = this._updateEdgeCurve(
             this._scratchCurve,
             sPosRaw,
             tPosRaw,
-            sZ,
-            tZ,
             layoutScale,
+            link,
         );
 
         const segments = 20;
@@ -452,7 +498,8 @@ export class NetworkVisualizer {
 
         if (!mat || !coneMat) {
             const edgeColor = this._getEdgeColor(normWeight);
-            const edgeOpacity = 0.4 + normWeight * 0.6;
+            // Reduced opacity for a cleaner, less "hairy" network silhouette.
+            const edgeOpacity = 0.2 + normWeight * 0.5;
 
             mat = new THREE.LineBasicMaterial({
                 color: edgeColor,
@@ -464,7 +511,7 @@ export class NetworkVisualizer {
             coneMat = new THREE.MeshBasicMaterial({
                 color: edgeColor,
                 transparent: true,
-                opacity: Math.max(0.4, edgeOpacity),
+                opacity: Math.max(0.2, edgeOpacity),
             });
             this.coneMaterialPool.set(weightBucket, coneMat);
         }
@@ -519,15 +566,69 @@ export class NetworkVisualizer {
     async buildVisualization(graph) {
         this.clear();
 
+        // Identify isolated components to prevent them from drifting infinitely far apart.
+        // We will add temporary invisible springs (edges) to pull them towards the main network.
+        const components = [];
+        const visited = new Set();
+
+        graph.forEachNode((node) => {
+            if (visited.has(node.id)) return;
+            const comp = [];
+            const queue = [node.id];
+            visited.add(node.id);
+
+            while (queue.length > 0) {
+                const cur = queue.shift();
+                comp.push(cur);
+                graph.forEachLinkedNode(cur, (linkedNode) => {
+                    if (!visited.has(linkedNode.id)) {
+                        visited.add(linkedNode.id);
+                        queue.push(linkedNode.id);
+                    }
+                });
+            }
+            components.push(comp);
+        });
+
+        const fakeLinks = [];
+        if (components.length > 1) {
+            // Sort components by size (descending)
+            components.sort((a, b) => b.length - a.length);
+            const mainComp = components[0];
+
+            // Link each isolated component to a node in the main component
+            for (let i = 1; i < components.length; i++) {
+                // Distribute links across the main component to avoid distorting a single node
+                const sourceNodeId = mainComp[i % mainComp.length];
+                const targetNodeId = components[i][0];
+                const link = graph.addLink(sourceNodeId, targetNodeId, {
+                    isFake: true,
+                    weight: 1,
+                });
+                fakeLinks.push(link);
+            }
+        }
+
         const isLayoutComplete = await this._computeLayout(graph);
+
+        // Clean up the temporary links so they don't affect metrics or rendering
+        fakeLinks.forEach((link) => {
+            if (graph.removeLink) {
+                graph.removeLink(link);
+            } else if (graph.removeEdge) {
+                // Handle different ngraph.graph version APIs just in case
+                graph.removeEdge(link);
+            }
+        });
+
         if (!isLayoutComplete) return;
 
-        const layoutScale = 4.0;
-        const zDepthScale = 300;
+        const layoutScale = 10.0;
 
         let maxDegree = 1;
         graph.forEachNode((node) => {
-            if (node.data.degree > maxDegree) maxDegree = node.data.degree;
+            const degree = (node.data && node.data.degree) || 1;
+            if (degree > maxDegree) maxDegree = degree;
         });
 
         let maxWeight = 1;
@@ -535,7 +636,7 @@ export class NetworkVisualizer {
             if (link.data.weight > maxWeight) maxWeight = link.data.weight;
         });
 
-        this._renderNodes(graph, layoutScale, zDepthScale, maxDegree);
+        this._renderNodes(graph, layoutScale, maxDegree);
         this._renderEdges(graph, layoutScale, maxWeight);
 
         this.fitCameraToGraph();
@@ -548,6 +649,10 @@ export class NetworkVisualizer {
 
     fitCameraToGraph() {
         if (this.graphGroup.children.length === 0) return;
+
+        this.stopAutoTour();
+
+        this.camera.up.set(0, 1, 0); // Reset to default Y-up
 
         this._scratchBox3.setFromObject(this.graphGroup);
         const center = this._scratchVec3_1;
@@ -576,15 +681,15 @@ export class NetworkVisualizer {
         this.camera.zoom = 1; // Reset zoom from any previous user interaction
         this.camera.updateProjectionMatrix();
 
-        // Set camera to a top-down view (looking down the Z axis at the XY plane)
-        // Since ngraph layout uses X and Y, and we map degree to Z,
-        // looking down Z provides the clearest 2D view of the network structure.
-        const viewDist = radius * 3;
-
-        this.camera.position.set(center.x, center.y, center.z + viewDist);
-        this.camera.lookAt(center);
+        // Set camera to an angled perspective to showcase the 3D structure
+        const viewDist = radius * 2.5;
 
         this.controls.target.copy(center);
+        this.camera.position.set(
+            center.x + viewDist * 0.5,
+            center.y + viewDist * 0.4,
+            center.z + viewDist * 0.8,
+        );
         this.controls.update();
     }
 
@@ -783,8 +888,8 @@ export class NetworkVisualizer {
             // Lerp camera position for absolute smoothness
             this.camera.position.lerp(this._scratchVec3_1, delta * 1.5);
 
-            // Crucial: ArcballControls requires us to update the camera's up vector based on the rotation
-            // to prevent the view from "twisting" relative to the controls.
+            // Update camera's up vector based on the rotation to ensure the view
+            // is correctly oriented during the automated tour.
             const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(
                 this.tourRotation,
             );
@@ -824,7 +929,8 @@ export class NetworkVisualizer {
             depthTest: false, // Ensure it's visible over nodes
         });
         const sprite = new THREE.Sprite(material);
-        sprite.scale.set(15, 15, 1);
+        // Scaled up to be larger and more visible
+        sprite.scale.set(40, 40, 1);
         return sprite;
     }
 
@@ -846,9 +952,8 @@ export class NetworkVisualizer {
             sprite = this._createEmojiSprite(emoji);
         }
 
+        // Center exactly over the node's position. depthTest: false handles visibility.
         sprite.position.copy(nodeData.mesh.position);
-        // Offset a bit so it's not buried in the node
-        sprite.position.z += 10;
 
         this.scene.add(sprite);
         this.activeEmojis.push({

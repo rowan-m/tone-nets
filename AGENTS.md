@@ -5,7 +5,6 @@ This project ports the original R-based visualisations from the paper ["Decoding
 ## Run the development environment
 
 ```bash
-cd music-analysis-web
 npm ci
 npm run dev
 ```
@@ -30,6 +29,7 @@ Other available scripts:
 
 - `npm run build`: Production build.
 - `npm run preview`: Preview the production build locally.
+- `npm run test:coverage`: Run tests with code coverage reporting.
 
 ## Architecture Overview
 
@@ -47,7 +47,7 @@ The application is built with Vanilla JS (ES Modules) and Vite, structured into 
         - **Reciprocity**: Binary, Weighted, and Normalized ($\rho$).
         - **Entropy**: Mean Node Entropy.
         - **Scale-interval Embedding**: 12D interval signature (directed pitch class intervals).
-    - **Scaling**: Parsing and metrics calculation (which involve $O(V \cdot E)$ operations like BFS/Dijkstra) are performed in a **Web Worker** to keep the UI responsive.
+    - **Scaling**: Parsing and metrics calculation (which involve $O(V \cdot E)$ operations like BFS/Dijkstra) are performed in a **Web Worker** to keep the UI responsive. Uses a custom `MinHeap.js` for efficient Dijkstra implementation.
 
 2.  **3D Visualizer (`src/js/NetworkVisualizer.js`)**:
     - **Engine**: Uses `Three.js` with `OrbitControls` for interactive 3D rendering.
@@ -76,7 +76,7 @@ The application is built with Vanilla JS (ES Modules) and Vite, structured into 
 
 ## Coding Conventions
 
-- **Linting**: Strict security and quality rules via `eslint-plugin-security`, `sonarjs`, and `no-unsanitized`.
+- **Linting**: Strict security and quality rules via `eslint-plugin-security`, `sonarjs`, `no-unsanitized`, and `@eslint/css`.
 - **Formatting**: Prettier with 4-space tabs and single quotes.
-- **Testing**: Mandated TDD workflow. Unit tests are required for all utility functions, network construction logic, and UI-independent business logic. Tests must be written before implementation (Red phase).
+- **Testing**: Mandated TDD workflow. Unit tests are required for all utility functions (`src/js/Utils.js`), network construction logic, and UI-independent business logic. Tests must be written before implementation (Red phase).
 - **Media Support**: Implements `MediaSession` API for lock-screen controls and metadata.

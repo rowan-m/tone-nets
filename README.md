@@ -9,13 +9,26 @@ The application parses MIDI files to analyse note transitions and visualises the
 ## Architecture
 
 1.  **Network Parsing & Analysis**
-    The application uses `@tonejs/midi` to convert binary MIDI data into a structured format. This processing occurs in a background Web Worker to maintain UI responsiveness. Notes are grouped by their MIDI tick to identify chords and sequential transitions. These transitions are stored in a directed, weighted graph using `ngraph.graph`, where nodes represent pitch classes and edges represent transitions. The worker calculates academic complexity metrics such as Density, Reciprocity (Binary, Weighted, Normalized), Mean Node Entropy, Global Efficiency (Unweighted and Weighted), and Scale-interval Embedding (Interval Signature).
+    The application uses `@tonejs/midi` to convert binary MIDI data into a structured format. This processing occurs in a background Web Worker to maintain UI responsiveness. Notes are grouped by their exact MIDI ticks to identify chords and sequential transitions, while Channel 10 (drums) is excluded from analysis. Transitions are stored in a directed, weighted graph using `ngraph.graph`, where nodes represent pitch classes and edges represent transitions. The worker calculates academic complexity metrics including:
+    - **Efficiency**: Global (unweighted) and Weighted (via Dijkstra).
+    - **Reciprocity**: Binary, Weighted, and Normalized ($\rho$).
+    - **Entropy**: Mean Node Entropy.
+    - **Scale-interval Embedding**: A 12D interval signature of directed pitch class intervals.
 
 2.  **3D Visualization**
-    The graph is rendered using `three` (Three.js). A 2D layout is calculated by `ngraph.forcelayout` using a spring-physics simulation. This layout is then mapped to 3D space, with the Z-axis (depth) determined by each node's degree (connection count). Edges are rendered as curved Quadratic Bezier lines with directional cones. The `postprocessing` library is used to apply a Bloom effect to the scene. Interaction and node highlighting are handled via Three.js raycasting.
+    The graph is rendered using `three` (Three.js). A 2D layout is calculated incrementally over 3000 steps by `ngraph.forcelayout` using a spring-physics simulation. This layout is then mapped to 3D space, with the Z-axis (depth) determined by each node's degree (connection count), creating a 2.5D topological landscape. Visual features include:
+    - Quadratic Bezier edges with directional cones.
+    - Pitch-class based node coloring (HSL).
+    - Floating instrument emojis above active nodes using `THREE.Sprite`.
+    - Post-processing bloom effects via the `postprocessing` library.
+    - Interactive metadata display and highlighting via `THREE.Raycaster`.
 
 3.  **Audio Playback & Synchronization**
-    Playback is managed by `tone` (Tone.js), which provides the master clock and event scheduling (including CC and Program changes). Audio synthesis is performed by `spessasynth_lib`, a Web Audio Worklet synthesizer that renders audio from SoundFont (`.sf2`) data. `Tone.Draw` is used to synchronize visual highlights in the 3D scene with audio playback events.
+    Playback is managed by `tone` (Tone.js) for transport scheduling and `spessasynth_lib` for high-quality SoundFont synthesis. The system supports:
+    - General MIDI SoundFont (`.sf2`) rendering.
+    - Scheduling of notes, program changes, and CC events.
+    - Real-time synchronization of visual highlights using `Tone.Draw`.
+    - `MediaSession` API integration for lock-screen controls and metadata.
 
 ## Develop
 
@@ -28,9 +41,9 @@ npm run dev
 
 ## Contribute
 
-Before sending a pull request, run the linting, formatting, and test checks locally:
+Before submitting a pull request, ensure all quality checks pass:
 
-```
+```bash
 npm run prettier
 npm run eslint
 npm run test

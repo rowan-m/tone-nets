@@ -73,15 +73,15 @@ const init = async () => {
     };
 
     const updateMetricsUI = (summary, fileName) => {
-        appTitle.innerText = summary.title ? summary.title : fileName;
+        appTitle.textContent = summary.title ? summary.title : fileName;
 
-        vCountEl.innerText = summary.vertices;
-        eCountEl.innerText = summary.edges;
+        vCountEl.textContent = summary.vertices;
+        eCountEl.textContent = summary.edges;
 
         // Populate metrics
         Object.keys(metricEls).forEach((key) => {
             if (key === 'intervalBars') return;
-            if (metricEls[key]) metricEls[key].innerText = summary[key];
+            if (metricEls[key]) metricEls[key].textContent = summary[key];
         });
 
         // Update Interval Signature Bars

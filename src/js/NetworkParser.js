@@ -87,22 +87,8 @@ export class NetworkParser {
 
     static calculateEfficiency(graph, n) {
         const efficiencySums = { unweighted: 0, weighted: 0 };
-        const nodes = [];
-        graph.forEachNode((node) => {
-            nodes.push(node.id);
-        });
-
-        // Optimize: Precompute adjacency list for O(1) neighbor lookups
-        // to avoid expensive ngraph.graph.forEachLinkedNode calls inside V^2 loops
-        const adj = new Map();
-        graph.forEachLink((link) => {
-            let list = adj.get(link.fromId);
-            if (!list) {
-                list = [];
-                adj.set(link.fromId, list);
-            }
-            list.push({ to: link.toId, weight: link.data.weight });
-        });
+        const nodes = this._getNodeIds(graph);
+        const adj = this._getAdjacencyList(graph);
 
         for (let i = 0; i < nodes.length; i++) {
             const startNode = nodes[i];
@@ -118,15 +104,36 @@ export class NetworkParser {
             );
         }
 
+        const norm = n > 1 ? n * (n - 1) : 1;
         const unweightedEfficiency =
-            n > 1 ? efficiencySums.unweighted / (n * (n - 1)) : 0;
-        const weightedEfficiency =
-            n > 1 ? efficiencySums.weighted / (n * (n - 1)) : 0;
+            n > 1 ? efficiencySums.unweighted / norm : 0;
+        const weightedEfficiency = n > 1 ? efficiencySums.weighted / norm : 0;
 
         return {
             efficiency: unweightedEfficiency.toFixed(4),
             weightedEfficiency: weightedEfficiency.toFixed(4),
         };
+    }
+
+    static _getNodeIds(graph) {
+        const nodes = [];
+        graph.forEachNode((node) => {
+            nodes.push(node.id);
+        });
+        return nodes;
+    }
+
+    static _getAdjacencyList(graph) {
+        const adj = new Map();
+        graph.forEachLink((link) => {
+            let list = adj.get(link.fromId);
+            if (!list) {
+                list = [];
+                adj.set(link.fromId, list);
+            }
+            list.push({ to: link.toId, weight: link.data.weight });
+        });
+        return adj;
     }
 
     static calculateEmbedding(graph) {
@@ -172,30 +179,31 @@ export class NetworkParser {
         let title = midi.name ? midi.name.trim() : '';
 
         if (midi.header && midi.header.meta) {
-            // Find the first meaningful text event (often the artist or a subtitle)
-            const firstTextEvent = midi.header.meta.find((m) => {
-                if ((m.type === 'text' || m.type === 'trackName') && m.text) {
-                    const trimmedText = m.text.trim();
-                    return (
-                        trimmedText.length > 0 &&
-                        !/^Track \d+$/i.test(trimmedText) &&
-                        trimmedText !== title
-                    );
-                }
-                return false;
-            });
+            const firstTextEvent = midi.header.meta.find((m) =>
+                this._isMeaningfulTextEvent(m, title),
+            );
 
             if (firstTextEvent) {
                 const extraInfo = firstTextEvent.text.trim();
-                if (title) {
-                    // If we have both, combine them (e.g., "Song Name - Artist")
-                    title = `${title} - ${extraInfo}`;
-                } else {
-                    title = extraInfo;
-                }
+                title = title ? `${title} - ${extraInfo}` : extraInfo;
             }
         }
         return title;
+    }
+
+    static _isMeaningfulTextEvent(event, currentTitle) {
+        if (
+            (event.type === 'text' || event.type === 'trackName') &&
+            event.text
+        ) {
+            const trimmedText = event.text.trim();
+            return (
+                trimmedText.length > 0 &&
+                !/^Track \d+$/i.test(trimmedText) &&
+                trimmedText !== currentTitle
+            );
+        }
+        return false;
     }
 
     static processTransitions(midi, graph) {
@@ -208,25 +216,31 @@ export class NetworkParser {
             // Filter out drum/percussion channel (MIDI channel 10 is index 9)
             if (track.channel === 9) continue;
 
-            const notesByTime = this._groupNotesByTime(track.notes);
-            const sortedTimes = Array.from(notesByTime.keys()).sort(
-                (a, b) => a - b,
-            );
-
-            // Build transitions: from all notes at time T to all notes at time T+1
-            for (let i = 1; i < sortedTimes.length; i++) {
-                const sourceNotes = notesByTime.get(sortedTimes[i - 1]);
-                const targetNotes = notesByTime.get(sortedTimes[i]);
-
-                edgeCount += this._buildTransitionsForTimeStep(
-                    graph,
-                    sourceNotes,
-                    targetNotes,
-                );
-            }
+            edgeCount += this._processTrackTransitions(graph, track);
         }
 
         return edgeCount;
+    }
+
+    static _processTrackTransitions(graph, track) {
+        let trackEdgeCount = 0;
+        const notesByTime = this._groupNotesByTime(track.notes);
+        const sortedTimes = Array.from(notesByTime.keys()).sort(
+            (a, b) => a - b,
+        );
+
+        // Build transitions: from all notes at time T to all notes at time T+1
+        for (let i = 1; i < sortedTimes.length; i++) {
+            const sourceNotes = notesByTime.get(sortedTimes[i - 1]);
+            const targetNotes = notesByTime.get(sortedTimes[i]);
+
+            trackEdgeCount += this._buildTransitionsForTimeStep(
+                graph,
+                sourceNotes,
+                targetNotes,
+            );
+        }
+        return trackEdgeCount;
     }
 
     static _groupNotesByTime(trackNotes) {
@@ -249,43 +263,46 @@ export class NetworkParser {
     static _buildTransitionsForTimeStep(graph, sourceNotes, targetNotes) {
         let edgesAdded = 0;
 
-        // Optimization: Ensure all nodes exist before the nested loop.
-        // This reduces getNode() calls from O(S*T) to O(S+T).
-        for (let i = 0; i < sourceNotes.length; i++) {
-            const source = sourceNotes[i];
-            if (!graph.getNode(source)) {
-                graph.addNode(source, { name: source });
-            }
-        }
-        for (let i = 0; i < targetNotes.length; i++) {
-            const target = targetNotes[i];
-            if (!graph.getNode(target)) {
-                graph.addNode(target, { name: target });
-            }
-        }
+        this._ensureNodesExist(graph, sourceNotes);
+        this._ensureNodesExist(graph, targetNotes);
 
         for (let s = 0; s < sourceNotes.length; s++) {
             const source = sourceNotes[s];
 
             for (let tr = 0; tr < targetNotes.length; tr++) {
                 const target = targetNotes[tr];
-                // Scientific Parity: Skip self-loops (w_xx = 0) as per paper section "Network construction"
                 if (source === target) continue;
 
-                const existingLink = graph.getLink(source, target);
-
-                if (existingLink) {
-                    existingLink.data.weight += 1;
-                } else {
-                    graph.addLink(source, target, {
-                        weight: 1,
-                        id: `${source}->${target}`,
-                    });
+                if (this._updateOrCreateLink(graph, source, target)) {
                     edgesAdded++;
                 }
             }
         }
         return edgesAdded;
+    }
+
+    static _ensureNodesExist(graph, nodeIds) {
+        for (let i = 0; i < nodeIds.length; i++) {
+            const id = nodeIds[i];
+            if (!graph.getNode(id)) {
+                graph.addNode(id, { name: id });
+            }
+        }
+    }
+
+    static _updateOrCreateLink(graph, source, target) {
+        const existingLink = graph.getLink(source, target);
+
+        if (existingLink) {
+            existingLink.data.weight += 1;
+            return false;
+        }
+
+        graph.addLink(source, target, {
+            weight: 1,
+            id: `${source}->${target}`,
+        });
+        return true;
     }
 
     static computeNodeDegrees(graph) {

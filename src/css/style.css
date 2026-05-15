@@ -98,7 +98,13 @@ h1 {
     border-color: var(--accent-color);
 }
 
-.btn:disabled {
+.hidden-input:disabled + .btn:hover {
+    background: rgba(0, 0, 0, 0.5);
+    border-color: var(--panel-border);
+}
+
+.btn:disabled,
+.hidden-input:disabled + .btn {
     opacity: 0.5;
     cursor: not-allowed;
 }

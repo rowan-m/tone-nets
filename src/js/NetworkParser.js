@@ -203,63 +203,81 @@ export class NetworkParser {
 
         // We process each track separately to avoid creating transitions
         // between notes played on different instruments/channels.
-        midi.tracks.forEach((track) => {
+        for (let t = 0; t < midi.tracks.length; t++) {
+            const track = midi.tracks[t];
             // Filter out drum/percussion channel (MIDI channel 10 is index 9)
-            if (track.channel === 9) return;
+            if (track.channel === 9) continue;
 
-            // Group notes by start time to handle chords (notes played simultaneously)
-            const notesByTime = new Map();
-
-            track.notes.forEach((note) => {
-                // Group by exact MIDI ticks (like the original R code does with time)
-                const timeKey = note.ticks;
-
-                if (!notesByTime.has(timeKey)) {
-                    notesByTime.set(timeKey, []);
-                }
-                notesByTime.get(timeKey).push(note.name); // e.g., "C4", "G#3"
-            });
-
-            // Sort the distinct times chronologically
+            const notesByTime = this._groupNotesByTime(track.notes);
             const sortedTimes = Array.from(notesByTime.keys()).sort(
                 (a, b) => a - b,
             );
 
             // Build transitions: from all notes at time T to all notes at time T+1
             for (let i = 1; i < sortedTimes.length; i++) {
-                const previousTime = sortedTimes[i - 1];
-                const currentTime = sortedTimes[i];
+                const sourceNotes = notesByTime.get(sortedTimes[i - 1]);
+                const targetNotes = notesByTime.get(sortedTimes[i]);
 
-                const sourceNotes = notesByTime.get(previousTime);
-                const targetNotes = notesByTime.get(currentTime);
-
-                sourceNotes.forEach((source) => {
-                    graph.addNode(source, { name: source });
-
-                    targetNotes.forEach((target) => {
-                        // Scientific Parity: Skip self-loops (w_xx = 0) as per paper section "Network construction"
-                        if (source === target) return;
-
-                        graph.addNode(target, { name: target });
-
-                        const linkId = `${source}->${target}`;
-                        const existingLink = graph.getLink(source, target);
-
-                        if (existingLink) {
-                            existingLink.data.weight += 1;
-                        } else {
-                            graph.addLink(source, target, {
-                                weight: 1,
-                                id: linkId,
-                            });
-                            edgeCount++;
-                        }
-                    });
-                });
+                edgeCount += this._buildTransitionsForTimeStep(
+                    graph,
+                    sourceNotes,
+                    targetNotes,
+                );
             }
-        });
+        }
 
         return edgeCount;
+    }
+
+    static _groupNotesByTime(trackNotes) {
+        const notesByTime = new Map();
+        for (let n = 0; n < trackNotes.length; n++) {
+            const note = trackNotes[n];
+            const timeKey = note.ticks;
+            const name = note.name;
+
+            let group = notesByTime.get(timeKey);
+            if (!group) {
+                group = [];
+                notesByTime.set(timeKey, group);
+            }
+            group.push(name);
+        }
+        return notesByTime;
+    }
+
+    static _buildTransitionsForTimeStep(graph, sourceNotes, targetNotes) {
+        let edgesAdded = 0;
+        for (let s = 0; s < sourceNotes.length; s++) {
+            const source = sourceNotes[s];
+
+            if (!graph.getNode(source)) {
+                graph.addNode(source, { name: source });
+            }
+
+            for (let tr = 0; tr < targetNotes.length; tr++) {
+                const target = targetNotes[tr];
+                // Scientific Parity: Skip self-loops (w_xx = 0) as per paper section "Network construction"
+                if (source === target) continue;
+
+                if (!graph.getNode(target)) {
+                    graph.addNode(target, { name: target });
+                }
+
+                const existingLink = graph.getLink(source, target);
+
+                if (existingLink) {
+                    existingLink.data.weight += 1;
+                } else {
+                    graph.addLink(source, target, {
+                        weight: 1,
+                        id: `${source}->${target}`,
+                    });
+                    edgesAdded++;
+                }
+            }
+        }
+        return edgesAdded;
     }
 
     static computeNodeDegrees(graph) {

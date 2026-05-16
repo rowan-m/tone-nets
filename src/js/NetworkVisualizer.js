@@ -1169,10 +1169,9 @@ export class NetworkVisualizer {
             check(max.x, max.y, max.z);
 
             // Required frustum size to fit both height and width (considering aspect)
-            // Use 0.95 multiplier to zoom in slightly tighter, as nodes are spheres
-            // and the bounding box might have empty space at corners.
+            // Use 1.02 multiplier to add a slight 2% padding so nodes at the edges don't clip.
             const requiredFrustumSize =
-                Math.max(maxH * 2, (maxW * 2) / aspect) * 0.95;
+                Math.max(maxH * 2, (maxW * 2) / aspect) * 1.02;
 
             // Calculate target zoom relative to the base frustum size
             const targetZoom = this.baseFrustumSize / requiredFrustumSize;

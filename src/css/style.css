@@ -115,7 +115,8 @@ h1 {
     color: var(--accent-text);
 }
 
-.autoplay-control {
+.autoplay-control,
+.incremental-control {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -125,14 +126,16 @@ h1 {
     white-space: nowrap;
 }
 
-.autoplay-control input[type='checkbox'] {
+.autoplay-control input[type='checkbox'],
+.incremental-control input[type='checkbox'] {
     width: 18px;
     height: 18px;
     cursor: pointer;
     accent-color: var(--accent-color);
 }
 
-.autoplay-control label {
+.autoplay-control label,
+.incremental-control label {
     cursor: pointer;
 }
 

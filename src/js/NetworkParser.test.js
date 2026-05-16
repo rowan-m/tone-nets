@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { NetworkParser } from './NetworkParser.js';
 import { Midi } from '@tonejs/midi';
+import createGraph from 'ngraph.graph';
 
 // Mock @tonejs/midi
 vi.mock('@tonejs/midi', () => {
@@ -260,6 +261,28 @@ describe('NetworkParser', () => {
             expect(summary.edges).toBe(2);
             expect(graph.getLink('C4', 'G4')).toBeDefined();
             expect(graph.getLink('E4', 'G4')).toBeDefined();
+        });
+    });
+
+    describe('addTransition', () => {
+        it('should add nodes and links incrementally', () => {
+            const graph = createGraph();
+            NetworkParser.addTransition(graph, 'C4', 'G4');
+
+            expect(graph.getNodesCount()).toBe(2);
+            expect(graph.getLinksCount()).toBe(1);
+            expect(graph.getLink('C4', 'G4').data.weight).toBe(1);
+
+            // Update existing link
+            NetworkParser.addTransition(graph, 'C4', 'G4');
+            expect(graph.getLinksCount()).toBe(1);
+            expect(graph.getLink('C4', 'G4').data.weight).toBe(2);
+        });
+
+        it('should ignore self-loops', () => {
+            const graph = createGraph();
+            NetworkParser.addTransition(graph, 'C4', 'C4');
+            expect(graph.getNodesCount()).toBe(0);
         });
     });
 

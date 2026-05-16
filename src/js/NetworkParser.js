@@ -263,8 +263,8 @@ export class NetworkParser {
     static _buildTransitionsForTimeStep(graph, sourceNotes, targetNotes) {
         let edgesAdded = 0;
 
-        this._ensureNodesExist(graph, sourceNotes);
-        this._ensureNodesExist(graph, targetNotes);
+        this.ensureNodesExist(graph, sourceNotes);
+        this.ensureNodesExist(graph, targetNotes);
 
         for (let s = 0; s < sourceNotes.length; s++) {
             const source = sourceNotes[s];
@@ -273,7 +273,7 @@ export class NetworkParser {
                 const target = targetNotes[tr];
                 if (source === target) continue;
 
-                if (this._updateOrCreateLink(graph, source, target)) {
+                if (this.updateOrCreateLink(graph, source, target)) {
                     edgesAdded++;
                 }
             }
@@ -281,7 +281,14 @@ export class NetworkParser {
         return edgesAdded;
     }
 
-    static _ensureNodesExist(graph, nodeIds) {
+    static addTransition(graph, source, target) {
+        if (!source || !target || source === target) return false;
+
+        this.ensureNodesExist(graph, [source, target]);
+        return this.updateOrCreateLink(graph, source, target);
+    }
+
+    static ensureNodesExist(graph, nodeIds) {
         for (let i = 0; i < nodeIds.length; i++) {
             const id = nodeIds[i];
             if (!graph.getNode(id)) {
@@ -290,7 +297,7 @@ export class NetworkParser {
         }
     }
 
-    static _updateOrCreateLink(graph, source, target) {
+    static updateOrCreateLink(graph, source, target) {
         const existingLink = graph.getLink(source, target);
 
         if (existingLink) {

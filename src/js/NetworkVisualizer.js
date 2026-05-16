@@ -8,6 +8,7 @@ import {
     BloomEffect,
 } from 'postprocessing';
 import { Utils } from './Utils.js';
+import { NetworkParser } from './NetworkParser.js';
 
 export class NetworkVisualizer {
     constructor(containerId) {
@@ -51,6 +52,11 @@ export class NetworkVisualizer {
         this.playingNodes = new Set();
         this.playingEdges = new Set();
         this.isPaused = false;
+        this.incrementalMode = false;
+        this.graph = null;
+        this.maxDegree = 1;
+        this.maxWeight = 1;
+        this.layoutScale = 10.0;
         this.autoTour = false;
         this.autoTourTime = 0;
         this.tourCurrentVelocity = new THREE.Vector3();
@@ -261,6 +267,10 @@ export class NetworkVisualizer {
         this.playingNodes.clear();
         this.playingEdges.clear();
         this.pickableObjects = [];
+        this.graph = null;
+        this.incrementalMode = false;
+        this.maxDegree = 1;
+        this.maxWeight = 1;
 
         // Clear active emojis
         this.activeEmojis.forEach((emojiData) => {
@@ -300,7 +310,9 @@ export class NetworkVisualizer {
             if (i === 0) {
                 // Assign higher mass to high-degree nodes so they push others away more strongly.
                 // We do this on the first step to ensure the simulator has initialized bodies.
-                this._applyMassScaling(graph);
+                graph.forEachNode((node) => {
+                    this._applyMassScalingForNode(node.id);
+                });
             }
 
             this.layout.step();
@@ -318,90 +330,240 @@ export class NetworkVisualizer {
         return true;
     }
 
-    _applyMassScaling(graph) {
-        try {
-            const simulator = this.layout.simulator;
-            if (!simulator || typeof simulator.getBody !== 'function') return;
+    async initIncremental(graph) {
+        this.clear();
+        this.graph = graph;
+        this.incrementalMode = true;
 
-            graph.forEachNode((node) => {
-                const body = simulator.getBody(node.id);
-                if (body) {
-                    const degree = (node.data && node.data.degree) || 1;
-                    body.mass = 1 + Math.log2(degree + 1) * 5;
-                }
-            });
-        } catch (error) {
-            console.warn(
-                'Mass scaling not supported by layout simulator:',
-                error,
+        this.layout = createLayout(graph, {
+            dimensions: 3,
+            physicsSettings: {
+                springLength: 800,
+                springCoeff: 0.0002,
+                gravity: -1200,
+                theta: 0.5,
+                dragCoeff: 0.1,
+                timeStep: 20,
+            },
+        });
+
+        this.maxDegree = 1;
+        this.maxWeight = 1;
+
+        // Initialize geometries if not already done
+        this._initSharedGeometries();
+
+        this.fitCameraToGraph();
+        this.startAutoTour();
+    }
+
+    _initSharedGeometries() {
+        if (!this.sphereGeo) {
+            const sphereSegments = 20;
+            this.sphereGeo = new THREE.SphereGeometry(
+                1,
+                sphereSegments,
+                sphereSegments,
             );
+            this.outlineGeo = new THREE.SphereGeometry(1.08, 12, 12);
+            this.outlineMat = new THREE.MeshBasicMaterial({
+                color: 0x000000,
+                side: THREE.BackSide,
+            });
+            this.coneGeo = new THREE.ConeGeometry(1.2, 3.5, 8);
+            this.coneGeo.rotateX(Math.PI / 2);
         }
     }
 
-    _renderNodes(graph, layoutScale, maxDegree) {
-        const sphereSegments = 20; // Reduced from 32 for performance
-        const sphereGeo = new THREE.SphereGeometry(
-            1,
-            sphereSegments,
-            sphereSegments,
-        );
+    _applyMassScalingForNode(nodeId) {
+        try {
+            const simulator = this.layout.simulator;
+            if (!simulator || typeof simulator.getBody !== 'function') return;
+            const node = this.graph.getNode(nodeId);
+            const body = simulator.getBody(nodeId);
+            if (body && node) {
+                const degree = (node.data && node.data.degree) || 1;
+                body.mass = 1 + Math.log2(degree + 1) * 5;
+            }
+        } catch (error) {
+            // Silently ignore if simulator doesn't support getBody
+        }
+    }
 
-        const outlineGeo = new THREE.SphereGeometry(1.08, 12, 12);
-        let outlineMat = new THREE.MeshBasicMaterial({
-            color: 0x000000,
-            side: THREE.BackSide,
-        });
-
-        graph.forEachNode((node) => {
-            const pos = this.layout.getNodePosition(node.id);
+    _updateElementVisuals(id, type) {
+        if (type === 'node') {
+            const nodeData = this.nodes.get(id);
+            if (!nodeData) return;
+            const node = this.graph.getNode(id);
             const degree = (node.data && node.data.degree) || 1;
-            const normDegree = Math.min(1, degree / maxDegree);
+            const normDegree = Math.min(1, degree / this.maxDegree);
+            const scale = 3 + normDegree * 15;
+            nodeData.mesh.scale.set(scale, scale, scale);
+            nodeData.mesh.userData.degree = degree;
+        } else if (type === 'edge') {
+            const edgeData = this.edgeMap.get(id);
+            if (!edgeData) return;
+            const link = this.graph.getLink(edgeData.sourceId, edgeData.targetId);
+            const normWeight = Math.min(1, link.data.weight / this.maxWeight);
+            const weightBucket = Math.round(normWeight * 100);
 
-            const pitchClass = Utils.noteToSemitone(node.id) % 12;
+            let mat = this.edgeMaterialPool.get(weightBucket);
+            let coneMat = this.coneMaterialPool.get(weightBucket);
 
-            let baseMaterial = this.nodeMaterialCache.get(pitchClass);
-            if (!baseMaterial) {
-                const hue = pitchClass / 12;
-                const nodeColor = new THREE.Color().setHSL(hue, 1.0, 0.6);
+            if (!mat || !coneMat) {
+                const edgeColor = this._getEdgeColor(normWeight);
+                const edgeOpacity = 0.2 + normWeight * 0.5;
 
-                baseMaterial = new THREE.MeshStandardMaterial({
-                    color: nodeColor,
-                    emissive: nodeColor,
-                    emissiveIntensity: 0.2,
-                    roughness: 0.3,
-                    metalness: 0.2,
-                    transparent: false,
-                    opacity: 1.0,
+                mat = new THREE.LineBasicMaterial({
+                    color: edgeColor,
+                    transparent: true,
+                    opacity: edgeOpacity,
                 });
-                this.nodeMaterialCache.set(pitchClass, baseMaterial);
+                this.edgeMaterialPool.set(weightBucket, mat);
+
+                coneMat = new THREE.MeshBasicMaterial({
+                    color: edgeColor,
+                    transparent: true,
+                    opacity: Math.max(0.2, edgeOpacity),
+                });
+                this.coneMaterialPool.set(weightBucket, coneMat);
             }
 
-            // Must clone so each node can have independent highlight state (emissiveIntensity)
-            const material = baseMaterial.clone();
-            const mesh = new THREE.Mesh(sphereGeo, material);
+            edgeData.line.material = mat;
+            edgeData.line.userData.origMaterial = mat;
+            edgeData.line.userData.weight = link.data.weight;
+            if (edgeData.cone) {
+                edgeData.cone.material = coneMat;
+                edgeData.cone.userData.origMaterial = coneMat;
+            }
+        }
+    }
 
-            // Increased scale variance to help hub nodes stand out without being overwhelmed.
-            const scale = 3 + normDegree * 15;
-            mesh.scale.set(scale, scale, scale);
+    _updateAllVisualScales() {
+        this.nodes.forEach((_, id) => this._updateElementVisuals(id, 'node'));
+        this.edgeMap.forEach((_, id) => this._updateElementVisuals(id, 'edge'));
+    }
 
-            const x = pos.x * layoutScale;
-            const y = pos.y * layoutScale;
-            const z = pos.z * layoutScale;
-            mesh.position.set(x, y, z);
+    addTransitionIncremental(sourceId, targetId) {
+        if (!this.incrementalMode || !this.graph) return;
 
-            const outlineMesh = new THREE.Mesh(outlineGeo, outlineMat);
-            mesh.add(outlineMesh);
+        // Add to ngraph
+        const isNewLink = NetworkParser.addTransition(
+            this.graph,
+            sourceId,
+            targetId,
+        );
 
-            this.graphGroup.add(mesh);
-            mesh.userData = {
-                type: 'node',
-                id: node.id,
-                degree: degree,
-                origEmissive: material.emissive.getHex(),
-                origEmissiveIntensity: material.emissiveIntensity,
-            };
-            this.pickableObjects.push(mesh);
-            this.nodes.set(node.id, { mesh: mesh, id: node.id });
+        const sourceNode = this.graph.getNode(sourceId);
+        const targetNode = this.graph.getNode(targetId);
+        
+        if (!sourceNode || !targetNode) return;
+
+        // Update degrees incrementally
+        if (!sourceNode.data) sourceNode.data = {};
+        if (!targetNode.data) targetNode.data = {};
+        if (typeof sourceNode.data.degree !== 'number') sourceNode.data.degree = 0;
+        if (typeof targetNode.data.degree !== 'number') targetNode.data.degree = 0;
+        
+        sourceNode.data.degree++;
+        targetNode.data.degree++;
+
+        // Ensure Three.js objects exist
+        if (!this.nodes.has(sourceId)) {
+            this._renderNode(sourceNode, this.layoutScale, this.maxDegree);
+        }
+        if (!this.nodes.has(targetId)) {
+            this._renderNode(targetNode, this.layoutScale, this.maxDegree);
+        }
+
+        this._applyMassScalingForNode(sourceId);
+        this._applyMassScalingForNode(targetId);
+
+        if (isNewLink) {
+            const link = this.graph.getLink(sourceId, targetId);
+            this._renderEdge(link, this.layoutScale, this.maxWeight);
+        }
+
+        // Update max values
+        let globalUpdateNeeded = false;
+        if (sourceNode.data.degree > this.maxDegree) {
+            this.maxDegree = sourceNode.data.degree;
+            globalUpdateNeeded = true;
+        }
+        if (targetNode.data.degree > this.maxDegree) {
+            this.maxDegree = targetNode.data.degree;
+            globalUpdateNeeded = true;
+        }
+
+        const link = this.graph.getLink(sourceId, targetId);
+        if (link && link.data.weight > this.maxWeight) {
+            this.maxWeight = link.data.weight;
+            globalUpdateNeeded = true;
+        }
+
+        if (globalUpdateNeeded) {
+            this._updateAllVisualScales();
+        } else {
+            this._updateElementVisuals(sourceId, 'node');
+            this._updateElementVisuals(targetId, 'node');
+            this._updateElementVisuals(`${sourceId}->${targetId}`, 'edge');
+        }
+    }
+
+    _renderNode(node, layoutScale, maxDegree) {
+        const pos = this.layout.getNodePosition(node.id);
+        const degree = (node.data && node.data.degree) || 1;
+        const normDegree = Math.min(1, degree / maxDegree);
+
+        const pitchClass = Utils.noteToSemitone(node.id) % 12;
+
+        let baseMaterial = this.nodeMaterialCache.get(pitchClass);
+        if (!baseMaterial) {
+            const hue = pitchClass / 12;
+            const nodeColor = new THREE.Color().setHSL(hue, 1.0, 0.6);
+
+            baseMaterial = new THREE.MeshStandardMaterial({
+                color: nodeColor,
+                emissive: nodeColor,
+                emissiveIntensity: 0.2,
+                roughness: 0.3,
+                metalness: 0.2,
+                transparent: false,
+                opacity: 1.0,
+            });
+            this.nodeMaterialCache.set(pitchClass, baseMaterial);
+        }
+
+        const material = baseMaterial.clone();
+        const mesh = new THREE.Mesh(this.sphereGeo, material);
+
+        const scale = 3 + normDegree * 15;
+        mesh.scale.set(scale, scale, scale);
+
+        const x = pos.x * layoutScale;
+        const y = pos.y * layoutScale;
+        const z = pos.z * layoutScale;
+        mesh.position.set(x, y, z);
+
+        const outlineMesh = new THREE.Mesh(this.outlineGeo, this.outlineMat);
+        mesh.add(outlineMesh);
+
+        this.graphGroup.add(mesh);
+        mesh.userData = {
+            type: 'node',
+            id: node.id,
+            degree: degree,
+            origEmissive: material.emissive.getHex(),
+            origEmissiveIntensity: material.emissiveIntensity,
+        };
+        this.pickableObjects.push(mesh);
+        this.nodes.set(node.id, { mesh: mesh, id: node.id });
+    }
+
+    _renderNodes(graph, layoutScale, maxDegree) {
+        this._initSharedGeometries();
+        graph.forEachNode((node) => {
+            this._renderNode(node, layoutScale, maxDegree);
         });
     }
 
@@ -471,6 +633,7 @@ export class NetworkVisualizer {
     _renderEdge(link, layoutScale, maxWeight, coneGeo) {
         const sPosRaw = this.layout.getNodePosition(link.fromId);
         const tPosRaw = this.layout.getNodePosition(link.toId);
+        const targetConeGeo = coneGeo || this.coneGeo;
 
         const curve = this._updateEdgeCurve(
             this._scratchCurve,
@@ -538,7 +701,7 @@ export class NetworkVisualizer {
         curve.getTangent(tMid, this._scratchVec3_2).normalize();
         const arrowDir = this._scratchVec3_2;
 
-        const cone = new THREE.Mesh(coneGeo, coneMat);
+        const cone = new THREE.Mesh(targetConeGeo, coneMat);
         cone.position.copy(arrowPos);
         cone.lookAt(this._scratchVec3_3.copy(arrowPos).add(arrowDir));
         cone.userData = {
@@ -559,16 +722,15 @@ export class NetworkVisualizer {
     }
 
     _renderEdges(graph, layoutScale, maxWeight) {
-        const coneGeo = new THREE.ConeGeometry(1.2, 3.5, 8);
-        coneGeo.rotateX(Math.PI / 2);
-
+        this._initSharedGeometries();
         graph.forEachLink((link) => {
-            this._renderEdge(link, layoutScale, maxWeight, coneGeo);
+            this._renderEdge(link, layoutScale, maxWeight, this.coneGeo);
         });
     }
 
     async buildVisualization(graph) {
         this.clear();
+        this.graph = graph;
 
         // Identify isolated components to prevent them from drifting infinitely far apart.
         // We will add temporary invisible springs (edges) to pull them towards the main network.
@@ -800,6 +962,61 @@ export class NetworkVisualizer {
         this.activeEmojis.splice(index, 1);
     }
 
+    _updatePositionsFromLayout() {
+        if (!this.layout) return;
+
+        this.nodes.forEach((nodeData, id) => {
+            const pos = this.layout.getNodePosition(id);
+            nodeData.mesh.position.set(
+                pos.x * this.layoutScale,
+                pos.y * this.layoutScale,
+                pos.z * this.layoutScale,
+            );
+        });
+
+        this.edges.forEach((edgeData) => {
+            const sPosRaw = this.layout.getNodePosition(edgeData.sourceId);
+            const tPosRaw = this.layout.getNodePosition(edgeData.targetId);
+
+            this._updateEdgeCurve(
+                this._scratchCurve,
+                sPosRaw,
+                tPosRaw,
+                this.layoutScale,
+                { fromId: edgeData.sourceId, toId: edgeData.targetId },
+            );
+
+            const positions = edgeData.line.geometry.attributes.position.array;
+            const segments = 20;
+            for (let i = 0; i <= segments; i++) {
+                this._scratchCurve.getPoint(i / segments, this._scratchVec3_1);
+                positions[i * 3] = this._scratchVec3_1.x;
+                positions[i * 3 + 1] = this._scratchVec3_1.y;
+                positions[i * 3 + 2] = this._scratchVec3_1.z;
+            }
+            edgeData.line.geometry.attributes.position.needsUpdate = true;
+
+            const tMid = 0.5;
+            this._scratchCurve.getPoint(tMid, this._scratchVec3_1);
+            edgeData.cone.position.copy(this._scratchVec3_1);
+            this._scratchCurve.getTangent(tMid, this._scratchVec3_2).normalize();
+            edgeData.cone.lookAt(
+                this._scratchVec3_3
+                    .copy(this._scratchVec3_1)
+                    .add(this._scratchVec3_2),
+            );
+        });
+
+        // Also update bounding box/center for auto-tour
+        if (this.nodes.size > 0) {
+            this._scratchBox3.setFromObject(this.graphGroup);
+            this.graphBoundingBox.copy(this._scratchBox3);
+            this._scratchBox3.getCenter(this.graphCenter);
+            this._scratchBox3.getBoundingSphere(this._scratchSphere);
+            this.graphRadius = this._scratchSphere.radius;
+        }
+    }
+
     animate(time) {
         requestAnimationFrame(this.animate);
 
@@ -808,6 +1025,11 @@ export class NetworkVisualizer {
                 ? 0
                 : (time - this._lastFrameTime) / 1000;
         this._lastFrameTime = time;
+
+        if (this.incrementalMode && this.layout && !this.isPaused) {
+            this.layout.step();
+            this._updatePositionsFromLayout();
+        }
 
         // Raycasting Logic - Only if mouse moved and throttled
         if (

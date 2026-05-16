@@ -2,6 +2,8 @@ import { NetworkParser } from './NetworkParser.js';
 import { NetworkVisualizer } from './NetworkVisualizer.js';
 import { MidiPlayer } from './MidiPlayer.js';
 import * as Tone from 'tone';
+import { Midi } from '@tonejs/midi';
+import createGraph from 'ngraph.graph';
 
 console.log('Tone Nets Initialized');
 
@@ -37,8 +39,9 @@ const init = async () => {
     const appTitle = document.getElementById('app-title');
     const statusModal = document.getElementById('status-modal');
     const statusModalText = document.getElementById('status-modal-text');
+    const incrementalToggle = document.getElementById('incremental-toggle');
 
-    // Metric Elements
+    let isIncrementalMode = false;
     const metricEls = {
         efficiency: document.getElementById('metric-efficiency'),
         weightedEfficiency: document.getElementById(
@@ -115,6 +118,12 @@ const init = async () => {
     }
 
     player.onNotePlay = (nodeId, prevNodeId, instrumentId, isDrums) => {
+        if (isIncrementalMode && !isDrums) {
+            visualizer.addTransitionIncremental(prevNodeId, nodeId);
+            vCountEl.textContent = visualizer.graph.getNodesCount();
+            eCountEl.textContent = visualizer.graph.getLinksCount();
+        }
+
         visualizer.highlightPlayingElement(nodeId, prevNodeId);
         const emoji = Utils.getInstrumentEmoji(instrumentId, isDrums);
         visualizer.showInstrumentEmoji(nodeId, emoji);
@@ -226,7 +235,14 @@ const init = async () => {
     const processMidi = async (arrayBuffer, fileName) => {
         await Tone.start();
 
-        console.log('Processing MIDI:', fileName);
+        isIncrementalMode = incrementalToggle ? incrementalToggle.checked : false;
+
+        console.log(
+            'Processing MIDI:',
+            fileName,
+            'Incremental:',
+            isIncrementalMode,
+        );
         showStatus('Parsing MIDI and building network...');
         playBtn.disabled = true;
         pauseBtn.disabled = true;
@@ -238,31 +254,45 @@ const init = async () => {
         const autoplay = autoplayToggle ? autoplayToggle.checked : true;
 
         try {
-            // Play Audio
-            await player.play(arrayBuffer.slice(0), autoplay);
+            if (isIncrementalMode) {
+                // Incremental Mode Logic
+                // 1. Just extract metadata and basic info
+                const midi = new Midi(arrayBuffer);
+                const title = NetworkParser.extractMetadata(midi);
 
-            // Use Web Worker to build the network
-            parserWorker.onmessage = (e) => {
-                const { summary, serializedGraph, error } = e.data;
+                updateMetricsUI(
+                    {
+                        title: title,
+                        vertices: 0,
+                        edges: 0,
+                        density: '0.0000',
+                        efficiency: '-',
+                        weightedEfficiency: '-',
+                        entropy: '-',
+                        binaryReciprocity: '-',
+                        reciprocity: '-',
+                        reciprocityRho: '-',
+                        embedding: new Array(12).fill('0.0000'),
+                    },
+                    fileName,
+                );
+                updateMediaSession(title, fileName);
 
-                if (error) {
-                    console.error('Worker error:', error);
-                    showStatus('Error processing MIDI file. See console.');
-                    return;
-                }
+                // 2. Init Visualizer with empty graph
+                const graph = createGraph();
+                await visualizer.initIncremental(graph);
+                welcomeMsg.classList.add('hidden');
 
-                if (summary.duration) {
-                    player.duration = summary.duration;
-                }
-                updateMetricsUI(summary, fileName);
-                updateMediaSession(summary.title, fileName);
+                // 3. Play Audio
+                await player.play(arrayBuffer.slice(0), autoplay);
+
+                // 4. Update UI
                 playBtn.disabled = false;
                 pauseBtn.disabled = false;
                 restartBtn.disabled = false;
                 tourBtn.disabled = false;
                 toggleInfo.disabled = false;
 
-                // Set button state based on autoplay
                 if (autoplay) {
                     playBtn.classList.add('hidden');
                     pauseBtn.classList.remove('hidden');
@@ -273,24 +303,68 @@ const init = async () => {
                     visualizer.setPaused(true);
                 }
 
-                console.log('Network built successfully (in worker):', summary);
+                hideStatus();
+            } else {
+                // Static Mode Logic (Existing)
+                // Play Audio
+                await player.play(arrayBuffer.slice(0), autoplay);
 
-                // Rebuild graph from serialized data
-                const graph = NetworkParser.rebuildGraph(serializedGraph);
+                // Use Web Worker to build the network
+                parserWorker.onmessage = (e) => {
+                    const { summary, serializedGraph, error } = e.data;
 
-                // Setup Progress UI
-                visualizer.onLayoutProgress = (percent) => {
-                    showStatus(`Calculating topological layout: ${percent}%`);
+                    if (error) {
+                        console.error('Worker error:', error);
+                        showStatus('Error processing MIDI file. See console.');
+                        return;
+                    }
+
+                    if (summary.duration) {
+                        player.duration = summary.duration;
+                    }
+                    updateMetricsUI(summary, fileName);
+                    updateMediaSession(summary.title, fileName);
+                    playBtn.disabled = false;
+                    pauseBtn.disabled = false;
+                    restartBtn.disabled = false;
+                    tourBtn.disabled = false;
+                    toggleInfo.disabled = false;
+
+                    // Set button state based on autoplay
+                    if (autoplay) {
+                        playBtn.classList.add('hidden');
+                        pauseBtn.classList.remove('hidden');
+                        visualizer.setPaused(false);
+                    } else {
+                        playBtn.classList.remove('hidden');
+                        pauseBtn.classList.add('hidden');
+                        visualizer.setPaused(true);
+                    }
+
+                    console.log(
+                        'Network built successfully (in worker):',
+                        summary,
+                    );
+
+                    // Rebuild graph from serialized data
+                    const graph = NetworkParser.rebuildGraph(serializedGraph);
+
+                    // Setup Progress UI
+                    visualizer.onLayoutProgress = (percent) => {
+                        showStatus(
+                            `Calculating topological layout: ${percent}%`,
+                        );
+                    };
+
+                    // Build 3D Visualization
+                    visualizer.buildVisualization(graph).then(() => {
+                        welcomeMsg.classList.add('hidden');
+                        hideStatus();
+                    });
                 };
 
-                // Build 3D Visualization
-                visualizer.buildVisualization(graph).then(() => {
-                    welcomeMsg.classList.add('hidden');
-                    hideStatus();
-                });
-            };
-
-            parserWorker.postMessage({ midiBuffer: arrayBuffer });
+                parserWorker.postMessage({ midiBuffer: arrayBuffer });
+            }
         } catch (err) {
             console.error('Error processing MIDI file:', err);
             showStatus('Error processing MIDI file. See console.');

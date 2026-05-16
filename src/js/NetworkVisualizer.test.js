@@ -4,8 +4,14 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import createLayout from 'ngraph.forcelayout';
 import { EffectComposer } from 'postprocessing';
 import { NetworkVisualizer } from './NetworkVisualizer.js';
+import { NetworkParser } from './NetworkParser.js';
 
 // --- Mocks ---
+vi.mock('./NetworkParser.js', () => ({
+    NetworkParser: {
+        addTransition: vi.fn(),
+    },
+}));
 // ... (keep other mocks intact)
 
 const mockContainer = {
@@ -751,6 +757,11 @@ describe('NetworkVisualizer', () => {
                 forEachLinkedNode: vi.fn(),
                 addLink: vi.fn(),
                 removeLink: vi.fn(),
+                getNode: vi.fn((id) => {
+                    if (id === 'C4') return { id: 'C4', data: { degree: 10 } };
+                    if (id === 'E4') return { id: 'E4', data: { degree: 1 } };
+                    return null;
+                }),
             };
 
             const bodies = {
@@ -804,6 +815,73 @@ describe('NetworkVisualizer', () => {
             const node = visualizer.nodes.get('C4');
             // layoutScale is now 10.0, so 10 * 10 = 100.
             expect(node.mesh.position.x).toBe(100);
+        });
+    });
+
+    describe('Incremental Visualization', () => {
+        it('should initialize incremental mode', async () => {
+            const mockGraph = { addNode: vi.fn(), addLink: vi.fn() };
+            await visualizer.initIncremental(mockGraph);
+
+            expect(visualizer.incrementalMode).toBe(true);
+            expect(visualizer.graph).toBe(mockGraph);
+            expect(createLayout).toHaveBeenCalled();
+        });
+
+        it('should add nodes and edges incrementally', async () => {
+            const mockGraph = {
+                addNode: vi.fn(),
+                addLink: vi.fn(),
+                getNode: vi.fn((id) => ({ id, data: { degree: 0 } })),
+                getLink: vi.fn((s, t) => ({
+                    fromId: s,
+                    toId: t,
+                    data: { weight: 1 },
+                })),
+            };
+            await visualizer.initIncremental(mockGraph);
+
+            // Mock NetworkParser.addTransition to return true (new link)
+            vi.mocked(NetworkParser.addTransition).mockReturnValue(true);
+
+            visualizer.addTransitionIncremental('C4', 'G4');
+
+            expect(visualizer.nodes.has('C4')).toBe(true);
+            expect(visualizer.nodes.has('G4')).toBe(true);
+            expect(visualizer.edgeMap.has('C4->G4')).toBe(true);
+
+            // Verify Three.js objects were added to graphGroup
+            // 2 nodes + 1 edge line + 1 edge cone = 4 objects
+            // (Outline meshes are children of node meshes, not graphGroup)
+            expect(visualizer.graphGroup.children.length).toBe(4);
+        });
+
+        it('should update positions during animate in incremental mode', async () => {
+            const mockGraph = {
+                addNode: vi.fn(),
+                addLink: vi.fn(),
+                getNode: vi.fn((id) => ({ id, data: { degree: 1 } })),
+                getLink: vi.fn((s, t) => ({
+                    fromId: s,
+                    toId: t,
+                    data: { weight: 1 },
+                })),
+            };
+            await visualizer.initIncremental(mockGraph);
+
+            vi.mocked(NetworkParser.addTransition).mockReturnValue(true);
+            visualizer.addTransitionIncremental('C4', 'G4');
+
+            const layoutStepSpy = vi.spyOn(visualizer.layout, 'step');
+            const updatePositionsSpy = vi.spyOn(
+                visualizer,
+                '_updatePositionsFromLayout',
+            );
+
+            visualizer.animate(1000);
+
+            expect(layoutStepSpy).toHaveBeenCalled();
+            expect(updatePositionsSpy).toHaveBeenCalled();
         });
     });
 });

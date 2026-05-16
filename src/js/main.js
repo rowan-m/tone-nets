@@ -179,6 +179,10 @@ const init = async () => {
     }
 
     player.onNotePlay = (nodeId, prevNodeId, instrumentId, isDrums) => {
+        // Optimization: Skip heavy visualization updates if the page is hidden (backgrounded)
+        // to prioritize CPU for the AudioWorklet and prevent stuttering on mobile.
+        if (document.visibilityState === 'hidden') return;
+
         if (isIncrementalMode && !isDrums) {
             visualizer.addTransitionIncremental(prevNodeId, nodeId);
             vCountEl.textContent = visualizer.graph.getNodesCount();
@@ -189,8 +193,10 @@ const init = async () => {
         const emoji = Utils.getInstrumentEmoji(instrumentId, isDrums);
         visualizer.showInstrumentEmoji(nodeId, emoji);
     };
-    player.onNoteRelease = (nodeId, prevNodeId) =>
+    player.onNoteRelease = (nodeId, prevNodeId) => {
+        if (document.visibilityState === 'hidden') return;
         visualizer.releasePlayingElement(nodeId, prevNodeId);
+    };
     player.onStop = () => {
         visualizer.resetPlayingHighlights();
         if (!player.isPlaying) {
@@ -552,6 +558,13 @@ const init = async () => {
     uploadInput.addEventListener('change', (e) => {
         handleFileSelection(e.target.files[0]);
         e.target.value = '';
+    });
+
+    // Reset visualization state when coming back from background
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            visualizer.resetPlayingHighlights();
+        }
     });
 
     // Drag and Drop functionality

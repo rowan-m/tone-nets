@@ -58,6 +58,8 @@ vi.mock('spessasynth_lib', () => {
             programChange: vi.fn(),
             pitchWheel: vi.fn(),
             stopAll: vi.fn(),
+            setMasterParameter: vi.fn(),
+            getMasterParameter: vi.fn(),
         };
     });
 
@@ -101,6 +103,9 @@ vi.mock('tone', () => {
         audioWorklet: mockAudioWorklet,
         createGain: vi.fn().mockReturnValue(mockGainNode),
         destination: mockDestination,
+        createMediaStreamDestination: vi.fn().mockReturnValue({
+            stream: {},
+        }),
     };
 
     return {

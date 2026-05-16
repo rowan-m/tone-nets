@@ -62,8 +62,27 @@ export class MidiPlayer {
             // Initialize SpessaSynth
             this.synth = new WorkletSynthesizer(rawCtx);
 
+            // Limit voice count on mobile/low-end to prevent stuttering/corruption
+            // Complex MIDI files can easily exceed 200+ voices which is heavy for SF2 synthesis
+            this.synth.setMasterParameter('voiceCap', 128);
+
             // Connect synthesizer to master gain
             this.synth.connect(this.masterGain);
+
+            // Fix for mobile background audio:
+            // Use MediaStreamDestination and an <audio> element to keep the context alive at high priority.
+            // This is more robust than a dummy MP3 loop on iOS/Android.
+            if (rawCtx.createMediaStreamDestination) {
+                const dest = rawCtx.createMediaStreamDestination();
+                this.masterGain.connect(dest);
+
+                const streamAudio = new Audio();
+                streamAudio.srcObject = dest.stream;
+                streamAudio
+                    .play()
+                    .catch((e) => console.warn('Stream audio play failed', e));
+                this.streamAudio = streamAudio;
+            }
 
             // Wait for worklet to be ready
             await this.synth.isReady;
@@ -145,6 +164,7 @@ export class MidiPlayer {
                     } else {
                         this.isPlaying = false;
                         this.dummyAudio.pause();
+                        if (this.streamAudio) this.streamAudio.pause();
                         if ('mediaSession' in navigator) {
                             navigator.mediaSession.playbackState = 'none';
                         }
@@ -310,6 +330,7 @@ export class MidiPlayer {
         }, 150);
 
         this.dummyAudio.pause();
+        if (this.streamAudio) this.streamAudio.pause();
         if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = 'none';
         }
@@ -342,6 +363,7 @@ export class MidiPlayer {
             }, 150);
 
             this.dummyAudio.pause();
+            if (this.streamAudio) this.streamAudio.pause();
             if ('mediaSession' in navigator) {
                 navigator.mediaSession.playbackState = 'paused';
             }
@@ -370,6 +392,11 @@ export class MidiPlayer {
             this.dummyAudio
                 .play()
                 .catch((e) => console.warn('Dummy audio play failed:', e));
+            if (this.streamAudio) {
+                this.streamAudio
+                    .play()
+                    .catch((e) => console.warn('Stream audio play failed:', e));
+            }
             if ('mediaSession' in navigator)
                 navigator.mediaSession.playbackState = 'playing';
 

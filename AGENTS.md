@@ -76,7 +76,8 @@ The application is built with Vanilla JS (ES Modules) and Vite, structured into 
 ## Mobile & Background Constraints
 
 To maintain stable audio on low-power mobile devices and prevent the OS from suspending the audio context when the app is backgrounded, the following strict patterns are enforced:
-- **Audio Routing**: On mobile, audio is routed exclusively to a `MediaStreamDestination` and attached to an *unmuted* `<audio playsinline>` element appended to the DOM. This forces the OS to recognize the tab as actively playing media.
+
+- **Audio Routing**: On mobile, audio is routed exclusively to a `MediaStreamDestination` and attached to an _unmuted_ `<audio playsinline>` element appended to the DOM. This forces the OS to recognize the tab as actively playing media.
 - **Memory Allocation**: Dynamic voice allocation (`autoAllocateVoices`) in SpessaSynth is disabled on mobile, and the voice cap is reduced. This prevents garbage collection pauses in the `AudioWorklet` thread which cause severe audio corruption. Interpolation is also dropped to linear.
 - **Main Thread Offloading**: When `document.visibilityState === 'hidden'`, all 3D `requestAnimationFrame` render loops and DOM updates are instantly short-circuited to conserve 100% of CPU for the background `AudioWorklet`.
 

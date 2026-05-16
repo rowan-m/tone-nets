@@ -57,23 +57,29 @@ export class MidiPlayer {
 
             // Create master gain for muting/pausing
             this.masterGain = rawCtx.createGain();
-            this.masterGain.connect(rawCtx.destination);
 
             // Initialize SpessaSynth
             this.synth = new WorkletSynthesizer(rawCtx);
 
             // Limit voice count on mobile/low-end to prevent stuttering/corruption
             // Complex MIDI files can easily exceed 200+ voices which is heavy for SF2 synthesis
-            // We use autoAllocateVoices so it can scale up dynamically if needed without hard cutoffs,
-            // while starting from a reasonable base.
-            const voiceCap = Utils.isMobile() ? 64 : 128;
+            const isMobile = Utils.isMobile();
+            const voiceCap = isMobile ? 64 : 128;
             this.synth.setMasterParameter('voiceCap', voiceCap);
-            this.synth.setMasterParameter('autoAllocateVoices', true);
+            
+            // Dynamic allocation causes garbage collection pauses (audio crackling/corruption)
+            // in the AudioWorklet thread on mobile, so we disable it there.
+            this.synth.setMasterParameter('autoAllocateVoices', !isMobile);
+
+            if (isMobile) {
+                // Use linear interpolation (0) instead of higher quality ones to save CPU
+                this.synth.setMasterParameter('interpolationType', 0);
+            }
 
             // Connect synthesizer to master gain
             this.synth.connect(this.masterGain);
 
-            this._setupBackgroundAudio(rawCtx);
+            this._setupBackgroundAudio(rawCtx, isMobile);
 
             // Wait for worklet to be ready
             await this.synth.isReady;
@@ -92,17 +98,19 @@ export class MidiPlayer {
         }
     }
 
-    _setupBackgroundAudio(rawCtx) {
+    _setupBackgroundAudio(rawCtx, isMobile) {
         // Fix for mobile background audio:
         // Use MediaStreamDestination and an <audio> element to keep the context alive at high priority.
         // This is more robust than a dummy MP3 loop on iOS/Android.
-        if (rawCtx.createMediaStreamDestination) {
+        if (isMobile && rawCtx.createMediaStreamDestination) {
             const dest = rawCtx.createMediaStreamDestination();
             this.masterGain.connect(dest);
 
             const streamAudio = new Audio();
             streamAudio.srcObject = dest.stream;
-            streamAudio.muted = true; // MUST be muted to prevent phasing/echo from the latent stream path
+            // IMPORTANT: Do NOT mute. If muted, mobile OS suspends it in background.
+            // Since we didn't connect masterGain to rawCtx.destination, there is no echo.
+            streamAudio.muted = false; 
             if (streamAudio.setAttribute) {
                 streamAudio.setAttribute('playsinline', ''); // Required for iOS
             }
@@ -117,6 +125,9 @@ export class MidiPlayer {
                 .play()
                 .catch((e) => console.warn('Stream audio play failed', e));
             this.streamAudio = streamAudio;
+        } else {
+            // Default desktop routing
+            this.masterGain.connect(rawCtx.destination);
         }
     }
 

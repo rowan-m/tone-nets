@@ -72,20 +72,34 @@
                     >
                         <span aria-hidden="true">⏸️</span>
                     </button>
-                    <div class="autoplay-control">
-                        <input type="checkbox" id="autoplay-toggle" checked />
-                        <label for="autoplay-toggle" title="Toggle Autoplay"
-                            >🔁</label
-                        >
-                    </div>
-                    <div class="incremental-control">
-                        <input type="checkbox" id="incremental-toggle" />
-                        <label
-                            for="incremental-toggle"
-                            title="Build Incrementally (Live)"
-                            >🌱</label
-                        >
-                    </div>
+                    <button
+                        id="autoplay-on-btn"
+                        class="btn"
+                        title="Disable Autoplay"
+                    >
+                        <span aria-hidden="true">🔁</span> Autoplay
+                    </button>
+                    <button
+                        id="autoplay-off-btn"
+                        class="btn hidden paused-style"
+                        title="Enable Autoplay"
+                    >
+                        <span aria-hidden="true">⏸️</span> Autoplay
+                    </button>
+                    <button
+                        id="incremental-on-btn"
+                        class="btn hidden"
+                        title="Disable Live Build"
+                    >
+                        <span aria-hidden="true">🌱</span> Live Build
+                    </button>
+                    <button
+                        id="incremental-off-btn"
+                        class="btn paused-style"
+                        title="Enable Live Build"
+                    >
+                        <span aria-hidden="true">🏗️</span> Live Build
+                    </button>
                     <button
                         id="restart-btn"
                         class="btn"

@@ -39,9 +39,43 @@ const init = async () => {
     const appTitle = document.getElementById('app-title');
     const statusModal = document.getElementById('status-modal');
     const statusModalText = document.getElementById('status-modal-text');
-    const incrementalToggle = document.getElementById('incremental-toggle');
+    
+    const autoplayOnBtn = document.getElementById('autoplay-on-btn');
+    const autoplayOffBtn = document.getElementById('autoplay-off-btn');
+    const incrementalOnBtn = document.getElementById('incremental-on-btn');
+    const incrementalOffBtn = document.getElementById('incremental-off-btn');
 
     let isIncrementalMode = false;
+    let isAutoplayMode = true;
+
+    // Setup Autoplay Toggle
+    const toggleAutoplay = () => {
+        isAutoplayMode = !isAutoplayMode;
+        if (isAutoplayMode) {
+            autoplayOnBtn.classList.remove('hidden');
+            autoplayOffBtn.classList.add('hidden');
+        } else {
+            autoplayOnBtn.classList.add('hidden');
+            autoplayOffBtn.classList.remove('hidden');
+        }
+    };
+    autoplayOnBtn.addEventListener('click', toggleAutoplay);
+    autoplayOffBtn.addEventListener('click', toggleAutoplay);
+
+    // Setup Incremental Toggle
+    const toggleIncremental = () => {
+        isIncrementalMode = !isIncrementalMode;
+        if (isIncrementalMode) {
+            incrementalOnBtn.classList.remove('hidden');
+            incrementalOffBtn.classList.add('hidden');
+        } else {
+            incrementalOnBtn.classList.add('hidden');
+            incrementalOffBtn.classList.remove('hidden');
+        }
+    };
+    incrementalOnBtn.addEventListener('click', toggleIncremental);
+    incrementalOffBtn.addEventListener('click', toggleIncremental);
+
     const metricEls = {
         efficiency: document.getElementById('metric-efficiency'),
         weightedEfficiency: document.getElementById(
@@ -235,15 +269,13 @@ const init = async () => {
     const processMidi = async (arrayBuffer, fileName) => {
         await Tone.start();
 
-        isIncrementalMode = incrementalToggle
-            ? incrementalToggle.checked
-            : false;
-
         console.log(
             'Processing MIDI:',
             fileName,
             'Incremental:',
             isIncrementalMode,
+            'Autoplay:',
+            isAutoplayMode,
         );
         showStatus('Parsing MIDI and building network...');
         playBtn.disabled = true;
@@ -251,9 +283,6 @@ const init = async () => {
         restartBtn.disabled = true;
         tourBtn.disabled = true;
         toggleInfo.disabled = true;
-
-        const autoplayToggle = document.getElementById('autoplay-toggle');
-        const autoplay = autoplayToggle ? autoplayToggle.checked : true;
 
         try {
             if (isIncrementalMode) {
@@ -286,7 +315,7 @@ const init = async () => {
                 welcomeMsg.classList.add('hidden');
 
                 // 3. Play Audio
-                await player.play(arrayBuffer.slice(0), autoplay);
+                await player.play(arrayBuffer.slice(0), isAutoplayMode);
 
                 // 4. Update UI
                 playBtn.disabled = false;
@@ -296,7 +325,7 @@ const init = async () => {
                 toggleInfo.disabled = true; // Metrics are disabled in incremental mode
                 infoPanel.classList.add('hidden');
 
-                if (autoplay) {
+                if (isAutoplayMode) {
                     playBtn.classList.add('hidden');
                     pauseBtn.classList.remove('hidden');
                     visualizer.setPaused(false);
@@ -310,7 +339,7 @@ const init = async () => {
             } else {
                 // Static Mode Logic (Existing)
                 // Play Audio
-                await player.play(arrayBuffer.slice(0), autoplay);
+                await player.play(arrayBuffer.slice(0), isAutoplayMode);
 
                 // Use Web Worker to build the network
                 parserWorker.onmessage = (e) => {
@@ -334,7 +363,7 @@ const init = async () => {
                     toggleInfo.disabled = false;
 
                     // Set button state based on autoplay
-                    if (autoplay) {
+                    if (isAutoplayMode) {
                         playBtn.classList.add('hidden');
                         pauseBtn.classList.remove('hidden');
                         visualizer.setPaused(false);
@@ -343,6 +372,7 @@ const init = async () => {
                         pauseBtn.classList.add('hidden');
                         visualizer.setPaused(true);
                     }
+
 
                     console.log(
                         'Network built successfully (in worker):',

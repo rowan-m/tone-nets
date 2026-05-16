@@ -234,19 +234,38 @@ describe('MidiPlayer', () => {
             const noteKeyE = '0-64';
             expect(player.activeNotes.get(noteKeyE)).toEqual(['C4']);
         });
+    });
 
-        it('should handle songEnded and loop if playing', async () => {
+    describe('Looping', () => {
+        beforeEach(async () => {
             player.sf2Buffer = new ArrayBuffer(8);
-            const onStop = vi.fn();
-            player.onStop = onStop;
             await player.initialize();
+        });
+
+        it('should loop by default', () => {
+            expect(player.isLooping).toBe(true);
+        });
+
+        it('should restart playback on songEnded if isLooping is true', () => {
             player.isPlaying = true;
+            player.isLooping = true;
 
             sequencerEvents['songEnded']();
 
-            expect(onStop).toHaveBeenCalled();
             expect(player.sequencer.currentTime).toBe(0);
             expect(player.sequencer.play).toHaveBeenCalled();
+            expect(player.isPlaying).toBe(true);
+        });
+
+        it('should NOT restart playback on songEnded if isLooping is false', () => {
+            player.isPlaying = true;
+            player.isLooping = false;
+
+            sequencerEvents['songEnded']();
+
+            expect(player.sequencer.play).not.toHaveBeenCalled();
+            expect(player.isPlaying).toBe(false);
+            expect(mockAudioInstance.pause).toHaveBeenCalled();
         });
     });
 

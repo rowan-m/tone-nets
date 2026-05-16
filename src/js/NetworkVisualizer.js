@@ -1169,9 +1169,10 @@ export class NetworkVisualizer {
             check(max.x, max.y, max.z);
 
             // Required frustum size to fit both height and width (considering aspect)
-            // Reduced padding from 15% to 5% for a tighter, better-fitting view
+            // Use 0.95 multiplier to zoom in slightly tighter, as nodes are spheres
+            // and the bounding box might have empty space at corners.
             const requiredFrustumSize =
-                Math.max(maxH * 2, (maxW * 2) / aspect) * 1.05;
+                Math.max(maxH * 2, (maxW * 2) / aspect) * 0.95;
 
             // Calculate target zoom relative to the base frustum size
             const targetZoom = this.baseFrustumSize / requiredFrustumSize;
@@ -1371,6 +1372,7 @@ export class NetworkVisualizer {
     }
 
     startAutoTour() {
+        if (this.autoTour) return;
         this.autoTour = true;
         this.autoTourTime = 0;
         this.tourCurrentVelocity.set(0, 0, 0);
@@ -1392,10 +1394,14 @@ export class NetworkVisualizer {
             defaultLook,
             offset.clone().normalize(),
         );
+
+        if (this.onTourChange) this.onTourChange(true);
     }
 
     stopAutoTour() {
+        if (!this.autoTour) return;
         this.autoTour = false;
+        if (this.onTourChange) this.onTourChange(false);
     }
 
     setPaused(paused) {

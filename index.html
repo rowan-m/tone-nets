@@ -38,97 +38,107 @@
         <title>Tone Nets</title>
         <link rel="stylesheet" href="./src/css/style.css" />
     </head>
+
     <body>
         <div id="app">
+            <button
+                id="show-ui"
+                class="btn floating-btn hidden"
+                title="Show Controls (H)"
+            >
+                <span aria-hidden="true">👁️</span> Show UI
+            </button>
             <header>
                 <h1 id="app-title">Tone Nets</h1>
                 <div class="controls">
-                    <!-- Action Buttons Group -->
-                    <div class="control-group">
+                    <input
+                        type="file"
+                        id="midi-upload"
+                        accept=".mid,.midi"
+                        class="hidden-input"
+                    />
+                    <label
+                        for="midi-upload"
+                        class="custom-file-upload btn"
+                        title="Load MIDI File"
+                    >
+                        <span aria-hidden="true">💾</span> Load
+                    </label>
+                    <button
+                        id="play-btn"
+                        class="btn hidden paused-style"
+                        disabled
+                        title="Play (Space)"
+                    >
+                        <span aria-hidden="true">▶️</span> Play
+                    </button>
+                    <button
+                        id="pause-btn"
+                        class="btn"
+                        disabled
+                        title="Pause (Space)"
+                    >
+                        <span aria-hidden="true">⏸️</span> Pause
+                    </button>
+                    <button
+                        id="restart-btn"
+                        class="btn"
+                        disabled
+                        title="Restart Playback"
+                    >
+                        <span aria-hidden="true">⏮️</span> Restart
+                    </button>
+
+                    <div class="toggle-control">
+                        <input type="checkbox" id="loop-toggle" checked />
+                        <label for="loop-toggle" title="Toggle Looping">
+                            🔄 Loop
+                        </label>
+                    </div>
+                    <div class="toggle-control">
+                        <input type="checkbox" id="autoplay-toggle" checked />
+                        <label for="autoplay-toggle" title="Toggle Autoplay">
+                            ⚙️ Autoplay
+                        </label>
+                    </div>
+                    <div class="toggle-control">
                         <input
-                            type="file"
-                            id="midi-upload"
-                            accept=".mid,.midi"
-                            class="hidden-input"
+                            type="checkbox"
+                            id="incremental-toggle"
+                            checked
                         />
                         <label
-                            for="midi-upload"
-                            class="custom-file-upload btn"
-                            title="Load MIDI File"
+                            for="incremental-toggle"
+                            title="Build Incrementally (Live)"
                         >
-                            <span aria-hidden="true">💾</span> Load
+                            🌱 Live Build
                         </label>
-                        <button
-                            id="play-btn"
-                            class="btn hidden paused-style"
-                            disabled
-                            title="Play (Space)"
-                        >
-                            <span aria-hidden="true">▶️</span> Play
-                        </button>
-                        <button
-                            id="pause-btn"
-                            class="btn"
-                            disabled
-                            title="Pause (Space)"
-                        >
-                            <span aria-hidden="true">⏸️</span> Pause
-                        </button>
-                        <button
-                            id="restart-btn"
-                            class="btn"
-                            disabled
-                            title="Restart Playback"
-                        >
-                            <span aria-hidden="true">⏮️</span> Restart
-                        </button>
                     </div>
-
-                    <!-- Toggle Checkboxes Group -->
-                    <div class="control-group toggles">
-                        <div class="toggle-control">
-                            <input
-                                type="checkbox"
-                                id="autoplay-toggle"
-                                checked
-                            />
-                            <label
-                                for="autoplay-toggle"
-                                title="Toggle Autoplay"
-                            >
-                                🔁 Autoplay
-                            </label>
-                        </div>
-                        <div class="toggle-control">
-                            <input type="checkbox" id="incremental-toggle" />
-                            <label
-                                for="incremental-toggle"
-                                title="Build Incrementally (Live)"
-                            >
-                                🌱 Live Build
-                            </label>
-                        </div>
-                        <div class="toggle-control">
-                            <input
-                                type="checkbox"
-                                id="stats-toggle"
-                                disabled
-                                aria-controls="info-panel"
-                            />
-                            <label
-                                for="stats-toggle"
-                                title="Show/Hide Statistics"
-                            >
-                                📊 Stats
-                            </label>
-                        </div>
-                        <div class="toggle-control">
-                            <input type="checkbox" id="tour-toggle" disabled />
-                            <label for="tour-toggle" title="Toggle Visual Tour">
-                                🎥 Tour
-                            </label>
-                        </div>
+                    <div class="toggle-control">
+                        <input
+                            type="checkbox"
+                            id="stats-toggle"
+                            disabled
+                            aria-controls="info-panel"
+                        />
+                        <label for="stats-toggle" title="Show/Hide Statistics">
+                            📊 Stats
+                        </label>
                     </div>
+                    <div class="toggle-control">
+                        <input
+                            type="checkbox"
+                            id="tour-toggle"
+                            checked
+                            disabled
+                        />
+                        <label for="tour-toggle" title="Toggle Visual Tour">
+                            🎥 Tour
+                        </label>
+                    </div>
+                    <button id="hide-ui" class="btn" title="Hide Controls (H)">
+                        <span aria-hidden="true">👁️</span> Hide UI
+                    </button>
                 </div>
             </header>
 

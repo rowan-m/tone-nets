@@ -692,6 +692,27 @@ describe('NetworkVisualizer', () => {
             expect(visualizer.autoTour).toBe(false);
         });
 
+        it('should trigger onTourChange callback', () => {
+            const callback = vi.fn();
+            visualizer.onTourChange = callback;
+
+            visualizer.startAutoTour();
+            expect(callback).toHaveBeenCalledWith(true);
+
+            visualizer.stopAutoTour();
+            expect(callback).toHaveBeenCalledWith(false);
+
+            // Should not trigger if state is same
+            callback.mockClear();
+            visualizer.stopAutoTour();
+            expect(callback).not.toHaveBeenCalled();
+
+            visualizer.startAutoTour();
+            callback.mockClear();
+            visualizer.startAutoTour();
+            expect(callback).not.toHaveBeenCalled();
+        });
+
         it('should stop autoTour on control interaction', () => {
             visualizer.startAutoTour();
             expect(visualizer.autoTour).toBe(true);

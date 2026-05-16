@@ -26,19 +26,25 @@ html {
 }
 
 #app {
-    display: flex;
-    flex-direction: column;
+    position: relative;
     width: 100vw;
     height: 100vh;
+    overflow: hidden;
 }
 
 header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
     padding: 1rem 2rem;
     background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8), transparent);
     z-index: 10;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 
 h1 {
@@ -51,38 +57,10 @@ h1 {
 
 .controls {
     display: flex;
-    gap: 1.5rem;
-    align-items: center;
-}
-
-.control-group {
-    display: flex;
-    align-items: center;
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--panel-border);
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.control-group .btn {
-    border: none;
-    border-right: 1px solid var(--panel-border);
-    border-radius: 0;
-    background: transparent;
-}
-
-.control-group .btn:last-child {
-    border-right: none;
-}
-
-.control-group .btn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.1);
-}
-
-.toggles {
-    border: none;
-    background: transparent;
     gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-start;
 }
 
 .toggle-control {
@@ -200,9 +178,12 @@ h1 {
 }
 
 #canvas-container {
-    flex-grow: 1;
-    position: relative;
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
+    height: 100%;
+    z-index: 1;
 }
 
 #canvas-container.drag-active::after {
@@ -303,6 +284,22 @@ hr {
 .hidden {
     display: none;
     opacity: 0;
+}
+
+.floating-btn {
+    position: absolute;
+    top: 1rem;
+    right: 2rem;
+    z-index: 100;
+}
+
+.ui-hidden header {
+    display: none;
+}
+
+.ui-hidden .floating-btn {
+    display: inline-flex;
+    opacity: 1;
 }
 
 #status-modal {
@@ -417,13 +414,13 @@ h3 {
 
     .controls {
         width: 100%;
-        justify-content: space-between;
+        justify-content: flex-start;
         flex-wrap: wrap;
         gap: 0.5rem;
     }
 
     .btn {
-        flex: 1;
+        /* flex: 1; */
         min-width: 80px;
         padding: 0 8px;
     }

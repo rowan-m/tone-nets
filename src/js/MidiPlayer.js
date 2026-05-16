@@ -14,6 +14,7 @@ export class MidiPlayer {
         this.lastNotePerChannel = new Map();
         this.activeNotes = new Map();
         this.duration = 0;
+        this.isLooping = true;
 
         this.dummyAudio = new Audio('/background.mp3');
         this.dummyAudio.loop = true;
@@ -136,11 +137,17 @@ export class MidiPlayer {
                         this.onStop();
                     }
 
-                    // Explicitly restart the sequencer if we are still marked as playing
-                    if (this.isPlaying) {
+                    // Explicitly restart the sequencer if we are still marked as playing and looping is enabled
+                    if (this.isPlaying && this.isLooping) {
                         this.sequencer.currentTime = 0;
                         this._hardResetSynth();
                         this.sequencer.play();
+                    } else {
+                        this.isPlaying = false;
+                        this.dummyAudio.pause();
+                        if ('mediaSession' in navigator) {
+                            navigator.mediaSession.playbackState = 'none';
+                        }
                     }
                     this.updateMediaSessionPosition();
                 },

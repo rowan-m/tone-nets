@@ -37,13 +37,17 @@ const init = async () => {
     const appTitle = document.getElementById('app-title');
     const statusModal = document.getElementById('status-modal');
     const statusModalText = document.getElementById('status-modal-text');
+    const appEl = document.getElementById('app');
+    const hideUiBtn = document.getElementById('hide-ui');
+    const showUiBtn = document.getElementById('show-ui');
 
     const autoplayToggle = document.getElementById('autoplay-toggle');
+    const loopToggle = document.getElementById('loop-toggle');
     const incrementalToggle = document.getElementById('incremental-toggle');
     const statsToggle = document.getElementById('stats-toggle');
     const tourToggle = document.getElementById('tour-toggle');
 
-    let isIncrementalMode = false;
+    let isIncrementalMode = true;
     let isAutoplayMode = true;
 
     // Handle Incremental Mode Toggle
@@ -62,6 +66,11 @@ const init = async () => {
     // Handle Autoplay Toggle
     autoplayToggle.addEventListener('change', (e) => {
         isAutoplayMode = e.target.checked;
+    });
+
+    // Handle Loop Toggle
+    loopToggle.addEventListener('change', (e) => {
+        player.isLooping = e.target.checked;
     });
 
     // Handle Stats Toggle
@@ -83,6 +92,13 @@ const init = async () => {
         }
     });
 
+    const toggleUi = () => {
+        appEl.classList.toggle('ui-hidden');
+    };
+
+    hideUiBtn.addEventListener('click', toggleUi);
+    showUiBtn.addEventListener('click', toggleUi);
+
     const metricEls = {
         efficiency: document.getElementById('metric-efficiency'),
         weightedEfficiency: document.getElementById(
@@ -101,7 +117,11 @@ const init = async () => {
     statusModal.addEventListener('cancel', (e) => e.preventDefault());
 
     const visualizer = new NetworkVisualizer('canvas-container');
+    visualizer.onTourChange = (enabled) => {
+        tourToggle.checked = enabled;
+    };
     const player = new MidiPlayer();
+    player.isLooping = loopToggle.checked;
 
     const showStatus = (text) => {
         statusModalText.textContent = text;
@@ -279,6 +299,8 @@ const init = async () => {
             isIncrementalMode,
             'Autoplay:',
             isAutoplayMode,
+            'Looping:',
+            player.isLooping,
         );
         showStatus('Parsing MIDI and building network...');
         playBtn.disabled = true;
@@ -485,6 +507,16 @@ const init = async () => {
             statsToggle.checked = false;
             statsToggle.setAttribute('aria-expanded', 'false');
             statsToggle.focus();
+        }
+
+        if (e.key.toLowerCase() === 'h') {
+            if (
+                document.activeElement.tagName === 'INPUT' ||
+                document.activeElement.tagName === 'BUTTON'
+            ) {
+                return;
+            }
+            toggleUi();
         }
 
         if (e.key === ' ' || e.key === 'Spacebar') {

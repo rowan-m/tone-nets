@@ -457,45 +457,58 @@ export class NetworkVisualizer {
     }
 
     addTransitionIncremental(sourceId, targetId) {
-        if (!this.incrementalMode || !this.graph) return;
+        if (!this.incrementalMode || !this.graph || !targetId) return;
 
-        // Add to ngraph
-        const isNewLink = NetworkParser.addTransition(
-            this.graph,
-            sourceId,
-            targetId,
-        );
+        // Ensure target node exists in ngraph
+        if (!this.graph.getNode(targetId)) {
+            this.graph.addNode(targetId, { name: targetId, degree: 0 });
+        }
 
-        const sourceNode = this.graph.getNode(sourceId);
+        let isNewLink = false;
+        let sourceNode = null;
+
+        // Only add transition if source exists and is different
+        if (sourceId && sourceId !== targetId) {
+            isNewLink = NetworkParser.addTransition(
+                this.graph,
+                sourceId,
+                targetId,
+            );
+            sourceNode = this.graph.getNode(sourceId);
+            
+            if (sourceNode) {
+                if (!sourceNode.data) sourceNode.data = {};
+                if (typeof sourceNode.data.degree !== 'number')
+                    sourceNode.data.degree = 0;
+                sourceNode.data.degree++;
+                
+                if (!this.nodes.has(sourceId)) {
+                    this._renderNode(sourceNode, this.layoutScale, this.maxDegree);
+                }
+                this._applyMassScalingForNode(sourceId);
+            }
+        }
+
         const targetNode = this.graph.getNode(targetId);
-
-        if (!sourceNode || !targetNode) return;
-
-        // Update degrees incrementally
-        if (!sourceNode.data) sourceNode.data = {};
         if (!targetNode.data) targetNode.data = {};
-        if (typeof sourceNode.data.degree !== 'number')
-            sourceNode.data.degree = 0;
         if (typeof targetNode.data.degree !== 'number')
             targetNode.data.degree = 0;
-
-        sourceNode.data.degree++;
-        targetNode.data.degree++;
-
-        // Ensure Three.js objects exist
-        if (!this.nodes.has(sourceId)) {
-            this._renderNode(sourceNode, this.layoutScale, this.maxDegree);
+        
+        // Target degree only goes up if there's a valid source
+        if (sourceId && sourceId !== targetId) {
+            targetNode.data.degree++;
         }
+
+        // Ensure Three.js target object exists
         if (!this.nodes.has(targetId)) {
             this._renderNode(targetNode, this.layoutScale, this.maxDegree);
         }
-
-        this._applyMassScalingForNode(sourceId);
         this._applyMassScalingForNode(targetId);
 
         if (isNewLink) {
             const link = this.graph.getLink(sourceId, targetId);
             this._renderEdge(link, this.layoutScale, this.maxWeight);
+
         }
 
         // Update max values

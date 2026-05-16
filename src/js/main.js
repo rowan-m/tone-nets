@@ -370,6 +370,26 @@ const init = async () => {
             toggleInfo.setAttribute('aria-expanded', 'false');
             toggleInfo.focus();
         }
+
+        if (e.key === ' ' || e.key === 'Spacebar') {
+            // Ignore if focus is in an input or a button to avoid double-firing or interfering with typing
+            if (
+                document.activeElement.tagName === 'INPUT' ||
+                document.activeElement.tagName === 'BUTTON'
+            ) {
+                return;
+            }
+
+            e.preventDefault(); // Prevent page scroll
+
+            if (!playBtn.disabled) {
+                if (player.isPlaying) {
+                    pauseBtn.click();
+                } else {
+                    playBtn.click();
+                }
+            }
+        }
     });
 
     // Handle Example MIDI clicks

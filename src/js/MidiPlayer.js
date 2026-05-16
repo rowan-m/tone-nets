@@ -66,27 +66,14 @@ export class MidiPlayer {
             // Complex MIDI files can easily exceed 200+ voices which is heavy for SF2 synthesis
             // We use autoAllocateVoices so it can scale up dynamically if needed without hard cutoffs,
             // while starting from a reasonable base.
-            this.synth.setMasterParameter('voiceCap', 128);
+            const voiceCap = Utils.isMobile() ? 64 : 128;
+            this.synth.setMasterParameter('voiceCap', voiceCap);
             this.synth.setMasterParameter('autoAllocateVoices', true);
 
             // Connect synthesizer to master gain
             this.synth.connect(this.masterGain);
 
-            // Fix for mobile background audio:
-            // Use MediaStreamDestination and an <audio> element to keep the context alive at high priority.
-            // This is more robust than a dummy MP3 loop on iOS/Android.
-            if (rawCtx.createMediaStreamDestination) {
-                const dest = rawCtx.createMediaStreamDestination();
-                this.masterGain.connect(dest);
-
-                const streamAudio = new Audio();
-                streamAudio.srcObject = dest.stream;
-                streamAudio.muted = true; // MUST be muted to prevent phasing/echo from the latent stream path
-                streamAudio
-                    .play()
-                    .catch((e) => console.warn('Stream audio play failed', e));
-                this.streamAudio = streamAudio;
-            }
+            this._setupBackgroundAudio(rawCtx);
 
             // Wait for worklet to be ready
             await this.synth.isReady;
@@ -101,82 +88,106 @@ export class MidiPlayer {
             this.sequencer = new Sequencer(this.synth);
 
             // Setup Synth Events for visualization
-            this.synth.eventHandler.addEvent('noteOn', 'viz-play', (data) => {
-                const noteName = Utils.midiNoteToName(data.midiNote);
-                const prevNoteName = this.lastNotePerChannel.get(data.channel);
-                this.lastNotePerChannel.set(data.channel, noteName);
-
-                // Store prevNoteName for this specific note instance
-                const noteKey = `${data.channel}-${data.midiNote}`;
-                if (!this.activeNotes.has(noteKey)) {
-                    this.activeNotes.set(noteKey, []);
-                }
-                this.activeNotes.get(noteKey).push(prevNoteName);
-
-                if (this.onNotePlay) {
-                    this.onNotePlay(
-                        noteName,
-                        prevNoteName,
-                        this.channelInstruments[data.channel],
-                        data.channel === 9,
-                    );
-                }
-            });
-
-            this.synth.eventHandler.addEvent(
-                'noteOff',
-                'viz-release',
-                (data) => {
-                    const noteName = Utils.midiNoteToName(data.midiNote);
-                    const noteKey = `${data.channel}-${data.midiNote}`;
-                    const stack = this.activeNotes.get(noteKey);
-                    const prevNoteName = stack ? stack.shift() : undefined;
-                    if (stack && stack.length === 0) {
-                        this.activeNotes.delete(noteKey);
-                    }
-
-                    if (this.onNoteRelease) {
-                        this.onNoteRelease(noteName, prevNoteName);
-                    }
-                },
-            );
-
-            this.synth.eventHandler.addEvent(
-                'programChange',
-                'viz-pc',
-                (data) => {
-                    this.channelInstruments[data.channel] = data.program;
-                },
-            );
-
-            this.sequencer.eventHandler.addEvent(
-                'songEnded',
-                'viz-loop-reset',
-                () => {
-                    // Reset tracking and visualization for the loop
-                    this.lastNotePerChannel.clear();
-                    this.activeNotes.clear();
-                    if (this.onStop) {
-                        this.onStop();
-                    }
-
-                    // Explicitly restart the sequencer if we are still marked as playing and looping is enabled
-                    if (this.isPlaying && this.isLooping) {
-                        this.sequencer.currentTime = 0;
-                        this._hardResetSynth();
-                        this.sequencer.play();
-                    } else {
-                        this.isPlaying = false;
-                        this.dummyAudio.pause();
-                        if (this.streamAudio) this.streamAudio.pause();
-                        if ('mediaSession' in navigator) {
-                            navigator.mediaSession.playbackState = 'none';
-                        }
-                    }
-                    this.updateMediaSessionPosition();
-                },
-            );
+            this._setupSynthEvents();
         }
+    }
+
+    _setupBackgroundAudio(rawCtx) {
+        // Fix for mobile background audio:
+        // Use MediaStreamDestination and an <audio> element to keep the context alive at high priority.
+        // This is more robust than a dummy MP3 loop on iOS/Android.
+        if (rawCtx.createMediaStreamDestination) {
+            const dest = rawCtx.createMediaStreamDestination();
+            this.masterGain.connect(dest);
+
+            const streamAudio = new Audio();
+            streamAudio.srcObject = dest.stream;
+            streamAudio.muted = true; // MUST be muted to prevent phasing/echo from the latent stream path
+            if (streamAudio.setAttribute) {
+                streamAudio.setAttribute('playsinline', ''); // Required for iOS
+            }
+
+            // Append to DOM to ensure browser respects it as active media when backgrounded
+            if (typeof document !== 'undefined' && document.body) {
+                streamAudio.style.display = 'none';
+                document.body.appendChild(streamAudio);
+            }
+
+            streamAudio
+                .play()
+                .catch((e) => console.warn('Stream audio play failed', e));
+            this.streamAudio = streamAudio;
+        }
+    }
+
+    _setupSynthEvents() {
+        this.synth.eventHandler.addEvent('noteOn', 'viz-play', (data) => {
+            const noteName = Utils.midiNoteToName(data.midiNote);
+            const prevNoteName = this.lastNotePerChannel.get(data.channel);
+            this.lastNotePerChannel.set(data.channel, noteName);
+
+            // Store prevNoteName for this specific note instance
+            const noteKey = `${data.channel}-${data.midiNote}`;
+            if (!this.activeNotes.has(noteKey)) {
+                this.activeNotes.set(noteKey, []);
+            }
+            this.activeNotes.get(noteKey).push(prevNoteName);
+
+            if (this.onNotePlay) {
+                this.onNotePlay(
+                    noteName,
+                    prevNoteName,
+                    this.channelInstruments[data.channel],
+                    data.channel === 9,
+                );
+            }
+        });
+
+        this.synth.eventHandler.addEvent('noteOff', 'viz-release', (data) => {
+            const noteName = Utils.midiNoteToName(data.midiNote);
+            const noteKey = `${data.channel}-${data.midiNote}`;
+            const stack = this.activeNotes.get(noteKey);
+            const prevNoteName = stack ? stack.shift() : undefined;
+            if (stack && stack.length === 0) {
+                this.activeNotes.delete(noteKey);
+            }
+
+            if (this.onNoteRelease) {
+                this.onNoteRelease(noteName, prevNoteName);
+            }
+        });
+
+        this.synth.eventHandler.addEvent('programChange', 'viz-pc', (data) => {
+            this.channelInstruments[data.channel] = data.program;
+        });
+
+        this.sequencer.eventHandler.addEvent(
+            'songEnded',
+            'viz-loop-reset',
+            () => {
+                // Reset tracking and visualization for the loop
+                this.lastNotePerChannel.clear();
+                this.activeNotes.clear();
+                if (this.onStop) {
+                    this.onStop();
+                }
+
+                // Explicitly restart the sequencer if we are still marked as playing and looping is enabled
+                if (this.isPlaying && this.isLooping) {
+                    this.sequencer.currentTime = 0;
+                    this._hardResetSynth();
+                    this.sequencer.play();
+                } else {
+                    this.isPlaying = false;
+                    this.dummyAudio.pause();
+                    if (this.streamAudio) this.streamAudio.pause();
+                    if ('mediaSession' in navigator) {
+                        navigator.mediaSession.playbackState = 'none';
+                    }
+                }
+                this.updateMediaSessionPosition();
+            },
+        );
     }
 
     updateMediaSessionPosition() {

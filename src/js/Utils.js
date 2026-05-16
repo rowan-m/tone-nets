@@ -54,6 +54,16 @@ export class Utils {
         drums: '🥁',
     };
 
+    static isMobile() {
+        if (typeof navigator === 'undefined' || typeof window === 'undefined')
+            return false;
+        return (
+            /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+                navigator.userAgent,
+            ) || window.innerWidth <= 768
+        );
+    }
+
     static noteToSemitone(note) {
         if (NOTE_CACHE.has(note)) return NOTE_CACHE.get(note);
 

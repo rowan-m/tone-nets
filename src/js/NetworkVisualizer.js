@@ -59,6 +59,10 @@ export class NetworkVisualizer {
         this.layoutScale = 10.0;
         this.autoTour = false;
         this.autoTourTime = 0;
+
+        this._isMobile = Utils.isMobile();
+        this._frameCount = 0;
+
         this.tourCurrentVelocity = new THREE.Vector3();
         this.tourTargetVelocity = new THREE.Vector3();
         this.tourRotation = new THREE.Quaternion();
@@ -503,7 +507,6 @@ export class NetworkVisualizer {
         if (!this.incrementalMode || !this.graph || !targetId) return;
 
         const hasTransition = Boolean(sourceId && sourceId !== targetId);
-
         const sourceNode = hasTransition
             ? this._processIncrementalNode(sourceId, true)
             : null;
@@ -518,22 +521,45 @@ export class NetworkVisualizer {
             hasTransition,
         );
 
-        if (sourceNode && sourceNode.data.degree > this.maxDegree) {
-            this.maxDegree = sourceNode.data.degree;
-            globalUpdateNeeded = true;
-        }
-        if (targetNode && targetNode.data.degree > this.maxDegree) {
-            this.maxDegree = targetNode.data.degree;
+        if (this._updateMaxMetrics(sourceNode, targetNode)) {
             globalUpdateNeeded = true;
         }
 
         if (globalUpdateNeeded) {
-            this._updateAllVisualScales();
+            this._scheduleGlobalUpdate();
         } else {
-            if (sourceId) this._updateElementVisuals(sourceId, 'node');
-            if (targetId) this._updateElementVisuals(targetId, 'node');
-            if (hasTransition)
-                this._updateElementVisuals(`${sourceId}->${targetId}`, 'edge');
+            this._updateSpecificVisuals(sourceId, targetId, hasTransition);
+        }
+    }
+
+    _updateMaxMetrics(sourceNode, targetNode) {
+        let increased = false;
+        if (sourceNode && sourceNode.data.degree > this.maxDegree) {
+            this.maxDegree = sourceNode.data.degree;
+            increased = true;
+        }
+        if (targetNode && targetNode.data.degree > this.maxDegree) {
+            this.maxDegree = targetNode.data.degree;
+            increased = true;
+        }
+        return increased;
+    }
+
+    _scheduleGlobalUpdate() {
+        // Debounce global updates to avoid O(N+E) work on every note-on event
+        // during high-activity periods.
+        if (this._globalUpdateTimeout) clearTimeout(this._globalUpdateTimeout);
+        this._globalUpdateTimeout = setTimeout(() => {
+            this._updateAllVisualScales();
+            this._globalUpdateTimeout = null;
+        }, 100);
+    }
+
+    _updateSpecificVisuals(sourceId, targetId, hasTransition) {
+        if (sourceId) this._updateElementVisuals(sourceId, 'node');
+        if (targetId) this._updateElementVisuals(targetId, 'node');
+        if (hasTransition) {
+            this._updateElementVisuals(`${sourceId}->${targetId}`, 'edge');
         }
     }
 
@@ -1058,15 +1084,27 @@ export class NetworkVisualizer {
     animate(time) {
         requestAnimationFrame(this.animate);
 
+        // Optimization: Completely pause rendering and physics when tab is backgrounded
+        // to save CPU for the background audio worklet.
+        if (document.visibilityState === 'hidden') {
+            this._lastFrameTime = time; // Keep time synced so delta doesn't explode on resume
+            return;
+        }
+
         const delta =
             this.isPaused || !this._lastFrameTime
                 ? 0
                 : (time - this._lastFrameTime) / 1000;
         this._lastFrameTime = time;
+        this._frameCount++;
 
         if (this.incrementalMode && this.layout && !this.isPaused) {
-            this.layout.step();
-            this._updatePositionsFromLayout();
+            // Optimization: On mobile, only run layout physics and position updates
+            // every 2nd frame to reduce main thread pressure.
+            if (!this._isMobile || this._frameCount % 2 === 0) {
+                this.layout.step();
+                this._updatePositionsFromLayout();
+            }
         }
 
         // Raycasting Logic - Only if mouse moved and throttled

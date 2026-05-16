@@ -178,24 +178,43 @@ const init = async () => {
         console.error(error);
     }
 
+    let lastCountUpdate = 0;
     player.onNotePlay = (nodeId, prevNodeId, instrumentId, isDrums) => {
         // Optimization: Skip heavy visualization updates if the page is hidden (backgrounded)
         // to prioritize CPU for the AudioWorklet and prevent stuttering on mobile.
+        // We must return BEFORE requestAnimationFrame to prevent a massive queue from building up
+        // while the tab is inactive.
         if (document.visibilityState === 'hidden') return;
 
-        if (isIncrementalMode && !isDrums) {
-            visualizer.addTransitionIncremental(prevNodeId, nodeId);
-            vCountEl.textContent = visualizer.graph.getNodesCount();
-            eCountEl.textContent = visualizer.graph.getLinksCount();
-        }
+        // Use requestAnimationFrame to decouple heavy visual work from the audio sequencer's
+        // event loop, preventing "tempo drag" on mobile.
+        requestAnimationFrame(() => {
+            // Re-check visibility inside the frame in case state changed
+            if (document.visibilityState === 'hidden') return;
 
-        visualizer.highlightPlayingElement(nodeId, prevNodeId);
-        const emoji = Utils.getInstrumentEmoji(instrumentId, isDrums);
-        visualizer.showInstrumentEmoji(nodeId, emoji);
+            if (isIncrementalMode && !isDrums) {
+                visualizer.addTransitionIncremental(prevNodeId, nodeId);
+
+                // Throttle DOM updates for performance
+                const now = performance.now();
+                if (now - lastCountUpdate > 250) {
+                    vCountEl.textContent = visualizer.graph.getNodesCount();
+                    eCountEl.textContent = visualizer.graph.getLinksCount();
+                    lastCountUpdate = now;
+                }
+            }
+
+            visualizer.highlightPlayingElement(nodeId, prevNodeId);
+            const emoji = Utils.getInstrumentEmoji(instrumentId, isDrums);
+            visualizer.showInstrumentEmoji(nodeId, emoji);
+        });
     };
     player.onNoteRelease = (nodeId, prevNodeId) => {
         if (document.visibilityState === 'hidden') return;
-        visualizer.releasePlayingElement(nodeId, prevNodeId);
+        requestAnimationFrame(() => {
+            if (document.visibilityState === 'hidden') return;
+            visualizer.releasePlayingElement(nodeId, prevNodeId);
+        });
     };
     player.onStop = () => {
         visualizer.resetPlayingHighlights();

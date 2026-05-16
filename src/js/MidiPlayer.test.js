@@ -7,6 +7,8 @@ import { MidiPlayer } from './MidiPlayer.js';
 const mockAudioInstance = {
     play: vi.fn().mockResolvedValue(undefined),
     pause: vi.fn(),
+    setAttribute: vi.fn(),
+    style: {},
     loop: false,
     currentTime: 0,
 };

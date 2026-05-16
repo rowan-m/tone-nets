@@ -64,7 +64,10 @@ export class MidiPlayer {
 
             // Limit voice count on mobile/low-end to prevent stuttering/corruption
             // Complex MIDI files can easily exceed 200+ voices which is heavy for SF2 synthesis
+            // We use autoAllocateVoices so it can scale up dynamically if needed without hard cutoffs,
+            // while starting from a reasonable base.
             this.synth.setMasterParameter('voiceCap', 128);
+            this.synth.setMasterParameter('autoAllocateVoices', true);
 
             // Connect synthesizer to master gain
             this.synth.connect(this.masterGain);
@@ -78,6 +81,7 @@ export class MidiPlayer {
 
                 const streamAudio = new Audio();
                 streamAudio.srcObject = dest.stream;
+                streamAudio.muted = true; // MUST be muted to prevent phasing/echo from the latent stream path
                 streamAudio
                     .play()
                     .catch((e) => console.warn('Stream audio play failed', e));

@@ -47,16 +47,16 @@ The application is built with Vanilla JS (ES Modules) and Vite, structured into 
         - **Reciprocity**: Binary, Weighted, and Normalized ($\rho$).
         - **Entropy**: Mean Node Entropy.
         - **Scale-interval Embedding**: 12D interval signature (directed pitch class intervals).
-    - **Scaling**: Parsing and metrics calculation (which involve $O(V \cdot E)$ operations like BFS/Dijkstra) are performed in a **Web Worker** to keep the UI responsive. Uses a custom `MinHeap.js` for efficient Dijkstra implementation.
+    - **Scaling**: Parsing and metrics calculation (which involve $O(V \cdot E)$ operations like BFS/Dijkstra) are performed in a **Web Worker**. Since `ngraph.graph` objects cannot be transferred directly, data is passed as a serialized `{ nodes, links }` structure and reconstructed via `NetworkParser.rebuildGraph()`.
 
 2.  **3D Visualizer (`src/js/NetworkVisualizer.js`)**:
     - **Engine**: Uses `Three.js` with `OrbitControls` for interactive 3D rendering.
-    - **Layout Strategy**: Uses `ngraph.forcelayout` in **2D mode** for planar separation, then maps **Node Degree to the Z-axis** to create a 2.5D topological landscape.
+    - **Layout Strategy**: Uses `ngraph.forcelayout` in **3D mode** (`dimensions: 3`). Assigns physical **mass** to nodes in the simulator based on their degree ($1 + \log_2(\text{degree} + 1) \cdot 5$) to ensure hubs maintain spatial dominance.
     - **Performance**: Layout is calculated **incrementally (async)** over 3000 steps with real-time progress reporting.
     - **Visuals**: Quadratic Bezier edges with directional cones, pitch-class based node coloring (HSL), and post-processing bloom.
     - **Interactivity**:
         - `THREE.Raycaster` for hover-based highlighting and metadata display.
-        - Real-time highlighting of nodes and edges during playback.
+        - Real-time highlighting of nodes and edges during playback using a **reference-counting `playCount` system**.
         - Floating instrument emojis above active nodes using `THREE.Sprite`.
 
 3.  **Audio Player (`src/js/MidiPlayer.js`)**:
@@ -64,6 +64,14 @@ The application is built with Vanilla JS (ES Modules) and Vite, structured into 
     - **Resources**: Uses a 7.5MB General MIDI SoundFont (`.sf2`) stored in `public/`.
     - **Scheduling**: Uses `Tone.Transport` to schedule notes, program changes, and CC events. Employs `Tone.Draw` to sync visual highlights with audio.
     - **Constraints**: Calls `Tone.start()` on first user interaction (file selection or example click) to unlock the AudioContext.
+
+## Technical Implementation Details
+
+- **UI Stack**: The project uses **Vanilla CSS** and direct **DOM manipulation** (no UI framework). The entry point `main.js` acts as a controller, coordinating subsystems via callback hooks (e.g., `player.onNotePlay`).
+- **Metric Logic**: **Weighted Efficiency** is calculated using Dijkstra's algorithm where the distance between nodes is the inverse of their transition weight ($d = 1/w$).
+- **Reference Counting**: Visual highlights for nodes and edges use a `playCount` counter. This ensures that overlapping notes or chords correctly maintain highlights until the final instance is released.
+- **Performance Patterns**: High-frequency lookups and caches (like `Utils.noteToSemitone`) utilize native **`Map`** objects instead of plain objects for better V8 performance.
+- **Security Patterns**: MIDI uploads are restricted to **5MB** and verified via a **Magic Number check** (`0x4d546864`) in `main.js` before processing.
 
 ## Key Dependencies & Rationale
 

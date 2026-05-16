@@ -66,7 +66,7 @@ export class MidiPlayer {
             const isMobile = Utils.isMobile();
             const voiceCap = isMobile ? 64 : 128;
             this.synth.setMasterParameter('voiceCap', voiceCap);
-            
+
             // Dynamic allocation causes garbage collection pauses (audio crackling/corruption)
             // in the AudioWorklet thread on mobile, so we disable it there.
             this.synth.setMasterParameter('autoAllocateVoices', !isMobile);
@@ -110,7 +110,7 @@ export class MidiPlayer {
             streamAudio.srcObject = dest.stream;
             // IMPORTANT: Do NOT mute. If muted, mobile OS suspends it in background.
             // Since we didn't connect masterGain to rawCtx.destination, there is no echo.
-            streamAudio.muted = false; 
+            streamAudio.muted = false;
             if (streamAudio.setAttribute) {
                 streamAudio.setAttribute('playsinline', ''); // Required for iOS
             }

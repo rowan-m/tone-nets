@@ -49,16 +49,20 @@
                         accept=".mid,.midi"
                         class="hidden-input"
                     />
-                    <label for="midi-upload" class="custom-file-upload btn">
-                        <span aria-hidden="true">💾</span>Load MIDI
-                    </label>
+                    <label
+                        for="midi-upload"
+                        class="custom-file-upload btn"
+                        title="Load MIDI File"
+                    >
+                        <span aria-hidden="true">💾</span></label
+                    >
                     <button
                         id="play-btn"
                         class="btn hidden paused-style"
                         disabled
                         title="Play (Space)"
                     >
-                        <span aria-hidden="true">▶️</span>Play
+                        <span aria-hidden="true">▶️</span>
                     </button>
                     <button
                         id="pause-btn"
@@ -66,14 +70,21 @@
                         disabled
                         title="Pause (Space)"
                     >
-                        <span aria-hidden="true">⏸️</span>Pause
+                        <span aria-hidden="true">⏸️</span>
                     </button>
                     <div class="autoplay-control">
                         <input type="checkbox" id="autoplay-toggle" checked />
-                        <label for="autoplay-toggle">Autoplay</label>
+                        <label for="autoplay-toggle" title="Toggle Autoplay"
+                            >🔁</label
+                        >
                     </div>
-                    <button id="restart-btn" class="btn" disabled>
-                        <span aria-hidden="true">⏮️</span>Restart
+                    <button
+                        id="restart-btn"
+                        class="btn"
+                        disabled
+                        title="Restart Playback"
+                    >
+                        <span aria-hidden="true">⏮️</span>
                     </button>
                     <button
                         id="toggle-info"
@@ -81,11 +92,17 @@
                         disabled
                         aria-expanded="false"
                         aria-controls="info-panel"
+                        title="Show/Hide Statistics"
                     >
-                        <span aria-hidden="true">📊</span>Stats
+                        <span aria-hidden="true">📊</span>
                     </button>
-                    <button id="tour-btn" class="btn" disabled>
-                        <span aria-hidden="true">🧭</span>Tour
+                    <button
+                        id="tour-btn"
+                        class="btn"
+                        disabled
+                        title="Start Visual Tour"
+                    >
+                        <span aria-hidden="true">🎥</span>
                     </button>
                 </div>
             </header>
@@ -178,7 +195,12 @@
             </footer>
 
             <aside id="info-panel" class="hidden">
-                <button id="close-info" class="close-btn" aria-label="Close">
+                <button
+                    id="close-info"
+                    class="close-btn"
+                    aria-label="Close"
+                    title="Close"
+                >
                     ×
                 </button>
                 <section id="network-summary">

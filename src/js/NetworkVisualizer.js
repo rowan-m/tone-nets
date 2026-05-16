@@ -513,27 +513,30 @@ export class NetworkVisualizer {
 
         // Update max values
         let globalUpdateNeeded = false;
-        if (sourceNode.data.degree > this.maxDegree) {
+        if (sourceNode && sourceNode.data && sourceNode.data.degree > this.maxDegree) {
             this.maxDegree = sourceNode.data.degree;
             globalUpdateNeeded = true;
         }
-        if (targetNode.data.degree > this.maxDegree) {
+        if (targetNode && targetNode.data && targetNode.data.degree > this.maxDegree) {
             this.maxDegree = targetNode.data.degree;
             globalUpdateNeeded = true;
         }
 
-        const link = this.graph.getLink(sourceId, targetId);
-        if (link && link.data.weight > this.maxWeight) {
-            this.maxWeight = link.data.weight;
-            globalUpdateNeeded = true;
+        let link = null;
+        if (sourceId && targetId) {
+            link = this.graph.getLink(sourceId, targetId);
+            if (link && link.data.weight > this.maxWeight) {
+                this.maxWeight = link.data.weight;
+                globalUpdateNeeded = true;
+            }
         }
 
         if (globalUpdateNeeded) {
             this._updateAllVisualScales();
         } else {
-            this._updateElementVisuals(sourceId, 'node');
-            this._updateElementVisuals(targetId, 'node');
-            this._updateElementVisuals(`${sourceId}->${targetId}`, 'edge');
+            if (sourceId) this._updateElementVisuals(sourceId, 'node');
+            if (targetId) this._updateElementVisuals(targetId, 'node');
+            if (sourceId && targetId) this._updateElementVisuals(`${sourceId}->${targetId}`, 'edge');
         }
     }
 

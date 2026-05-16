@@ -1171,7 +1171,7 @@ export class NetworkVisualizer {
             // Required frustum size to fit both height and width (considering aspect)
             // Reduced padding from 15% to 5% for a tighter, better-fitting view
             const requiredFrustumSize =
-                Math.max(maxH * 2, (maxW * 2) / aspect) * 1.05; 
+                Math.max(maxH * 2, (maxW * 2) / aspect) * 1.05;
 
             // Calculate target zoom relative to the base frustum size
             const targetZoom = this.baseFrustumSize / requiredFrustumSize;
@@ -1194,7 +1194,7 @@ export class NetworkVisualizer {
         } else {
             this.controls.update();
         }
-        
+
         this.composer.render();
     }
 

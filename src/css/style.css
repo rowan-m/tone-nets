@@ -51,8 +51,70 @@ h1 {
 
 .controls {
     display: flex;
-    gap: 1rem;
+    gap: 1.5rem;
     align-items: center;
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.control-group .btn {
+    border: none;
+    border-right: 1px solid var(--panel-border);
+    border-radius: 0;
+    background: transparent;
+}
+
+.control-group .btn:last-child {
+    border-right: none;
+}
+
+.control-group .btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.toggles {
+    border: none;
+    background: transparent;
+    gap: 1rem;
+}
+
+.toggle-control {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: #ccc;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.toggle-control input[type='checkbox'] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--accent-color);
+}
+
+.toggle-control input[type='checkbox']:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.toggle-control input[type='checkbox']:disabled + label {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.toggle-control label {
+    cursor: pointer;
+    user-select: none;
 }
 
 .hidden-input {

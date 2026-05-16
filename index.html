@@ -43,89 +43,92 @@
             <header>
                 <h1 id="app-title">Tone Nets</h1>
                 <div class="controls">
-                    <input
-                        type="file"
-                        id="midi-upload"
-                        accept=".mid,.midi"
-                        class="hidden-input"
-                    />
-                    <label
-                        for="midi-upload"
-                        class="custom-file-upload btn"
-                        title="Load MIDI File"
-                    >
-                        <span aria-hidden="true">💾</span> Load</label
-                    >
-                    <button
-                        id="play-btn"
-                        class="btn hidden paused-style"
-                        disabled
-                        title="Play (Space)"
-                    >
-                        <span aria-hidden="true">▶️</span> Play
-                    </button>
-                    <button
-                        id="pause-btn"
-                        class="btn"
-                        disabled
-                        title="Pause (Space)"
-                    >
-                        <span aria-hidden="true">⏸️</span> Pause
-                    </button>
-                    <button
-                        id="autoplay-on-btn"
-                        class="btn"
-                        title="Disable Autoplay"
-                    >
-                        <span aria-hidden="true">🔁</span> Autoplay
-                    </button>
-                    <button
-                        id="autoplay-off-btn"
-                        class="btn hidden paused-style"
-                        title="Enable Autoplay"
-                    >
-                        <span aria-hidden="true">⏸️</span> Autoplay
-                    </button>
-                    <button
-                        id="incremental-on-btn"
-                        class="btn hidden"
-                        title="Disable Live Build"
-                    >
-                        <span aria-hidden="true">🌱</span> Live Build
-                    </button>
-                    <button
-                        id="incremental-off-btn"
-                        class="btn paused-style"
-                        title="Enable Live Build"
-                    >
-                        <span aria-hidden="true">🏗️</span> Live Build
-                    </button>
-                    <button
-                        id="restart-btn"
-                        class="btn"
-                        disabled
-                        title="Restart Playback"
-                    >
-                        <span aria-hidden="true">⏮️</span> Restart
-                    </button>
-                    <button
-                        id="toggle-info"
-                        class="btn"
-                        disabled
-                        aria-expanded="false"
-                        aria-controls="info-panel"
-                        title="Show/Hide Statistics"
-                    >
-                        <span aria-hidden="true">📊</span> Stats
-                    </button>
-                    <button
-                        id="tour-btn"
-                        class="btn"
-                        disabled
-                        title="Start Visual Tour"
-                    >
-                        <span aria-hidden="true">🎥</span> Tour
-                    </button>
+                    <!-- Action Buttons Group -->
+                    <div class="control-group">
+                        <input
+                            type="file"
+                            id="midi-upload"
+                            accept=".mid,.midi"
+                            class="hidden-input"
+                        />
+                        <label
+                            for="midi-upload"
+                            class="custom-file-upload btn"
+                            title="Load MIDI File"
+                        >
+                            <span aria-hidden="true">💾</span>
+                        </label>
+                        <button
+                            id="play-btn"
+                            class="btn hidden paused-style"
+                            disabled
+                            title="Play (Space)"
+                        >
+                            <span aria-hidden="true">▶️</span>
+                        </button>
+                        <button
+                            id="pause-btn"
+                            class="btn"
+                            disabled
+                            title="Pause (Space)"
+                        >
+                            <span aria-hidden="true">⏸️</span>
+                        </button>
+                        <button
+                            id="restart-btn"
+                            class="btn"
+                            disabled
+                            title="Restart Playback"
+                        >
+                            <span aria-hidden="true">⏮️</span>
+                        </button>
+                    </div>
+
+                    <!-- Toggle Checkboxes Group -->
+                    <div class="control-group toggles">
+                        <div class="toggle-control">
+                            <input
+                                type="checkbox"
+                                id="autoplay-toggle"
+                                checked
+                            />
+                            <label
+                                for="autoplay-toggle"
+                                title="Toggle Autoplay"
+                            >
+                                🔁 Autoplay
+                            </label>
+                        </div>
+                        <div class="toggle-control">
+                            <input type="checkbox" id="incremental-toggle" />
+                            <label
+                                for="incremental-toggle"
+                                title="Build Incrementally (Live)"
+                            >
+                                🌱 Live Build
+                            </label>
+                        </div>
+                        <div class="toggle-control">
+                            <input
+                                type="checkbox"
+                                id="stats-toggle"
+                                disabled
+                                aria-controls="info-panel"
+                            />
+                            <label
+                                for="stats-toggle"
+                                title="Show/Hide Statistics"
+                            >
+                                📊 Stats
+                            </label>
+                        </div>
+                        <div class="toggle-control">
+                            <input type="checkbox" id="tour-toggle" disabled />
+                            <label for="tour-toggle" title="Toggle Visual Tour">
+                                🎥 Tour
+                            </label>
+                        </div>
+                    </div>
                 </div>
             </header>
 

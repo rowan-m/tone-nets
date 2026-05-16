@@ -39,42 +39,51 @@ const init = async () => {
     const appTitle = document.getElementById('app-title');
     const statusModal = document.getElementById('status-modal');
     const statusModalText = document.getElementById('status-modal-text');
-    
-    const autoplayOnBtn = document.getElementById('autoplay-on-btn');
-    const autoplayOffBtn = document.getElementById('autoplay-off-btn');
-    const incrementalOnBtn = document.getElementById('incremental-on-btn');
-    const incrementalOffBtn = document.getElementById('incremental-off-btn');
+
+    const autoplayToggle = document.getElementById('autoplay-toggle');
+    const incrementalToggle = document.getElementById('incremental-toggle');
+    const statsToggle = document.getElementById('stats-toggle');
+    const tourToggle = document.getElementById('tour-toggle');
 
     let isIncrementalMode = false;
     let isAutoplayMode = true;
 
-    // Setup Autoplay Toggle
-    const toggleAutoplay = () => {
-        isAutoplayMode = !isAutoplayMode;
-        if (isAutoplayMode) {
-            autoplayOnBtn.classList.remove('hidden');
-            autoplayOffBtn.classList.add('hidden');
-        } else {
-            autoplayOnBtn.classList.add('hidden');
-            autoplayOffBtn.classList.remove('hidden');
-        }
-    };
-    autoplayOnBtn.addEventListener('click', toggleAutoplay);
-    autoplayOffBtn.addEventListener('click', toggleAutoplay);
-
-    // Setup Incremental Toggle
-    const toggleIncremental = () => {
-        isIncrementalMode = !isIncrementalMode;
+    // Handle Incremental Mode Toggle
+    incrementalToggle.addEventListener('change', (e) => {
+        isIncrementalMode = e.target.checked;
         if (isIncrementalMode) {
-            incrementalOnBtn.classList.remove('hidden');
-            incrementalOffBtn.classList.add('hidden');
-        } else {
-            incrementalOnBtn.classList.add('hidden');
-            incrementalOffBtn.classList.remove('hidden');
+            infoPanel.classList.add('hidden');
+            statsToggle.disabled = true;
+            statsToggle.checked = false;
+        } else if (!playBtn.disabled) {
+            // If a file is loaded
+            statsToggle.disabled = false;
         }
-    };
-    incrementalOnBtn.addEventListener('click', toggleIncremental);
-    incrementalOffBtn.addEventListener('click', toggleIncremental);
+    });
+
+    // Handle Autoplay Toggle
+    autoplayToggle.addEventListener('change', (e) => {
+        isAutoplayMode = e.target.checked;
+    });
+
+    // Handle Stats Toggle
+    statsToggle.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            infoPanel.classList.remove('hidden');
+        } else {
+            infoPanel.classList.add('hidden');
+        }
+        statsToggle.setAttribute('aria-expanded', e.target.checked);
+    });
+
+    // Handle Tour Toggle
+    tourToggle.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            visualizer.startAutoTour();
+        } else {
+            visualizer.stopAutoTour();
+        }
+    });
 
     const metricEls = {
         efficiency: document.getElementById('metric-efficiency'),
@@ -257,10 +266,6 @@ const init = async () => {
         player.restart();
     });
 
-    tourBtn.addEventListener('click', () => {
-        visualizer.startAutoTour();
-    });
-
     if ('mediaSession' in navigator) {
         navigator.mediaSession.setActionHandler('play', togglePlayPause);
         navigator.mediaSession.setActionHandler('pause', togglePlayPause);
@@ -281,8 +286,8 @@ const init = async () => {
         playBtn.disabled = true;
         pauseBtn.disabled = true;
         restartBtn.disabled = true;
-        tourBtn.disabled = true;
-        toggleInfo.disabled = true;
+        tourToggle.disabled = true;
+        statsToggle.disabled = true;
 
         try {
             if (isIncrementalMode) {
@@ -321,9 +326,14 @@ const init = async () => {
                 playBtn.disabled = false;
                 pauseBtn.disabled = false;
                 restartBtn.disabled = false;
-                tourBtn.disabled = false;
-                toggleInfo.disabled = true; // Metrics are disabled in incremental mode
+                tourToggle.disabled = false;
+                statsToggle.disabled = true; // Metrics are disabled in incremental mode
+                statsToggle.checked = false;
                 infoPanel.classList.add('hidden');
+
+                if (tourToggle.checked) {
+                    visualizer.startAutoTour();
+                }
 
                 if (isAutoplayMode) {
                     playBtn.classList.add('hidden');
@@ -359,8 +369,8 @@ const init = async () => {
                     playBtn.disabled = false;
                     pauseBtn.disabled = false;
                     restartBtn.disabled = false;
-                    tourBtn.disabled = false;
-                    toggleInfo.disabled = false;
+                    tourToggle.disabled = false;
+                    statsToggle.disabled = false;
 
                     // Set button state based on autoplay
                     if (isAutoplayMode) {
@@ -372,7 +382,6 @@ const init = async () => {
                         pauseBtn.classList.add('hidden');
                         visualizer.setPaused(true);
                     }
-
 
                     console.log(
                         'Network built successfully (in worker):',
@@ -393,6 +402,12 @@ const init = async () => {
                     visualizer.buildVisualization(graph).then(() => {
                         welcomeMsg.classList.add('hidden');
                         hideStatus();
+
+                        if (tourToggle.checked) {
+                            visualizer.startAutoTour();
+                        } else {
+                            visualizer.stopAutoTour();
+                        }
                     });
                 };
 

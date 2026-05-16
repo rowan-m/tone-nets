@@ -98,7 +98,7 @@ const init = async () => {
             }
         });
 
-        if (window.innerWidth <= 768) {
+        if (isIncrementalMode || window.innerWidth <= 768) {
             infoPanel.classList.add('hidden');
         } else {
             infoPanel.classList.remove('hidden');
@@ -291,7 +291,8 @@ const init = async () => {
                 pauseBtn.disabled = false;
                 restartBtn.disabled = false;
                 tourBtn.disabled = false;
-                toggleInfo.disabled = false;
+                toggleInfo.disabled = true; // Metrics are disabled in incremental mode
+                infoPanel.classList.add('hidden');
 
                 if (autoplay) {
                     playBtn.classList.add('hidden');

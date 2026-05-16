@@ -392,7 +392,10 @@ export class NetworkVisualizer {
                 body.mass = 1 + Math.log2(degree + 1) * 5;
             }
         } catch (error) {
-            // Silently ignore if simulator doesn't support getBody
+            console.warn(
+                'Mass scaling not supported by layout simulator:',
+                error,
+            );
         }
     }
 
@@ -409,7 +412,10 @@ export class NetworkVisualizer {
         } else if (type === 'edge') {
             const edgeData = this.edgeMap.get(id);
             if (!edgeData) return;
-            const link = this.graph.getLink(edgeData.sourceId, edgeData.targetId);
+            const link = this.graph.getLink(
+                edgeData.sourceId,
+                edgeData.targetId,
+            );
             const normWeight = Math.min(1, link.data.weight / this.maxWeight);
             const weightBucket = Math.round(normWeight * 100);
 
@@ -462,15 +468,17 @@ export class NetworkVisualizer {
 
         const sourceNode = this.graph.getNode(sourceId);
         const targetNode = this.graph.getNode(targetId);
-        
+
         if (!sourceNode || !targetNode) return;
 
         // Update degrees incrementally
         if (!sourceNode.data) sourceNode.data = {};
         if (!targetNode.data) targetNode.data = {};
-        if (typeof sourceNode.data.degree !== 'number') sourceNode.data.degree = 0;
-        if (typeof targetNode.data.degree !== 'number') targetNode.data.degree = 0;
-        
+        if (typeof sourceNode.data.degree !== 'number')
+            sourceNode.data.degree = 0;
+        if (typeof targetNode.data.degree !== 'number')
+            targetNode.data.degree = 0;
+
         sourceNode.data.degree++;
         targetNode.data.degree++;
 
@@ -835,7 +843,7 @@ export class NetworkVisualizer {
             radius = 100; // Safe default for incremental mode starting empty
             this.graphCenter.set(0, 0, 0);
         }
-        
+
         this.graphRadius = radius;
         let frustumSize = radius * 2 * 1.05; // Add 5% padding
 
@@ -1010,7 +1018,9 @@ export class NetworkVisualizer {
             const tMid = 0.5;
             this._scratchCurve.getPoint(tMid, this._scratchVec3_1);
             edgeData.cone.position.copy(this._scratchVec3_1);
-            this._scratchCurve.getTangent(tMid, this._scratchVec3_2).normalize();
+            this._scratchCurve
+                .getTangent(tMid, this._scratchVec3_2)
+                .normalize();
             edgeData.cone.lookAt(
                 this._scratchVec3_3
                     .copy(this._scratchVec3_1)

@@ -235,7 +235,9 @@ const init = async () => {
     const processMidi = async (arrayBuffer, fileName) => {
         await Tone.start();
 
-        isIncrementalMode = incrementalToggle ? incrementalToggle.checked : false;
+        isIncrementalMode = incrementalToggle
+            ? incrementalToggle.checked
+            : false;
 
         console.log(
             'Processing MIDI:',

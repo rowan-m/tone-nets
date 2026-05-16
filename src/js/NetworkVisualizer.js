@@ -65,6 +65,7 @@ export class NetworkVisualizer {
         this.tourSpeedChangeTimer = 0;
         this.graphBoundingBox = new THREE.Box3();
         this.graphCenter = new THREE.Vector3();
+        this.currentTourTarget = new THREE.Vector3();
         this.scene.add(this.graphGroup);
 
         this._lastFrameTime = 0;
@@ -349,6 +350,11 @@ export class NetworkVisualizer {
 
         this.maxDegree = 1;
         this.maxWeight = 1;
+
+        // Ensure safe defaults for camera/tour logic when graph is empty
+        this.graphCenter.set(0, 0, 0);
+        this.currentTourTarget.set(0, 0, 0);
+        this.graphRadius = 100;
 
         // Initialize geometries if not already done
         this._initSharedGeometries();
@@ -824,7 +830,12 @@ export class NetworkVisualizer {
         // Use bounding sphere to ensure the graph never clips when rotated
         this._scratchBox3.getBoundingSphere(this._scratchSphere);
 
-        const radius = this._scratchSphere.radius;
+        let radius = this._scratchSphere.radius;
+        if (isNaN(radius) || radius <= 0 || !isFinite(radius)) {
+            radius = 100; // Safe default for incremental mode starting empty
+            this.graphCenter.set(0, 0, 0);
+        }
+        
         this.graphRadius = radius;
         let frustumSize = radius * 2 * 1.05; // Add 5% padding
 
@@ -1013,7 +1024,11 @@ export class NetworkVisualizer {
             this.graphBoundingBox.copy(this._scratchBox3);
             this._scratchBox3.getCenter(this.graphCenter);
             this._scratchBox3.getBoundingSphere(this._scratchSphere);
-            this.graphRadius = this._scratchSphere.radius;
+            let radius = this._scratchSphere.radius;
+            if (isNaN(radius) || radius <= 0 || !isFinite(radius)) {
+                radius = 100;
+            }
+            this.graphRadius = radius;
         }
     }
 

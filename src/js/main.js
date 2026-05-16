@@ -20,8 +20,6 @@ const init = async () => {
     const playBtn = document.getElementById('play-btn');
     const pauseBtn = document.getElementById('pause-btn');
     const restartBtn = document.getElementById('restart-btn');
-    const tourBtn = document.getElementById('tour-btn');
-    const toggleInfo = document.getElementById('toggle-info');
     const closeInfo = document.getElementById('close-info');
     const vCountEl = document.getElementById('v-count');
     const eCountEl = document.getElementById('e-count');
@@ -474,23 +472,19 @@ const init = async () => {
         }
     };
 
-    // Setup Info Panel Toggle
-    toggleInfo.addEventListener('click', () => {
-        const isHidden = infoPanel.classList.toggle('hidden');
-        toggleInfo.setAttribute('aria-expanded', !isHidden);
-    });
-
     closeInfo.addEventListener('click', () => {
         infoPanel.classList.add('hidden');
-        toggleInfo.setAttribute('aria-expanded', 'false');
+        statsToggle.checked = false;
+        statsToggle.setAttribute('aria-expanded', 'false');
     });
 
     // Close info panel on Escape key
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && !infoPanel.classList.contains('hidden')) {
             infoPanel.classList.add('hidden');
-            toggleInfo.setAttribute('aria-expanded', 'false');
-            toggleInfo.focus();
+            statsToggle.checked = false;
+            statsToggle.setAttribute('aria-expanded', 'false');
+            statsToggle.focus();
         }
 
         if (e.key === ' ' || e.key === 'Spacebar') {

@@ -76,10 +76,14 @@ const setupUI = (callbacks) => {
         }
     };
 
+    const showError = (message, err) => {
+        console.error(message, err);
+        showStatus(`${message} See console.`);
+    };
+
     const toggleUi = () => {
         els.appEl.classList.toggle('ui-hidden');
     };
-
     // Show non-dismissable status modal initially
     els.statusModal.showModal();
     els.statusModal.addEventListener('cancel', (e) => e.preventDefault());
@@ -221,7 +225,7 @@ const setupUI = (callbacks) => {
         );
     }
 
-    return { els, showStatus, hideStatus };
+    return { els, showStatus, hideStatus, showError };
 };
 
 const init = async () => {
@@ -309,8 +313,7 @@ const init = async () => {
         ui.hideStatus();
         ui.els.uploadInput.disabled = false;
     } catch (error) {
-        ui.showStatus('Error loading SoundFont. See console.');
-        console.error(error);
+        ui.showError('Error loading SoundFont.', error);
     }
 
     let lastCountUpdate = 0;
@@ -505,10 +508,8 @@ const init = async () => {
                     const { summary, serializedGraph, error } = e.data;
 
                     if (error) {
-                        console.error('Worker error:', error);
-                        ui.showStatus(
-                            'Error processing MIDI file. See console.',
-                        );
+                        ui.showError('Error processing MIDI file.', error);
+
                         return;
                     }
 
@@ -561,8 +562,7 @@ const init = async () => {
                 parserWorker.postMessage({ midiBuffer: arrayBuffer });
             }
         } catch (err) {
-            console.error('Error processing MIDI file:', err);
-            ui.showStatus('Error processing MIDI file. See console.');
+            ui.showError('Error processing MIDI file.', err);
         }
     };
 
@@ -573,8 +573,7 @@ const init = async () => {
             const arrayBuffer = await response.arrayBuffer();
             await processMidi(arrayBuffer, fileName);
         } catch (err) {
-            console.error('Error loading MIDI:', err);
-            ui.showStatus(`Error loading ${fileName}.`);
+            ui.showError(`Error loading ${fileName}.`, err);
         }
     };
 

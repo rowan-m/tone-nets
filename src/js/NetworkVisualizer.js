@@ -289,12 +289,11 @@ export class NetworkVisualizer {
         this.layout = createLayout(graph, {
             dimensions: 3,
             physicsSettings: {
-                springLength: 800,
-                springCoeff: 0.0002,
-                gravity: -1200,
+                springLength: 1000,
+                springCoefficient: 0.00005,
+                gravity: -4000,
                 theta: 0.5,
-                dragCoeff: 0.1,
-                timeStep: 20,
+                dragCoefficient: 0.1,
             },
         });
 
@@ -338,12 +337,11 @@ export class NetworkVisualizer {
         this.layout = createLayout(graph, {
             dimensions: 3,
             physicsSettings: {
-                springLength: 800,
-                springCoeff: 0.0002,
-                gravity: -1200,
+                springLength: 1000,
+                springCoefficient: 0.00005,
+                gravity: -4000,
                 theta: 0.5,
-                dragCoeff: 0.1,
-                timeStep: 20,
+                dragCoefficient: 0.1,
             },
         });
 

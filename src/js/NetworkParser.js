@@ -66,22 +66,19 @@ export class NetworkParser {
     }
 
     static _sumEfficiencyForNode(
-        nodes,
-        i,
         uDistances,
         wDistances,
         efficiencySums,
     ) {
-        for (let j = 0; j < nodes.length; j++) {
-            if (i === j) continue;
-
-            const targetNode = nodes[j];
-
-            const ud = uDistances.get(targetNode);
-            if (ud !== undefined && ud > 0) efficiencySums.unweighted += 1 / ud;
-
-            const wd = wDistances.get(targetNode);
-            if (wd !== undefined && wd > 0) efficiencySums.weighted += 1 / wd;
+        // Optimization: Rather than looping through all V nodes in the graph to check
+        // if they are reachable, directly iterate the Map.values() which only contains
+        // reachable nodes. This reduces the complexity of this step from O(V) to
+        // O(reachable_nodes), avoiding significant Map.get overhead on sparse graphs.
+        for (const ud of uDistances.values()) {
+            if (ud > 0) efficiencySums.unweighted += 1 / ud;
+        }
+        for (const wd of wDistances.values()) {
+            if (wd > 0) efficiencySums.weighted += 1 / wd;
         }
     }
 
@@ -96,8 +93,6 @@ export class NetworkParser {
             const wDistances = this.dijkstraDistances(adj, startNode);
 
             this._sumEfficiencyForNode(
-                nodes,
-                i,
                 uDistances,
                 wDistances,
                 efficiencySums,

@@ -8,6 +8,7 @@
         "build": "vite build",
         "preview": "vite preview",
         "clean": "rimraf dist coverage",
+        "check": "npm run clean && npm run prettier:check && npm run eslint && npm run test:coverage && npm run build",
         "test": "vitest run",
         "test:coverage": "vitest run --coverage",
         "test:watch": "vitest",

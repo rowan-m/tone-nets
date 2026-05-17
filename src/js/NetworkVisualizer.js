@@ -225,27 +225,13 @@ export class NetworkVisualizer {
             child.traverse((obj) => {
                 if (obj.geometry) obj.geometry.dispose();
 
-                if (obj.material) {
-                    const mats = Array.isArray(obj.material)
-                        ? obj.material
-                        : [obj.material];
-                    mats.forEach((mat) => {
-                        if (
-                            !edgeMats.has(mat) &&
-                            !coneMats.has(mat) &&
-                            !nodeMats.has(mat) &&
-                            !sharedMats.has(mat)
-                        ) {
-                            if (
-                                mat.map &&
-                                !this.emojiTextureCache.has(mat.map)
-                            ) {
-                                mat.map.dispose();
-                            }
-                            mat.dispose();
-                        }
-                    });
-                }
+                if (!obj.material) return;
+                const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+                mats.forEach((mat) => {
+                    if (edgeMats.has(mat) || coneMats.has(mat) || nodeMats.has(mat) || sharedMats.has(mat)) return;
+                    if (mat.map && !this.emojiTextureCache.has(mat.map)) mat.map.dispose();
+                    mat.dispose();
+                });
             });
             this.graphGroup.remove(child);
         }

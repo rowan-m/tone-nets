@@ -233,8 +233,54 @@ export class MidiPlayer {
         }
     }
 
+    _setMasterGainTarget(targetValue) {
+        if (this.masterGain) {
+            this.masterGain.gain.cancelScheduledValues(
+                Tone.context.currentTime,
+            );
+            this.masterGain.gain.setValueAtTime(
+                this.masterGain.gain.value,
+                Tone.context.currentTime,
+            );
+            this.masterGain.gain.setTargetAtTime(
+                targetValue,
+                Tone.context.currentTime,
+                0.01,
+            );
+        }
+    }
+
+    _setMediaSessionState(state) {
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = state;
+        }
+    }
+
+    _playDummyAudio() {
+        this.dummyAudio.currentTime = 0;
+        this.dummyAudio
+            .play()
+            .catch((e) => console.warn('Dummy audio play failed:', e));
+
+        if (this.streamAudio) {
+            this.streamAudio
+                .play()
+                .catch((e) => console.warn('Stream audio play failed:', e));
+        }
+    }
+
+    _pauseDummyAudio() {
+        this.dummyAudio.pause();
+        if (this.streamAudio) this.streamAudio.pause();
+    }
+
     async play(midiBuffer, autoplay = true) {
         this.stop(); // Stop any existing playback
+
+        if (this._resetTimeout) {
+            clearTimeout(this._resetTimeout);
+            this._resetTimeout = null;
+        }
 
         // Ensure audio context is started and synth exists
         await this.initialize();
@@ -259,44 +305,19 @@ export class MidiPlayer {
         this.sequencer.loopCount = -1; // Try both properties to be safe
 
         if (autoplay) {
-            // Ensure volume is up for playback
-            if (this.masterGain) {
-                this.masterGain.gain.setTargetAtTime(
-                    1,
-                    Tone.context.currentTime,
-                    0.01,
-                );
-            }
-
+            this._setMasterGainTarget(1);
             this.sequencer.play();
-
-            this.dummyAudio.currentTime = 0;
-            this.dummyAudio
-                .play()
-                .catch((e) => console.warn('Dummy audio play failed:', e));
-
-            if ('mediaSession' in navigator)
-                navigator.mediaSession.playbackState = 'playing';
+            this._playDummyAudio();
+            this._setMediaSessionState('playing');
 
             this.isPlaying = true;
-
-            // Start periodic update for MediaSession
             this._startMediaSessionInterval();
         } else {
-            // If not autoplaying, ensure we're in a "paused" state
             if (this.sequencer) {
                 this.sequencer.pause();
             }
-
-            if (this.masterGain) {
-                this.masterGain.gain.setTargetAtTime(
-                    0,
-                    Tone.context.currentTime,
-                    0.01,
-                );
-            }
-            if ('mediaSession' in navigator)
-                navigator.mediaSession.playbackState = 'paused';
+            this._setMasterGainTarget(0);
+            this._setMediaSessionState('paused');
             this.isPlaying = false;
         }
 
@@ -341,13 +362,7 @@ export class MidiPlayer {
             this.sequencer.currentTime = 0;
         }
 
-        if (this.masterGain) {
-            this.masterGain.gain.setTargetAtTime(
-                0,
-                Tone.context.currentTime,
-                0.01,
-            );
-        }
+        this._setMasterGainTarget(0);
 
         this._hardResetSynth();
         if (this._resetTimeout) clearTimeout(this._resetTimeout);
@@ -355,11 +370,8 @@ export class MidiPlayer {
             this._hardResetSynth();
         }, 150);
 
-        this.dummyAudio.pause();
-        if (this.streamAudio) this.streamAudio.pause();
-        if ('mediaSession' in navigator) {
-            navigator.mediaSession.playbackState = 'none';
-        }
+        this._pauseDummyAudio();
+        this._setMediaSessionState('none');
 
         if (this.onStop) {
             this.onStop();
@@ -373,14 +385,7 @@ export class MidiPlayer {
     pause() {
         if (this.isPlaying && this.sequencer) {
             this.sequencer.pause();
-
-            if (this.masterGain) {
-                this.masterGain.gain.setTargetAtTime(
-                    0,
-                    Tone.context.currentTime,
-                    0.01,
-                );
-            }
+            this._setMasterGainTarget(0);
 
             this._hardResetSynth();
             if (this._resetTimeout) clearTimeout(this._resetTimeout);
@@ -388,11 +393,8 @@ export class MidiPlayer {
                 this._hardResetSynth();
             }, 150);
 
-            this.dummyAudio.pause();
-            if (this.streamAudio) this.streamAudio.pause();
-            if ('mediaSession' in navigator) {
-                navigator.mediaSession.playbackState = 'paused';
-            }
+            this._pauseDummyAudio();
+            this._setMediaSessionState('paused');
 
             this.updateMediaSessionPosition();
             this.isPlaying = false;
@@ -405,26 +407,11 @@ export class MidiPlayer {
             if (this._resetTimeout) clearTimeout(this._resetTimeout);
 
             this._hardResetSynth();
+            this._setMasterGainTarget(1);
 
-            if (this.masterGain) {
-                this.masterGain.gain.setTargetAtTime(
-                    1,
-                    Tone.context.currentTime,
-                    0.01,
-                );
-            }
             this.sequencer.play();
-
-            this.dummyAudio
-                .play()
-                .catch((e) => console.warn('Dummy audio play failed:', e));
-            if (this.streamAudio) {
-                this.streamAudio
-                    .play()
-                    .catch((e) => console.warn('Stream audio play failed:', e));
-            }
-            if ('mediaSession' in navigator)
-                navigator.mediaSession.playbackState = 'playing';
+            this._playDummyAudio();
+            this._setMediaSessionState('playing');
 
             this.isPlaying = true;
             this.updateMediaSessionPosition();

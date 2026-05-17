@@ -45,6 +45,7 @@
                 id="show-ui"
                 class="btn floating-btn hidden"
                 title="Show Controls (H)"
+                aria-keyshortcuts="h"
             >
                 <span aria-hidden="true">👁️</span> Show UI
             </button>
@@ -69,6 +70,7 @@
                         class="btn hidden paused-style"
                         disabled
                         title="Play (Space)"
+                        aria-keyshortcuts="Space"
                     >
                         <span aria-hidden="true">▶️</span> Play
                     </button>
@@ -77,6 +79,7 @@
                         class="btn"
                         disabled
                         title="Pause (Space)"
+                        aria-keyshortcuts="Space"
                     >
                         <span aria-hidden="true">⏸️</span> Pause
                     </button>
@@ -92,13 +95,13 @@
                     <div class="toggle-control">
                         <input type="checkbox" id="loop-toggle" checked />
                         <label for="loop-toggle" title="Toggle Looping">
-                            🔄 Loop
+                            <span aria-hidden="true">🔄</span> Loop
                         </label>
                     </div>
                     <div class="toggle-control">
                         <input type="checkbox" id="autoplay-toggle" checked />
                         <label for="autoplay-toggle" title="Toggle Autoplay">
-                            ⚙️ Autoplay
+                            <span aria-hidden="true">⚙️</span> Autoplay
                         </label>
                     </div>
                     <div class="toggle-control">
@@ -111,7 +114,7 @@
                             for="incremental-toggle"
                             title="Build Incrementally (Live)"
                         >
-                            🌱 Live Build
+                            <span aria-hidden="true">🌱</span> Live Build
                         </label>
                     </div>
                     <div class="toggle-control">
@@ -122,7 +125,7 @@
                             aria-controls="info-panel"
                         />
                         <label for="stats-toggle" title="Show/Hide Statistics">
-                            📊 Stats
+                            <span aria-hidden="true">📊</span> Stats
                         </label>
                     </div>
                     <div class="toggle-control">
@@ -133,10 +136,15 @@
                             disabled
                         />
                         <label for="tour-toggle" title="Toggle Visual Tour">
-                            🎥 Tour
+                            <span aria-hidden="true">🎥</span> Tour
                         </label>
                     </div>
-                    <button id="hide-ui" class="btn" title="Hide Controls (H)">
+                    <button
+                        id="hide-ui"
+                        class="btn"
+                        title="Hide Controls (H)"
+                        aria-keyshortcuts="h"
+                    >
                         <span aria-hidden="true">👁️</span> Hide UI
                     </button>
                 </div>
@@ -234,7 +242,8 @@
                     id="close-info"
                     class="close-btn"
                     aria-label="Close"
-                    title="Close"
+                    title="Close (Escape)"
+                    aria-keyshortcuts="Escape"
                 >
                     ×
                 </button>

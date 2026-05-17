@@ -28,6 +28,7 @@ npm run test
 Other available scripts:
 
 - `npm run build`: Production build.
+- `npm run clean`: Delete build and coverage artifacts.
 - `npm run preview`: Preview the production build locally.
 - `npm run test:coverage`: Run tests with code coverage reporting.
 

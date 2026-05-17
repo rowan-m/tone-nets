@@ -273,6 +273,11 @@ const init = async () => {
     };
     player.isLooping = ui.els.loopToggle.checked;
 
+    const showError = (message, err) => {
+        console.error(message, err);
+        showStatus(`${message} See console.`);
+    };
+
     const updateMetricsUI = (summary, fileName) => {
         ui.els.appTitle.textContent = summary.title ? summary.title : fileName;
 
@@ -309,8 +314,7 @@ const init = async () => {
         ui.hideStatus();
         ui.els.uploadInput.disabled = false;
     } catch (error) {
-        ui.showStatus('Error loading SoundFont. See console.');
-        console.error(error);
+        showError('Error loading SoundFont.', error);
     }
 
     let lastCountUpdate = 0;
@@ -505,10 +509,7 @@ const init = async () => {
                     const { summary, serializedGraph, error } = e.data;
 
                     if (error) {
-                        console.error('Worker error:', error);
-                        ui.showStatus(
-                            'Error processing MIDI file. See console.',
-                        );
+                        showError('Error processing MIDI file.', error);
                         return;
                     }
 
@@ -561,8 +562,7 @@ const init = async () => {
                 parserWorker.postMessage({ midiBuffer: arrayBuffer });
             }
         } catch (err) {
-            console.error('Error processing MIDI file:', err);
-            ui.showStatus('Error processing MIDI file. See console.');
+            showError('Error processing MIDI file.', err);
         }
     };
 
@@ -573,8 +573,7 @@ const init = async () => {
             const arrayBuffer = await response.arrayBuffer();
             await processMidi(arrayBuffer, fileName);
         } catch (err) {
-            console.error('Error loading MIDI:', err);
-            ui.showStatus(`Error loading ${fileName}.`);
+            showError(`Error loading ${fileName}.`, err);
         }
     };
 

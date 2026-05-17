@@ -785,26 +785,33 @@ describe('NetworkVisualizer', () => {
                 }),
             };
 
-            const bodies = {
-                C4: { mass: 1 },
-                E4: { mass: 1 },
-            };
-
             const mockLayout = {
                 step: vi.fn(),
                 getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
                 dispose: vi.fn(),
                 simulator: {
-                    getBody: vi.fn((id) => bodies[id]),
+                    getBody: vi.fn(),
                     bodies: { forEach: vi.fn() },
                 },
             };
             createLayout.mockReturnValue(mockLayout);
-
             await visualizer.buildVisualization(mockGraph);
 
-            // Expect: High degree node should have higher mass to push others away
-            expect(bodies['C4'].mass).toBeGreaterThan(bodies['E4'].mass);
+            expect(createLayout).toHaveBeenCalledWith(
+                mockGraph,
+                expect.objectContaining({
+                    physicsSettings: expect.objectContaining({
+                        nodeMass: expect.any(Function),
+                    }),
+                }),
+            );
+
+            // Test the mass calculation logic directly
+            const callArgs = createLayout.mock.calls[0];
+            const nodeMassFn = callArgs[1].physicsSettings.nodeMass;
+
+            // C4 degree is 5, E4 degree is 1
+            expect(nodeMassFn('C4')).toBeGreaterThan(nodeMassFn('E4'));
         });
 
         it('should use a larger layout scale for better spacing', async () => {

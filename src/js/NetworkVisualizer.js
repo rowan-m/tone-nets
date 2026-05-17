@@ -294,6 +294,19 @@ export class NetworkVisualizer {
                 gravity: -4000,
                 theta: 0.5,
                 dragCoefficient: 0.1,
+                nodeMass: (nodeId) => {
+                    const node = graph.getNode(nodeId);
+                    if (!node) return 1;
+                    const degree = (node.data && node.data.degree) || 1;
+                    return 1 + Math.log2(degree + 1) * 5;
+                },
+                springTransform: (link, spring) => {
+                    spring.length = 1000;
+                    // For static build, edge weights exist immediately. For incremental,
+                    // edge weights will start at 1, but we can update spring logic if needed
+                    // later by accessing spring natively.
+                    spring.weight = (link.data && link.data.weight) || 1;
+                },
             },
         });
 
@@ -305,14 +318,6 @@ export class NetworkVisualizer {
 
         for (let i = 0; i < totalSteps; i++) {
             if (this._buildToken !== currentToken) return false;
-
-            if (i === 0) {
-                // Assign higher mass to high-degree nodes so they push others away more strongly.
-                // We do this on the first step to ensure the simulator has initialized bodies.
-                graph.forEachNode((node) => {
-                    this._applyMassScalingForNode(node.id);
-                });
-            }
 
             this.layout.step();
 
@@ -342,6 +347,19 @@ export class NetworkVisualizer {
                 gravity: -4000,
                 theta: 0.5,
                 dragCoefficient: 0.1,
+                nodeMass: (nodeId) => {
+                    const node = graph.getNode(nodeId);
+                    if (!node) return 1;
+                    const degree = (node.data && node.data.degree) || 1;
+                    return 1 + Math.log2(degree + 1) * 5;
+                },
+                springTransform: (link, spring) => {
+                    spring.length = 1000;
+                    // For static build, edge weights exist immediately. For incremental,
+                    // edge weights will start at 1, but we can update spring logic if needed
+                    // later by accessing spring natively.
+                    spring.weight = (link.data && link.data.weight) || 1;
+                },
             },
         });
 
@@ -375,24 +393,6 @@ export class NetworkVisualizer {
             });
             this.coneGeo = new THREE.ConeGeometry(1.2, 3.5, 8);
             this.coneGeo.rotateX(Math.PI / 2);
-        }
-    }
-
-    _applyMassScalingForNode(nodeId) {
-        try {
-            const simulator = this.layout.simulator;
-            if (!simulator || typeof simulator.getBody !== 'function') return;
-            const node = this.graph.getNode(nodeId);
-            const body = simulator.getBody(nodeId);
-            if (body && node) {
-                const degree = (node.data && node.data.degree) || 1;
-                body.mass = 1 + Math.log2(degree + 1) * 5;
-            }
-        } catch (error) {
-            console.warn(
-                'Mass scaling not supported by layout simulator:',
-                error,
-            );
         }
     }
 
@@ -470,7 +470,6 @@ export class NetworkVisualizer {
         if (!this.nodes.has(nodeId)) {
             this._renderNode(node, this.layoutScale, this.maxDegree);
         }
-        this._applyMassScalingForNode(nodeId);
 
         return node;
     }
@@ -1062,15 +1061,35 @@ export class NetworkVisualizer {
 
         // Also update bounding box/center for auto-tour
         if (this.nodes.size > 0) {
-            this._scratchBox3.setFromObject(this.graphGroup);
-            this.graphBoundingBox.copy(this._scratchBox3);
-            this._scratchBox3.getCenter(this.graphCenter);
-            this._scratchBox3.getBoundingSphere(this._scratchSphere);
-            let radius = this._scratchSphere.radius;
+            let sumX = 0,
+                sumY = 0,
+                sumZ = 0;
+            this.nodes.forEach((nodeData) => {
+                sumX += nodeData.mesh.position.x;
+                sumY += nodeData.mesh.position.y;
+                sumZ += nodeData.mesh.position.z;
+            });
+
+            this.graphCenter.set(
+                sumX / this.nodes.size,
+                sumY / this.nodes.size,
+                sumZ / this.nodes.size,
+            );
+
+            let maxDistSq = 0;
+            this.nodes.forEach((nodeData) => {
+                const distSq = this.graphCenter.distanceToSquared(
+                    nodeData.mesh.position,
+                );
+                if (distSq > maxDistSq) maxDistSq = distSq;
+            });
+
+            let radius = Math.sqrt(maxDistSq);
             if (isNaN(radius) || radius <= 0 || !isFinite(radius)) {
                 radius = 100;
             }
-            this.graphRadius = radius;
+            // Add padding so outer nodes don't clip bounds
+            this.graphRadius = radius + 2;
         }
     }
 
@@ -1174,48 +1193,17 @@ export class NetworkVisualizer {
             this.currentTourTarget.lerp(this.graphCenter, delta * 2.0);
             this.controls.target.copy(this.currentTourTarget);
 
-            // Dynamic Zoom Calculation to fit the current orientation
+            // Dynamic Zoom Calculation to fit the true bounds of the graph
             const aspect =
                 this.container.clientWidth / this.container.clientHeight;
 
-            // Camera axes in world space based on accumulated tourRotation
-            const right = this._scratchVec3_2
-                .set(1, 0, 0)
-                .applyQuaternion(this.tourRotation);
-            const up = this._scratchVec3_3
-                .set(0, 1, 0)
-                .applyQuaternion(this.tourRotation);
-
-            let maxW = 0;
-            let maxH = 0;
-
-            const min = this.graphBoundingBox.min;
-            const max = this.graphBoundingBox.max;
-
-            // Project 8 corners of the bounding box onto camera axes to find current extents
-            const check = (x, y, z) => {
-                const v = this._scratchVec3_4
-                    .set(x, y, z)
-                    .sub(this.graphCenter);
-                const w = Math.abs(v.dot(right));
-                const h = Math.abs(v.dot(up));
-                if (w > maxW) maxW = w;
-                if (h > maxH) maxH = h;
-            };
-
-            check(min.x, min.y, min.z);
-            check(min.x, min.y, max.z);
-            check(min.x, max.y, min.z);
-            check(min.x, max.y, max.z);
-            check(max.x, min.y, min.z);
-            check(max.x, min.y, max.z);
-            check(max.x, max.y, min.z);
-            check(max.x, max.y, max.z);
-
-            // Required frustum size to fit both height and width (considering aspect)
-            // Use 1.02 multiplier to add a slight 2% padding so nodes at the edges don't clip.
+            // Required frustum size to fit the exact radius (considering aspect ratio constraint)
+            // Use 1.05 multiplier to add a 5% padding so nodes at the edges don't clip.
             const requiredFrustumSize =
-                Math.max(maxH * 2, (maxW * 2) / aspect) * 1.02;
+                Math.max(
+                    this.graphRadius * 2,
+                    (this.graphRadius * 2) / aspect,
+                ) * 1.05;
 
             // Calculate target zoom relative to the base frustum size
             const targetZoom = this.baseFrustumSize / requiredFrustumSize;

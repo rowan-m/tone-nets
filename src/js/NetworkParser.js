@@ -65,11 +65,7 @@ export class NetworkParser {
         return n > 0 ? (totalEntropy / n).toFixed(4) : '0.0000';
     }
 
-    static _sumEfficiencyForNode(
-        uDistances,
-        wDistances,
-        efficiencySums,
-    ) {
+    static _sumEfficiencyForNode(uDistances, wDistances, efficiencySums) {
         // Optimization: Rather than looping through all V nodes in the graph to check
         // if they are reachable, directly iterate the Map.values() which only contains
         // reachable nodes. This reduces the complexity of this step from O(V) to
@@ -92,11 +88,7 @@ export class NetworkParser {
             const uDistances = this.bfsDistances(adj, startNode);
             const wDistances = this.dijkstraDistances(adj, startNode);
 
-            this._sumEfficiencyForNode(
-                uDistances,
-                wDistances,
-                efficiencySums,
-            );
+            this._sumEfficiencyForNode(uDistances, wDistances, efficiencySums);
         }
 
         const norm = n > 1 ? n * (n - 1) : 1;

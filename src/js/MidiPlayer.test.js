@@ -96,6 +96,8 @@ vi.mock('tone', () => {
         connect: vi.fn(),
         gain: {
             setTargetAtTime: vi.fn(),
+            cancelScheduledValues: vi.fn(),
+            setValueAtTime: vi.fn(),
         },
     };
 
@@ -340,7 +342,13 @@ describe('MidiPlayer', () => {
                 play: vi.fn(),
                 loadNewSongList: vi.fn(),
             };
-            player.masterGain = { gain: { setTargetAtTime: vi.fn() } };
+            player.masterGain = {
+                gain: {
+                    setTargetAtTime: vi.fn(),
+                    cancelScheduledValues: vi.fn(),
+                    setValueAtTime: vi.fn(),
+                },
+            };
             player.dummyAudio = mockAudioInstance;
 
             expect(() => player.stop()).not.toThrow();
@@ -357,7 +365,11 @@ describe('MidiPlayer', () => {
             ).resolves.not.toThrow();
 
             // Restore
-            navigator.mediaSession = originalMediaSession;
+            Object.defineProperty(global.navigator, 'mediaSession', {
+                value: originalMediaSession,
+                writable: true,
+                configurable: true,
+            });
         });
 
         it('should update MediaSession position and refresh duration from sequencer', async () => {

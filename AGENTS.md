@@ -17,19 +17,13 @@ This project follows a strict **Test-Driven Development (TDD)** ethos. All contr
 2.  **Green**: Write the minimal code necessary to make the test pass. Do not over-engineer at this stage.
 3.  **Refactor**: Optimize and clean the code while ensuring the tests remain green. Adhere to the established architectural patterns.
 
-Before committing or sending a pull request, run the linting, formatting, and tests:
+Before committing or sending a pull request, you MUST run the combined check script to ensure all linting, formatting, tests, and builds pass:
 
 ```bash
-npm run prettier
-npm run eslint
-npm run test
+npm run check
 ```
 
-Other available scripts:
-
-- `npm run build`: Production build.
-- `npm run preview`: Preview the production build locally.
-- `npm run test:coverage`: Run tests with code coverage reporting.
+DO NOT SUBMIT CHANGES UNLESS `npm run check` PASSES. Fix any issues identified by the scripts.
 
 ## Architecture Overview
 

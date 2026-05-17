@@ -41,12 +41,10 @@ npm run dev
 
 ## Contribute
 
-Before submitting a pull request, ensure all quality checks pass:
+Before submitting a pull request, run the `check` tasks to validate formatting, quality issues, tests, and the build:
 
 ```bash
-npm run prettier
-npm run eslint
-npm run test
+npm run check
 ```
 
 ## Attribution

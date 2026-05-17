@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js';
 import createLayout from 'ngraph.forcelayout';
 import { EffectComposer } from 'postprocessing';
 import { NetworkVisualizer } from './NetworkVisualizer.js';
@@ -56,12 +56,12 @@ vi.mock('three', async (importOriginal) => {
     };
 });
 
-vi.mock('three/examples/jsm/controls/OrbitControls.js', () => {
+vi.mock('three/examples/jsm/controls/TrackballControls.js', () => {
     return {
-        OrbitControls: vi.fn().mockImplementation(function () {
+        TrackballControls: vi.fn().mockImplementation(function () {
             return {
-                enableDamping: false,
-                dampingFactor: 0,
+                rotateSpeed: 1,
+                dynamicDampingFactor: 0.1,
                 update: vi.fn(),
                 reset: vi.fn(),
                 target: {
@@ -148,7 +148,7 @@ describe('NetworkVisualizer', () => {
         expect(visualizer.controls).toBeDefined();
         expect(visualizer.composer).toBeDefined();
         expect(THREE.WebGLRenderer).toHaveBeenCalled();
-        expect(OrbitControls).toHaveBeenCalled();
+        expect(TrackballControls).toHaveBeenCalled();
         expect(EffectComposer).toHaveBeenCalled();
     });
 

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js';
 import createLayout from 'ngraph.forcelayout';
 import {
     EffectComposer,
@@ -142,12 +142,12 @@ export class NetworkVisualizer {
         this.camera.position.set(0, 800, 800);
         this.camera.lookAt(0, 0, 0);
 
-        this.controls = new OrbitControls(
+        this.controls = new TrackballControls(
             this.camera,
             this.renderer.domElement,
         );
-        this.controls.enableDamping = true;
-        this.controls.dampingFactor = 0.05;
+        this.controls.rotateSpeed = 2.0;
+        this.controls.dynamicDampingFactor = 0.1;
         this.controls.addEventListener('start', () => this.stopAutoTour());
 
         // Lighting

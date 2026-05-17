@@ -71,34 +71,39 @@ export class Utils {
             C: 0,
             'B#': 0,
             'C#': 1,
-            DB: 1,
+            Db: 1,
             D: 2,
             'D#': 3,
-            EB: 3,
+            Eb: 3,
             E: 4,
-            FB: 4,
+            Fb: 4,
             F: 5,
             'E#': 5,
             'F#': 6,
-            GB: 6,
+            Gb: 6,
             G: 7,
             'G#': 8,
-            AB: 8,
+            Ab: 8,
             A: 9,
             'A#': 10,
-            BB: 10,
+            Bb: 10,
             B: 11,
-            CB: 11,
+            Cb: 11,
         };
 
-        const match = note.toUpperCase().match(/^([A-G][#B]?)(-?\d{1,2})?$/);
+        // Match A-G (case-insensitive) followed optionally by #, b, or B, then optional octave
+        const match = note.match(/^([a-gA-G])([#bB]?)(-?\d{1,2})?$/);
         let result = 0;
         if (match) {
-            const pitchClassStr = match[1];
+            const letter = match[1].toUpperCase();
+            const accidental = match[2].toLowerCase(); // Normalize 'B' to 'b'
+            const pitchClassStr = letter + accidental;
 
             const val = pcMap[pitchClassStr];
-            const oct = match[2] ? parseInt(match[2], 10) : 4;
-            result = oct * 12 + val;
+            if (val !== undefined) {
+                const oct = match[3] ? parseInt(match[3], 10) : 4;
+                result = oct * 12 + val;
+            }
         }
 
         NOTE_CACHE.set(note, result);

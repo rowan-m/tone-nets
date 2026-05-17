@@ -289,11 +289,11 @@ export class NetworkVisualizer {
         this.layout = createLayout(graph, {
             dimensions: 3,
             physicsSettings: {
-                springLength: 1000,
-                springCoefficient: 0.00005,
-                gravity: -4000,
-                theta: 0.5,
-                dragCoefficient: 0.1,
+                springLength: 40,
+                springCoefficient: 0.02,
+                gravity: -200,
+                theta: 0.8,
+                dragCoefficient: 0.6,
                 nodeMass: (nodeId) => {
                     const node = graph.getNode(nodeId);
                     if (!node) return 1;
@@ -301,11 +301,13 @@ export class NetworkVisualizer {
                     return 1 + Math.log2(degree + 1) * 5;
                 },
                 springTransform: (link, spring) => {
-                    spring.length = 1000;
-                    // For static build, edge weights exist immediately. For incremental,
-                    // edge weights will start at 1, but we can update spring logic if needed
-                    // later by accessing spring natively.
-                    spring.weight = (link.data && link.data.weight) || 1;
+                    if (link.data && link.data.isFake) {
+                        spring.length = 0;
+                        spring.weight = 5;
+                    } else {
+                        spring.length = 40;
+                        spring.weight = (link.data && link.data.weight) || 1;
+                    }
                 },
             },
         });
@@ -315,6 +317,9 @@ export class NetworkVisualizer {
 
         const totalSteps = 3000;
         const batchSize = 100;
+
+        // Ensure isolated components are pulled together statically before simulation runs
+        this._updateFakeLinks();
 
         for (let i = 0; i < totalSteps; i++) {
             if (this._buildToken !== currentToken) return false;
@@ -342,11 +347,11 @@ export class NetworkVisualizer {
         this.layout = createLayout(graph, {
             dimensions: 3,
             physicsSettings: {
-                springLength: 1000,
-                springCoefficient: 0.00005,
-                gravity: -4000,
-                theta: 0.5,
-                dragCoefficient: 0.1,
+                springLength: 40,
+                springCoefficient: 0.02,
+                gravity: -200,
+                theta: 0.8,
+                dragCoefficient: 0.6,
                 nodeMass: (nodeId) => {
                     const node = graph.getNode(nodeId);
                     if (!node) return 1;
@@ -354,11 +359,13 @@ export class NetworkVisualizer {
                     return 1 + Math.log2(degree + 1) * 5;
                 },
                 springTransform: (link, spring) => {
-                    spring.length = 1000;
-                    // For static build, edge weights exist immediately. For incremental,
-                    // edge weights will start at 1, but we can update spring logic if needed
-                    // later by accessing spring natively.
-                    spring.weight = (link.data && link.data.weight) || 1;
+                    if (link.data && link.data.isFake) {
+                        spring.length = 0;
+                        spring.weight = 5;
+                    } else {
+                        spring.length = 40;
+                        spring.weight = (link.data && link.data.weight) || 1;
+                    }
                 },
             },
         });
@@ -777,60 +784,7 @@ export class NetworkVisualizer {
         this.clear();
         this.graph = graph;
 
-        // Identify isolated components to prevent them from drifting infinitely far apart.
-        // We will add temporary invisible springs (edges) to pull them towards the main network.
-        const components = [];
-        const visited = new Set();
-
-        graph.forEachNode((node) => {
-            if (visited.has(node.id)) return;
-            const comp = [];
-            const queue = [node.id];
-            visited.add(node.id);
-
-            while (queue.length > 0) {
-                const cur = queue.shift();
-                comp.push(cur);
-                graph.forEachLinkedNode(cur, (linkedNode) => {
-                    if (!visited.has(linkedNode.id)) {
-                        visited.add(linkedNode.id);
-                        queue.push(linkedNode.id);
-                    }
-                });
-            }
-            components.push(comp);
-        });
-
-        const fakeLinks = [];
-        if (components.length > 1) {
-            // Sort components by size (descending)
-            components.sort((a, b) => b.length - a.length);
-            const mainComp = components[0];
-
-            // Link each isolated component to a node in the main component
-            for (let i = 1; i < components.length; i++) {
-                // Distribute links across the main component to avoid distorting a single node
-                const sourceNodeId = mainComp[i % mainComp.length];
-                const targetNodeId = components[i][0];
-                const link = graph.addLink(sourceNodeId, targetNodeId, {
-                    isFake: true,
-                    weight: 1,
-                });
-                fakeLinks.push(link);
-            }
-        }
-
         const isLayoutComplete = await this._computeLayout(graph);
-
-        // Clean up the temporary links so they don't affect metrics or rendering
-        fakeLinks.forEach((link) => {
-            if (graph.removeLink) {
-                graph.removeLink(link);
-            } else if (graph.removeEdge) {
-                // Handle different ngraph.graph version APIs just in case
-                graph.removeEdge(link);
-            }
-        });
 
         if (!isLayoutComplete) return;
 
@@ -876,7 +830,7 @@ export class NetworkVisualizer {
         }
 
         this.graphRadius = radius;
-        let frustumSize = radius * 2 * 1.05; // Add 5% padding
+        let frustumSize = radius * 2 * 1.01; // Add 1% padding
 
         const aspect = this.container.clientWidth / this.container.clientHeight;
 
@@ -1012,6 +966,76 @@ export class NetworkVisualizer {
         this.activeEmojis.splice(index, 1);
     }
 
+    _updateFakeLinks() {
+        if (!this.graph || !this.layout) return;
+
+        // 1. Remove previously added fake links
+        const fakeLinksToRemove = [];
+        this.graph.forEachLink((link) => {
+            if (link.data && link.data.isFake) {
+                fakeLinksToRemove.push(link);
+            }
+        });
+        fakeLinksToRemove.forEach((link) => {
+            if (this.graph.removeLink) {
+                this.graph.removeLink(link);
+            } else if (this.graph.removeEdge) {
+                this.graph.removeEdge(link);
+            }
+        });
+
+        // 2. Identify isolated components
+        const components = [];
+        const visited = new Set();
+
+        this.graph.forEachNode((node) => {
+            if (visited.has(node.id)) return;
+            const comp = [];
+            const queue = [node.id];
+            visited.add(node.id);
+
+            let head = 0;
+            while (head < queue.length) {
+                const cur = queue[head++];
+                comp.push(cur);
+                this.graph.forEachLinkedNode(cur, (linkedNode) => {
+                    if (!visited.has(linkedNode.id)) {
+                        visited.add(linkedNode.id);
+                        queue.push(linkedNode.id);
+                    }
+                });
+            }
+            components.push(comp);
+        });
+
+        if (components.length <= 1) return;
+
+        // 3. Sort components by size descending
+        components.sort((a, b) => b.length - a.length);
+        const mainComp = components[0];
+
+        // 4. Find the highest degree node in the main component to act as the central anchor
+        let anchorNodeId = mainComp[0];
+        let maxDeg = -1;
+        mainComp.forEach((nodeId) => {
+            const node = this.graph.getNode(nodeId);
+            const degree = (node.data && node.data.degree) || 0;
+            if (degree > maxDeg) {
+                maxDeg = degree;
+                anchorNodeId = nodeId;
+            }
+        });
+
+        // 5. Link the isolated components to this central anchor
+        for (let i = 1; i < components.length; i++) {
+            const targetNodeId = components[i][0];
+            this.graph.addLink(anchorNodeId, targetNodeId, {
+                isFake: true,
+                weight: 5, // Strong pull to pack them tightly
+            });
+        }
+    }
+
     _updatePositionsFromLayout() {
         if (!this.layout) return;
 
@@ -1025,40 +1049,46 @@ export class NetworkVisualizer {
         });
 
         this.edges.forEach((edgeData) => {
-            const sPosRaw = this.layout.getNodePosition(edgeData.sourceId);
-            const tPosRaw = this.layout.getNodePosition(edgeData.targetId);
-
-            this._updateEdgeCurve(
-                this._scratchCurve,
-                sPosRaw,
-                tPosRaw,
-                this.layoutScale,
-                { fromId: edgeData.sourceId, toId: edgeData.targetId },
-            );
-
-            const positions = edgeData.line.geometry.attributes.position.array;
-            const segments = 20;
-            for (let i = 0; i <= segments; i++) {
-                this._scratchCurve.getPoint(i / segments, this._scratchVec3_1);
-                positions[i * 3] = this._scratchVec3_1.x;
-                positions[i * 3 + 1] = this._scratchVec3_1.y;
-                positions[i * 3 + 2] = this._scratchVec3_1.z;
-            }
-            edgeData.line.geometry.attributes.position.needsUpdate = true;
-
-            const tMid = 0.5;
-            this._scratchCurve.getPoint(tMid, this._scratchVec3_1);
-            edgeData.cone.position.copy(this._scratchVec3_1);
-            this._scratchCurve
-                .getTangent(tMid, this._scratchVec3_2)
-                .normalize();
-            edgeData.cone.lookAt(
-                this._scratchVec3_3
-                    .copy(this._scratchVec3_1)
-                    .add(this._scratchVec3_2),
-            );
+            this._updateEdgeVisuals(edgeData);
         });
 
+        this._updateAutoTourBounds();
+    }
+
+    _updateEdgeVisuals(edgeData) {
+        const sPosRaw = this.layout.getNodePosition(edgeData.sourceId);
+        const tPosRaw = this.layout.getNodePosition(edgeData.targetId);
+
+        this._updateEdgeCurve(
+            this._scratchCurve,
+            sPosRaw,
+            tPosRaw,
+            this.layoutScale,
+            { fromId: edgeData.sourceId, toId: edgeData.targetId },
+        );
+
+        const positions = edgeData.line.geometry.attributes.position.array;
+        const segments = 20;
+        for (let i = 0; i <= segments; i++) {
+            this._scratchCurve.getPoint(i / segments, this._scratchVec3_1);
+            positions[i * 3] = this._scratchVec3_1.x;
+            positions[i * 3 + 1] = this._scratchVec3_1.y;
+            positions[i * 3 + 2] = this._scratchVec3_1.z;
+        }
+        edgeData.line.geometry.attributes.position.needsUpdate = true;
+
+        const tMid = 0.5;
+        this._scratchCurve.getPoint(tMid, this._scratchVec3_1);
+        edgeData.cone.position.copy(this._scratchVec3_1);
+        this._scratchCurve.getTangent(tMid, this._scratchVec3_2).normalize();
+        edgeData.cone.lookAt(
+            this._scratchVec3_3
+                .copy(this._scratchVec3_1)
+                .add(this._scratchVec3_2),
+        );
+    }
+
+    _updateAutoTourBounds() {
         // Also update bounding box/center for auto-tour
         if (this.nodes.size > 0) {
             let sumX = 0,
@@ -1096,10 +1126,8 @@ export class NetworkVisualizer {
     animate(time) {
         requestAnimationFrame(this.animate);
 
-        // Optimization: Completely pause rendering and physics when tab is backgrounded
-        // to save CPU for the background audio worklet.
         if (document.visibilityState === 'hidden') {
-            this._lastFrameTime = time; // Keep time synced so delta doesn't explode on resume
+            this._lastFrameTime = time;
             return;
         }
 
@@ -1110,62 +1138,67 @@ export class NetworkVisualizer {
         this._lastFrameTime = time;
         this._frameCount++;
 
-        if (this.incrementalMode && this.layout && !this.isPaused) {
-            // Optimization: On mobile, only run layout physics and position updates
-            // every 2nd frame to reduce main thread pressure.
-            if (!this._isMobile || this._frameCount % 2 === 0) {
-                this.layout.step();
-                this._updatePositionsFromLayout();
-            }
-        }
+        this._stepIncrementalPhysics();
 
-        // Raycasting Logic - Only if mouse moved and throttled
         if (
             this.mouseMoved &&
             time - this._lastRaycastTime > this._raycastThrottleMs
         ) {
-            this.raycaster.setFromCamera(this.mouse, this.camera);
-            const intersects = this.raycaster.intersectObjects(
-                this.pickableObjects,
-                false,
-            );
-            let target = null;
-            if (intersects.length > 0) {
-                const hit =
-                    intersects.find((i) => i.object.userData.type === 'node') ||
-                    intersects[0];
-                target = hit.object;
-            }
-
-            this._updateHoverState(target);
-            this.mouseMoved = false;
+            this._performRaycast();
             this._lastRaycastTime = time;
         }
 
         this._updateEmojis(delta);
+        this._updateAutoTour(delta);
+        this.composer.render();
+    }
 
+    _stepIncrementalPhysics() {
+        if (this.incrementalMode && this.layout && !this.isPaused) {
+            if (!this._isMobile || this._frameCount % 2 === 0) {
+                if (this._frameCount % 60 === 0) {
+                    this._updateFakeLinks();
+                }
+                this.layout.step();
+                this._updatePositionsFromLayout();
+            }
+        }
+    }
+
+    _performRaycast() {
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+        const intersects = this.raycaster.intersectObjects(
+            this.pickableObjects,
+            false,
+        );
+        let target = null;
+        if (intersects.length > 0) {
+            const hit =
+                intersects.find((i) => i.object.userData.type === 'node') ||
+                intersects[0];
+            target = hit.object;
+        }
+
+        this._updateHoverState(target);
+        this.mouseMoved = false;
+    }
+
+    _updateAutoTour(delta) {
         if (this.autoTour && this.graphCenter) {
             this.autoTourTime += delta;
             this.tourSpeedChangeTimer -= delta;
 
-            // Determine if it's time to pick new random rotational velocities for each axis
             if (this.tourSpeedChangeTimer <= 0) {
-                // Random target velocities for pitch, yaw, and roll (radians per second)
-                // Keep speeds gentle (e.g., max 0.2 rad/s)
                 this.tourTargetVelocity.set(
-                    Math.random() * 0.4 - 0.2, // X axis (Pitch)
-                    Math.random() * 0.4 - 0.2, // Y axis (Yaw)
-                    Math.random() * 0.4 - 0.2, // Z axis (Roll)
+                    Math.random() * 0.4 - 0.2,
+                    Math.random() * 0.4 - 0.2,
+                    Math.random() * 0.4 - 0.2,
                 );
-
-                // Set a timer for the next change (minimum 8 seconds, up to 12 seconds)
                 this.tourSpeedChangeTimer = 8.0 + Math.random() * 4.0;
             }
 
-            // Smoothly interpolate current velocity towards target velocity
             this.tourCurrentVelocity.lerp(this.tourTargetVelocity, delta * 0.5);
 
-            // Create a quaternion representing the rotation for this specific frame
             const frameRotation = new THREE.Quaternion().setFromEuler(
                 new THREE.Euler(
                     this.tourCurrentVelocity.x * delta,
@@ -1175,48 +1208,33 @@ export class NetworkVisualizer {
                 ),
             );
 
-            // Accumulate the rotation
             this.tourRotation.multiply(frameRotation);
 
-            // Base radius for the orbit
             const radius = this.graphRadius * 3;
-
-            // Start with a base vector pointing straight out, then rotate it
             const offset = new THREE.Vector3(0, 0, radius).applyQuaternion(
                 this.tourRotation,
             );
 
-            // Calculate final target position
             this._scratchVec3_1.copy(this.graphCenter).add(offset);
-
-            // Smoothly interpolate target back to center
             this.currentTourTarget.lerp(this.graphCenter, delta * 2.0);
             this.controls.target.copy(this.currentTourTarget);
 
-            // Dynamic Zoom Calculation to fit the true bounds of the graph
             const aspect =
                 this.container.clientWidth / this.container.clientHeight;
 
-            // Required frustum size to fit the exact radius (considering aspect ratio constraint)
-            // Use 1.05 multiplier to add a 5% padding so nodes at the edges don't clip.
             const requiredFrustumSize =
                 Math.max(
                     this.graphRadius * 2,
                     (this.graphRadius * 2) / aspect,
-                ) * 1.05;
+                ) * 1.01;
 
-            // Calculate target zoom relative to the base frustum size
             const targetZoom = this.baseFrustumSize / requiredFrustumSize;
 
-            // Smoothly interpolate zoom
             this.camera.zoom += (targetZoom - this.camera.zoom) * delta * 2.0;
             this.camera.updateProjectionMatrix();
 
-            // Lerp camera position for absolute smoothness
             this.camera.position.lerp(this._scratchVec3_1, delta * 1.5);
 
-            // Update camera's up vector based on the rotation to ensure the view
-            // is correctly oriented during the automated tour.
             const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(
                 this.tourRotation,
             );
@@ -1226,8 +1244,6 @@ export class NetworkVisualizer {
         } else {
             this.controls.update();
         }
-
-        this.composer.render();
     }
 
     _getEmojiTexture(emoji) {

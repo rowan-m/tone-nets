@@ -184,6 +184,7 @@ describe('NetworkVisualizer', () => {
             }),
             addLink: vi.fn(),
             removeLink: vi.fn(),
+            getNode: vi.fn((id) => ({ id, data: { degree: 1 } })),
         };
 
         await visualizer.buildVisualization(mockGraph);
@@ -205,7 +206,7 @@ describe('NetworkVisualizer', () => {
         expect(visualizer.edgeMap.has('C4->G4')).toBe(true);
     });
 
-    it('should handle isolated components by temporarily linking them during layout', async () => {
+    it('should handle isolated components by linking them to the main hub', async () => {
         const fakeLink = { fromId: 'C4', toId: 'E4', data: { isFake: true } };
         const mockGraph = {
             forEachNode: vi.fn((cb) => {
@@ -218,6 +219,8 @@ describe('NetworkVisualizer', () => {
             forEachLink: vi.fn(),
             addLink: vi.fn(() => fakeLink),
             removeLink: vi.fn(),
+            removeEdge: vi.fn(),
+            getNode: vi.fn((id) => ({ id, data: { degree: 1 } })),
         };
 
         await visualizer.buildVisualization(mockGraph);
@@ -228,10 +231,9 @@ describe('NetworkVisualizer', () => {
             'E4',
             expect.objectContaining({ isFake: true }),
         );
-        // It should have removed the link after layout so it doesn't render
-        expect(mockGraph.removeLink).toHaveBeenCalledWith(fakeLink);
+        // It should NOT remove the link after layout because they need to be permanently simulated
+        expect(mockGraph.removeLink).not.toHaveBeenCalledWith(fakeLink);
     });
-
     it('should highlight and release playing elements', () => {
         const nodeMesh = new THREE.Mesh(
             new THREE.SphereGeometry(),
@@ -339,6 +341,7 @@ describe('NetworkVisualizer', () => {
             forEachLink: vi.fn(),
             addLink: vi.fn(),
             removeLink: vi.fn(),
+            getNode: vi.fn((id) => ({ id, data: { degree: 1 } })),
         };
         const progressSpy = vi.fn();
         visualizer.onLayoutProgress = progressSpy;
@@ -360,6 +363,7 @@ describe('NetworkVisualizer', () => {
             forEachLink: vi.fn(),
             addLink: vi.fn(),
             removeLink: vi.fn(),
+            getNode: vi.fn((id) => ({ id, data: { degree: 1 } })),
         };
 
         expect(visualizer.autoTour).toBe(false);
@@ -473,6 +477,7 @@ describe('NetworkVisualizer', () => {
             forEachLink: vi.fn(),
             addLink: vi.fn(),
             removeLink: vi.fn(),
+            getNode: vi.fn((id) => ({ id, data: { degree: 1 } })),
         };
 
         await visualizer.buildVisualization(mockGraph);
@@ -497,6 +502,7 @@ describe('NetworkVisualizer', () => {
             forEachLink: vi.fn(),
             addLink: vi.fn(),
             removeLink: vi.fn(),
+            getNode: vi.fn((id) => ({ id, data: { degree: 1 } })),
         };
 
         await visualizer.buildVisualization(mockGraph);
@@ -600,6 +606,7 @@ describe('NetworkVisualizer', () => {
                 forEachLinkedNode: vi.fn(),
                 addLink: vi.fn(),
                 removeLink: vi.fn(),
+                getNode: vi.fn((id) => ({ id, data: { degree: 1 } })),
             };
 
             const mockLayout = {
@@ -810,8 +817,28 @@ describe('NetworkVisualizer', () => {
             const callArgs = createLayout.mock.calls[0];
             const nodeMassFn = callArgs[1].physicsSettings.nodeMass;
 
-            // C4 degree is 5, E4 degree is 1
+            // C4 degree is 10, E4 degree is 1
             expect(nodeMassFn('C4')).toBeGreaterThan(nodeMassFn('E4'));
+        });
+
+        it('should use tighter physics settings for layout', async () => {
+            const mockGraph = {
+                forEachNode: vi.fn(),
+                forEachLinkedNode: vi.fn(),
+                forEachLink: vi.fn(),
+                addLink: vi.fn(),
+                removeLink: vi.fn(),
+            };
+
+            await visualizer.buildVisualization(mockGraph);
+
+            const callArgs = createLayout.mock.calls[0];
+            const physics = callArgs[1].physicsSettings;
+
+            // New desired settings
+            expect(physics.springLength).toBeLessThan(200);
+            expect(physics.springCoefficient).toBeGreaterThan(0.001);
+            expect(physics.gravity).toBeGreaterThanOrEqual(-250);
         });
 
         it('should use a larger layout scale for better spacing', async () => {
@@ -894,6 +921,9 @@ describe('NetworkVisualizer', () => {
                     toId: t,
                     data: { weight: 1 },
                 })),
+                forEachLink: vi.fn(),
+                forEachNode: vi.fn(),
+                removeLink: vi.fn(),
             };
             await visualizer.initIncremental(mockGraph);
 

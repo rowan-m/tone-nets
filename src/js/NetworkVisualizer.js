@@ -619,7 +619,16 @@ export class NetworkVisualizer {
         });
     }
 
-    _updateEdgeCurve(curve, sPosRaw, tPosRaw, layoutScale, link) {
+    static _hashString(str) {
+        let h = 0;
+        for (let i = 0; i < str.length; i++) {
+            h = (h << 5) - h + str.charCodeAt(i);
+            h |= 0;
+        }
+        return h;
+    }
+
+    _updateEdgeCurve(curve, sPosRaw, tPosRaw, layoutScale, seed) {
         const sPos = curve.v0.set(
             sPosRaw.x * layoutScale,
             sPosRaw.y * layoutScale,
@@ -647,17 +656,7 @@ export class NetworkVisualizer {
             .normalize();
 
         // Introduce organic variation by rotating the perpendicular vector around the edge direction.
-        // We use the sum of node IDs to create a stable but unique rotation for each edge pair.
-        const hash = (str) => {
-            let h = 0;
-            for (let i = 0; i < str.length; i++) {
-                h = (h << 5) - h + str.charCodeAt(i);
-                h |= 0;
-            }
-            return h;
-        };
-
-        const seed = link ? hash(link.fromId) + hash(link.toId) : 0;
+        // We use the pre-computed sum of node IDs (seed) to create a stable but unique rotation for each edge pair.
         const angle = (seed % 360) * (Math.PI / 180);
         perp.applyAxisAngle(edgeDir, angle);
 
@@ -687,12 +686,17 @@ export class NetworkVisualizer {
         const tPosRaw = this.layout.getNodePosition(link.toId);
         const targetConeGeo = coneGeo || this.coneGeo;
 
+        const seed = link
+            ? NetworkVisualizer._hashString(link.fromId) +
+              NetworkVisualizer._hashString(link.toId)
+            : 0;
+
         const curve = this._updateEdgeCurve(
             this._scratchCurve,
             sPosRaw,
             tPosRaw,
             layoutScale,
-            link,
+            seed,
         );
 
         const segments = 20;
@@ -768,6 +772,7 @@ export class NetworkVisualizer {
             cone: cone,
             sourceId: link.fromId,
             targetId: link.toId,
+            seed: seed,
         };
         this.edges.push(edgeData);
         this.edgeMap.set(`${link.fromId}->${link.toId}`, edgeData);
@@ -1064,7 +1069,7 @@ export class NetworkVisualizer {
             sPosRaw,
             tPosRaw,
             this.layoutScale,
-            { fromId: edgeData.sourceId, toId: edgeData.targetId },
+            edgeData.seed,
         );
 
         const positions = edgeData.line.geometry.attributes.position.array;

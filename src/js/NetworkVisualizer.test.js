@@ -151,24 +151,20 @@ describe('NetworkVisualizer', () => {
         expect(TrackballControls).toHaveBeenCalled();
         expect(EffectComposer).toHaveBeenCalled();
     });
-
     it('should clear the graph group and materials', () => {
+        visualizer._initSharedGeometries();
         const dummy = new THREE.Mesh(
             new THREE.SphereGeometry(),
-            new THREE.MeshBasicMaterial(),
+            new THREE.MeshStandardMaterial(),
         );
-        visualizer.graphGroup.add(dummy);
         visualizer.nodes.set('test', { mesh: dummy });
-
-        const disposeSpy = vi.spyOn(dummy.geometry, 'dispose');
 
         visualizer.clear();
 
-        expect(visualizer.graphGroup.children.length).toBe(0);
+        // graphGroup now retains the 4 instanced rendering objects
+        expect(visualizer.graphGroup.children.length).toBe(4);
         expect(visualizer.nodes.size).toBe(0);
-        expect(disposeSpy).toHaveBeenCalled();
     });
-
     it('should build visualization from a graph with 3D layout', async () => {
         const mockGraph = {
             forEachNode: vi.fn((cb) => {
@@ -235,16 +231,33 @@ describe('NetworkVisualizer', () => {
         expect(mockGraph.removeLink).not.toHaveBeenCalledWith(fakeLink);
     });
     it('should highlight and release playing elements', () => {
+        visualizer._initSharedGeometries();
+        visualizer.graph = {
+            getLink: vi.fn(() => ({
+                fromId: 'C4',
+                toId: 'G4',
+                data: { weight: 1 },
+            })),
+        };
+        visualizer.layout = {
+            getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
+        };
         const nodeMesh = new THREE.Mesh(
             new THREE.SphereGeometry(),
             new THREE.MeshStandardMaterial(),
         );
         nodeMesh.userData = {
             type: 'node',
+            id: 'C4',
             origEmissive: 0x000000,
             origEmissiveIntensity: 0.2,
         };
-        visualizer.nodes.set('C4', { mesh: nodeMesh, playCount: 0 });
+        visualizer.nodes.set('C4', {
+            mesh: nodeMesh,
+            playCount: 0,
+            instanceId: 0,
+            baseColor: new THREE.Color(0x000000),
+        });
 
         const edgeLine = new THREE.Line(
             new THREE.BufferGeometry(),
@@ -256,13 +269,16 @@ describe('NetworkVisualizer', () => {
             targetId: 'G4',
             origMaterial: edgeLine.material,
         };
-        const edgeCone = new THREE.Mesh(
-            new THREE.ConeGeometry(),
-            new THREE.MeshBasicMaterial(),
-        );
-        edgeCone.userData = { origMaterial: edgeCone.material };
+        const edgeCone = {
+            userData: { origMaterial: new THREE.MeshBasicMaterial() },
+            material: new THREE.MeshBasicMaterial(),
+            position: new THREE.Vector3(),
+            instanceId: 0,
+        };
         const edgeData = { line: edgeLine, cone: edgeCone, playCount: 0 };
         visualizer.edgeMap.set('C4->G4', edgeData);
+        visualizer.edgeBufferIndexMap.set('C4->G4', 0);
+        visualizer.instanceIdEdgeMap.set(0, 'C4->G4');
 
         visualizer.highlightPlayingElement('C4', null);
         expect(nodeMesh.material.emissiveIntensity).toBe(1.0);
@@ -378,10 +394,10 @@ describe('NetworkVisualizer', () => {
         visualizer.camera.position.set(100, 200, 300);
         visualizer.camera.up.set(1, 0, 0); // mutated up vector
 
-        // Add dummy object to calculate a valid box
-        const dummy = new THREE.Mesh(new THREE.SphereGeometry(10));
-        dummy.position.set(0, 0, 0);
-        visualizer.graphGroup.add(dummy);
+        // Add dummy node so nodes.size > 0
+        visualizer.nodes.set('dummy', {
+            mesh: { position: new THREE.Vector3(0, 0, 0) },
+        });
 
         const updateProjectionSpy = vi.spyOn(
             visualizer.camera,
@@ -403,15 +419,22 @@ describe('NetworkVisualizer', () => {
     });
 
     it('should update hover state', () => {
+        visualizer._initSharedGeometries();
         const nodeMesh = new THREE.Mesh(
             new THREE.SphereGeometry(),
             new THREE.MeshStandardMaterial(),
         );
         nodeMesh.userData = {
             type: 'node',
+            id: 'C4',
             origEmissive: 0,
             origEmissiveIntensity: 0.2,
         };
+        visualizer.nodes.set('C4', {
+            mesh: nodeMesh,
+            instanceId: 0,
+            baseColor: new THREE.Color(),
+        });
 
         const onHoverSpy = vi.fn();
         visualizer.onHover = onHoverSpy;
@@ -430,30 +453,55 @@ describe('NetworkVisualizer', () => {
     });
 
     it('should reset all highlights', () => {
+        visualizer._initSharedGeometries();
+        visualizer.graph = {
+            getLink: vi.fn(() => ({
+                fromId: 'C4',
+                toId: 'G4',
+                data: { weight: 1 },
+            })),
+        };
+        visualizer.layout = {
+            getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
+        };
         const nodeMesh = new THREE.Mesh(
             new THREE.SphereGeometry(),
             new THREE.MeshStandardMaterial(),
         );
         nodeMesh.userData = {
             type: 'node',
+            id: 'C4',
             origEmissive: 0,
             origEmissiveIntensity: 0,
         };
-        const nodeData = { mesh: nodeMesh, playCount: 5 };
+        const nodeData = {
+            mesh: nodeMesh,
+            playCount: 5,
+            instanceId: 0,
+            baseColor: new THREE.Color(),
+        };
         visualizer.nodes.set('C4', nodeData);
 
         const edgeLine = new THREE.Line(
             new THREE.BufferGeometry(),
             new THREE.LineBasicMaterial(),
         );
-        edgeLine.userData = { type: 'edge', origMaterial: edgeLine.material };
-        const edgeCone = new THREE.Mesh(
-            new THREE.ConeGeometry(),
-            new THREE.MeshBasicMaterial(),
-        );
-        edgeCone.userData = { origMaterial: edgeCone.material };
+        edgeLine.userData = {
+            type: 'edge',
+            sourceId: 'C4',
+            targetId: 'G4',
+            origMaterial: edgeLine.material,
+        };
+        const edgeCone = {
+            userData: { origMaterial: new THREE.MeshBasicMaterial() },
+            material: new THREE.MeshBasicMaterial(),
+            position: new THREE.Vector3(),
+            instanceId: 0,
+        };
         const edgeData = { line: edgeLine, cone: edgeCone, playCount: 3 };
         visualizer.edgeMap.set('C4->G4', edgeData);
+        visualizer.edgeBufferIndexMap.set('C4->G4', 0);
+        visualizer.instanceIdEdgeMap.set(0, 'C4->G4');
 
         visualizer.playingNodes.add(nodeData);
         visualizer.playingEdges.add(edgeData);
@@ -607,6 +655,11 @@ describe('NetworkVisualizer', () => {
                 addLink: vi.fn(),
                 removeLink: vi.fn(),
                 getNode: vi.fn((id) => ({ id, data: { degree: 1 } })),
+                getLink: vi.fn(() => ({
+                    fromId: 'C4',
+                    toId: 'G4',
+                    data: { weight: 1 },
+                })),
             };
 
             const mockLayout = {
@@ -623,27 +676,21 @@ describe('NetworkVisualizer', () => {
 
             await visualizer.buildVisualization(mockGraph);
 
-            // layoutScale is 10.0, so C4 at (0,0,0) and G4 at (1000,0,0)
-            // Distance is 1000.
-            // Midpoint is (500,0,0)
-            // We want to check the control point of the curve used in _renderEdge.
-            // Since _renderEdge is internal, we check the line geometry.
+            // Check the edgeLineSegments geometry instead of individual dummy line
+            const positions =
+                visualizer.edgeLineSegments.geometry.attributes.position.array;
 
-            const edge = visualizer.edges[0];
-            const positions = edge.line.geometry.attributes.position.array;
-
-            // The middle segment (index 10 of 20 segments) should be the peak of the curve
-            const midIndex = 10 * 3;
-            const midX = positions[midIndex];
-            const midY = positions[midIndex + 1];
-            const midZ = positions[midIndex + 2];
+            // 20 segments per edge, each segment has 2 vertices (pairs).
+            // Vertex index 20 (middle of the curve)
+            const vIdx = 20 * 3;
+            const midX = positions[vIdx];
+            const midY = positions[vIdx + 1];
+            const midZ = positions[vIdx + 2];
 
             const midPoint = new THREE.Vector3(500, 0, 0);
             const peakPoint = new THREE.Vector3(midX, midY, midZ);
             const deviation = midPoint.distanceTo(peakPoint);
 
-            // Distance was 1000. 10% of 1000 is 100.
-            // Old peak displacement was ~20% to 40% (200 to 400).
             expect(deviation).toBeLessThan(100);
         });
     });

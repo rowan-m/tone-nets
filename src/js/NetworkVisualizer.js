@@ -150,7 +150,26 @@ export class NetworkVisualizer {
         this.initThree();
         this.initPostProcessing();
         this.animate = this.animate.bind(this);
-        requestAnimationFrame(this.animate);
+        this._isAnimating = false;
+        this._animationFrameId = null;
+    }
+
+    startAnimationLoop() {
+        if (!this._isAnimating) {
+            this._isAnimating = true;
+            this._lastFrameTime = performance.now();
+            this._animationFrameId = requestAnimationFrame(this.animate);
+        }
+    }
+
+    stopAnimationLoop() {
+        if (this._isAnimating) {
+            this._isAnimating = false;
+            if (this._animationFrameId !== null) {
+                cancelAnimationFrame(this._animationFrameId);
+                this._animationFrameId = null;
+            }
+        }
     }
 
     initThree() {
@@ -224,6 +243,7 @@ export class NetworkVisualizer {
     }
 
     clear() {
+        this.stopAnimationLoop();
         this.stopAutoTour();
         if (this.controls) {
             this.controls.reset();
@@ -400,6 +420,7 @@ export class NetworkVisualizer {
 
         this.fitCameraToGraph();
         this.startAutoTour();
+        this.startAnimationLoop();
     }
 
     _initSharedGeometries() {
@@ -1086,6 +1107,7 @@ export class NetworkVisualizer {
         this.fitCameraToGraph();
 
         this.startAutoTour();
+        this.startAnimationLoop();
     }
 
     fitCameraToGraph() {
@@ -1437,9 +1459,20 @@ export class NetworkVisualizer {
     }
 
     animate(time) {
-        requestAnimationFrame(this.animate);
+        if (!this._isAnimating) return;
+        this._animationFrameId = requestAnimationFrame(this.animate);
 
         if (document.visibilityState === 'hidden') {
+            this._lastFrameTime = time;
+            return;
+        }
+
+        // Skip heavy rendering and raycasting if the visualization is completely empty
+        if (
+            !this.graph &&
+            this.activeEmojis.length === 0 &&
+            this.nodes.size === 0
+        ) {
             this._lastFrameTime = time;
             return;
         }
@@ -1480,7 +1513,7 @@ export class NetworkVisualizer {
 
     _performRaycast() {
         this.raycaster.setFromCamera(this.mouse, this.camera);
-        
+
         const objectsToIntersect = [
             this.nodeInstancedMesh,
             this.edgeLineSegments,
@@ -1638,6 +1671,8 @@ export class NetworkVisualizer {
             sprite: sprite,
             life: 1.0,
         });
+
+        this.startAnimationLoop();
     }
 
     _highlightNode(nodeId, highlightColor) {

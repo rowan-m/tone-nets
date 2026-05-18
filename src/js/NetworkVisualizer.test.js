@@ -598,6 +598,11 @@ describe('NetworkVisualizer', () => {
     });
 
     describe('Raycasting', () => {
+        beforeEach(() => {
+            visualizer.graph = {};
+            visualizer._isAnimating = true;
+        });
+
         it('should handle raycasting in animate loop', () => {
             visualizer.mouseMoved = true;
             visualizer._lastRaycastTime = 0;
@@ -696,6 +701,11 @@ describe('NetworkVisualizer', () => {
     });
 
     describe('Pausing', () => {
+        beforeEach(() => {
+            visualizer.graph = {};
+            visualizer._isAnimating = true;
+        });
+
         it('should update isPaused state', () => {
             visualizer.setPaused(true);
             expect(visualizer.isPaused).toBe(true);
@@ -738,6 +748,11 @@ describe('NetworkVisualizer', () => {
     });
 
     describe('Auto Tour', () => {
+        beforeEach(() => {
+            visualizer.graph = {};
+            visualizer._isAnimating = true;
+        });
+
         it('should toggle autoTour state', () => {
             expect(visualizer.autoTour).toBe(false);
             visualizer.startAutoTour();

@@ -33,6 +33,7 @@ export class NetworkVisualizer {
         });
 
         this.highlightColor = 0xffe600; // Electric Yellow
+        this.highlightIntensity = 12.0; // HDR multiplier for bloom. High value needed because base emissiveIntensity is ~0.15
 
         this.nodes = new Map();
         this.edges = [];
@@ -233,9 +234,9 @@ export class NetworkVisualizer {
         this.composer.addPass(new RenderPass(this.scene, this.camera));
 
         const bloomEffect = new BloomEffect({
-            intensity: 1.5,
-            luminanceThreshold: 0.1,
-            luminanceSmoothing: 0.9,
+            intensity: 3.0,
+            luminanceThreshold: 0.15,
+            luminanceSmoothing: 0.85,
             mipmapBlur: true,
         });
 
@@ -443,7 +444,22 @@ export class NetworkVisualizer {
             const nodeMat = new THREE.MeshStandardMaterial({
                 roughness: 0.3,
                 metalness: 0.2,
+                emissive: 0xffffff,
+                emissiveIntensity: 0.15, // Base glow for all nodes
             });
+            // Inject instance-based emissive modulation
+            nodeMat.onBeforeCompile = (shader) => {
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <emissivemap_fragment>',
+                    `
+                    #include <emissivemap_fragment>
+                    #ifdef USE_INSTANCING_COLOR
+                        totalEmissiveRadiance *= vInstanceColor.rgb;
+                    #endif
+                    `,
+                );
+            };
+
             this.nodeInstancedMesh = new THREE.InstancedMesh(
                 this.sphereGeo,
                 nodeMat,
@@ -475,7 +491,21 @@ export class NetworkVisualizer {
             const coneMat = new THREE.MeshStandardMaterial({
                 transparent: true,
                 opacity: 1.0,
+                emissive: 0xffffff,
+                emissiveIntensity: 0.2,
             });
+            coneMat.onBeforeCompile = (shader) => {
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <emissivemap_fragment>',
+                    `
+                    #include <emissivemap_fragment>
+                    #ifdef USE_INSTANCING_COLOR
+                        totalEmissiveRadiance *= vInstanceColor.rgb;
+                    #endif
+                    `,
+                );
+            };
+
             this.coneInstancedMesh = new THREE.InstancedMesh(
                 this.coneGeo,
                 coneMat,
@@ -512,6 +542,7 @@ export class NetworkVisualizer {
                 vertexColors: true,
                 uniforms: {
                     uGlobalOpacity: { value: 1.0 },
+                    uHDRIntensity: { value: 1.0 },
                 },
                 vertexShader: `
                     attribute float alpha;
@@ -527,8 +558,10 @@ export class NetworkVisualizer {
                     varying float vAlpha;
                     varying vec3 vColor;
                     uniform float uGlobalOpacity;
+                    uniform float uHDRIntensity;
                     void main() {
-                        gl_FragColor = vec4(vColor, vAlpha * uGlobalOpacity);
+                        // Multiply color by HDR intensity to trigger bloom more strongly on highlights
+                        gl_FragColor = vec4(vColor * uHDRIntensity, vAlpha * uGlobalOpacity);
                     }
                 `,
             });
@@ -845,11 +878,15 @@ export class NetworkVisualizer {
         let edgeColor, edgeOpacity;
 
         if (isHovered) {
-            edgeColor = this._scratchColor.set(0xffffff);
+            edgeColor = this._scratchColor
+                .set(0xffffff)
+                .multiplyScalar(this.highlightIntensity);
             edgeOpacity = 1.0;
             if (edgeData) edgeData.line.material = this.hoverEdgeMaterial;
         } else if (isPlaying) {
-            edgeColor = this._scratchColor.set(this.highlightColor);
+            edgeColor = this._scratchColor
+                .set(this.highlightColor)
+                .multiplyScalar(this.highlightIntensity);
             edgeOpacity = 1.0;
             if (edgeData) edgeData.line.material = this.highlightEdgeMaterial;
         } else {
@@ -1178,7 +1215,9 @@ export class NetworkVisualizer {
 
             this.nodeInstancedMesh.setColorAt(
                 nodeData.instanceId,
-                this._scratchColor.set(this.highlightColor),
+                this._scratchColor
+                    .set(this.highlightColor)
+                    .multiplyScalar(this.highlightIntensity),
             );
         } else {
             // Update dummy mesh for tests
@@ -1232,7 +1271,9 @@ export class NetworkVisualizer {
 
                 this.nodeInstancedMesh.setColorAt(
                     nodeData.instanceId,
-                    this._scratchColor.set(0xffffff),
+                    this._scratchColor
+                        .set(0xffffff)
+                        .multiplyScalar(this.highlightIntensity),
                 );
                 if (this.nodeInstancedMesh.instanceColor) {
                     this.nodeInstancedMesh.instanceColor.needsUpdate = true;
@@ -1702,7 +1743,9 @@ export class NetworkVisualizer {
 
                 this.nodeInstancedMesh.setColorAt(
                     nodeData.instanceId,
-                    this._scratchColor.set(highlightColor),
+                    this._scratchColor
+                        .set(highlightColor)
+                        .multiplyScalar(this.highlightIntensity),
                 );
                 if (this.nodeInstancedMesh.instanceColor) {
                     this.nodeInstancedMesh.instanceColor.needsUpdate = true;

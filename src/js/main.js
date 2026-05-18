@@ -82,7 +82,12 @@ const setupUI = (callbacks) => {
     };
 
     const toggleUi = () => {
-        els.appEl.classList.toggle('ui-hidden');
+        const isHidden = els.appEl.classList.toggle('ui-hidden');
+        if (document.activeElement === els.hideUiBtn && isHidden) {
+            els.showUiBtn.focus();
+        } else if (document.activeElement === els.showUiBtn && !isHidden) {
+            els.hideUiBtn.focus();
+        }
     };
     // Show non-dismissable status modal initially
     els.statusModal.showModal();
@@ -137,6 +142,7 @@ const setupUI = (callbacks) => {
         els.infoPanel.classList.add('hidden');
         els.statsToggle.checked = false;
         els.statsToggle.setAttribute('aria-expanded', 'false');
+        els.statsToggle.focus();
     });
 
     document.addEventListener('keydown', (e) => {
@@ -349,8 +355,12 @@ const init = async () => {
     player.onStop = () => {
         visualizer.resetPlayingHighlights();
         if (!player.isPlaying) {
+            const hadFocus = document.activeElement === ui.els.pauseBtn;
             ui.els.playBtn.classList.remove('hidden');
             ui.els.pauseBtn.classList.add('hidden');
+            if (hadFocus) {
+                ui.els.playBtn.focus();
+            }
         }
     };
 
@@ -418,14 +428,22 @@ const init = async () => {
             player.pause();
             visualizer.setPaused(true);
 
+            const hadFocus = document.activeElement === ui.els.pauseBtn;
             ui.els.playBtn.classList.remove('hidden');
             ui.els.pauseBtn.classList.add('hidden');
+            if (hadFocus) {
+                ui.els.playBtn.focus();
+            }
         } else {
             player.resume();
             visualizer.setPaused(false);
 
+            const hadFocus = document.activeElement === ui.els.playBtn;
             ui.els.playBtn.classList.add('hidden');
             ui.els.pauseBtn.classList.remove('hidden');
+            if (hadFocus) {
+                ui.els.pauseBtn.focus();
+            }
         }
     };
 

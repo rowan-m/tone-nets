@@ -773,7 +773,16 @@ export class NetworkVisualizer {
         });
     }
 
-    _updateEdgeCurve(curve, sPosRaw, tPosRaw, layoutScale, link) {
+    static _hashString(str) {
+        let h = 0;
+        for (let i = 0; i < str.length; i++) {
+            h = (h << 5) - h + str.charCodeAt(i);
+            h |= 0;
+        }
+        return h;
+    }
+
+    _updateEdgeCurve(curve, sPosRaw, tPosRaw, layoutScale, seed) {
         const sPos = curve.v0.set(
             sPosRaw.x * layoutScale,
             sPosRaw.y * layoutScale,
@@ -801,17 +810,7 @@ export class NetworkVisualizer {
             .normalize();
 
         // Introduce organic variation by rotating the perpendicular vector around the edge direction.
-        // We use the sum of node IDs to create a stable but unique rotation for each edge pair.
-        const hash = (str) => {
-            let h = 0;
-            for (let i = 0; i < str.length; i++) {
-                h = (h << 5) - h + str.charCodeAt(i);
-                h |= 0;
-            }
-            return h;
-        };
-
-        const seed = link ? hash(link.fromId) + hash(link.toId) : 0;
+        // We use the pre-computed seed to create a stable but unique rotation for each edge pair.
         const angle = (seed % 360) * (Math.PI / 180);
         perp.applyAxisAngle(edgeDir, angle);
 
@@ -867,6 +866,9 @@ export class NetworkVisualizer {
         const edgeIndex = this.edgeBufferIndexMap.get(edgeId);
         if (edgeIndex === undefined) return;
 
+        const edgeData = this.edgeMap.get(edgeId);
+        if (!edgeData) return;
+
         const sPosRaw = this.layout.getNodePosition(link.fromId);
         const tPosRaw = this.layout.getNodePosition(link.toId);
 
@@ -875,7 +877,7 @@ export class NetworkVisualizer {
             sPosRaw,
             tPosRaw,
             layoutScale,
-            link,
+            edgeData.seed,
         );
 
         const baseIdx = edgeIndex * this.maxEdgeSegments * 2;
@@ -884,8 +886,10 @@ export class NetworkVisualizer {
         const alphaAttr = this.edgeLineSegments.geometry.attributes.alpha;
 
         const normWeight = Math.min(1, link.data.weight / maxWeight);
-        const { edgeColor, edgeOpacity, edgeData } =
-            this._getEdgeVisualProperties(edgeId, normWeight);
+        const { edgeColor, edgeOpacity } = this._getEdgeVisualProperties(
+            edgeId,
+            normWeight,
+        );
 
         for (let i = 0; i < this.maxEdgeSegments; i++) {
             const t1 = i / this.maxEdgeSegments;
@@ -977,12 +981,17 @@ export class NetworkVisualizer {
         const sPosRaw = this.layout.getNodePosition(link.fromId);
         const tPosRaw = this.layout.getNodePosition(link.toId);
 
+        const seed = link
+            ? NetworkVisualizer._hashString(link.fromId) +
+              NetworkVisualizer._hashString(link.toId)
+            : 0;
+
         const curve = this._updateEdgeCurve(
             this._scratchCurve,
             sPosRaw,
             tPosRaw,
             layoutScale,
-            link,
+            seed,
         );
 
         const normWeight = Math.min(1, link.data.weight / maxWeight);
@@ -1065,6 +1074,7 @@ export class NetworkVisualizer {
             },
             sourceId: link.fromId,
             targetId: link.toId,
+            seed: seed,
         };
         this.edges.push(edgeData);
         this.edgeMap.set(edgeId, edgeData);

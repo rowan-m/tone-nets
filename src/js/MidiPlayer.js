@@ -373,12 +373,12 @@ export class MidiPlayer {
         this._pauseDummyAudio();
         this._setMediaSessionState('none');
 
-        if (this.onStop) {
-            this.onStop();
-        }
         this.isPlaying = false;
         this.lastNotePerChannel.clear();
         this.activeNotes.clear();
+        if (this.onStop) {
+            this.onStop();
+        }
         this._stopMediaSessionInterval();
     }
 

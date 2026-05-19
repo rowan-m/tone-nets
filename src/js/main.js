@@ -333,9 +333,10 @@ const init = async () => {
 
     let lastCountUpdate = 0;
     player.onNotePlay = (nodeId, prevNodeId, instrumentId, isDrums) => {
-        if (document.visibilityState === 'hidden') return;
+        if (document.visibilityState === 'hidden' || !player.isPlaying) return;
         requestAnimationFrame(() => {
-            if (document.visibilityState === 'hidden') return;
+            if (document.visibilityState === 'hidden' || !player.isPlaying)
+                return;
 
             if (isIncrementalMode && !isDrums) {
                 visualizer.addTransitionIncremental(prevNodeId, nodeId);

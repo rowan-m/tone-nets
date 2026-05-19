@@ -322,6 +322,8 @@ export class NetworkVisualizer {
         });
         this.activeEmojis = [];
 
+        this.isPaused = false;
+
         if (this.layout) {
             this.layout.dispose();
             this.layout = null;

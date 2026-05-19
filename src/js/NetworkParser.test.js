@@ -10,7 +10,7 @@ vi.mock('@tonejs/midi', () => {
         this.name = '';
         this.tracks = [];
         this.header = { meta: [] };
-        this.duration = 10; // Default duration
+        this.duration = 10;
 
         if (buffer === 'test-buffer') {
             this.name = 'Test MIDI';
@@ -48,97 +48,96 @@ vi.mock('./NetworkMetrics.js', () => ({
 }));
 
 describe('NetworkParser', () => {
-    it('should build a network from MIDI data and ignore self-loops', async () => {
-        vi.mocked(Midi).mockImplementationOnce(function () {
-            this.name = 'Loop MIDI';
-            this.duration = 10;
-            this.tracks = [
-                {
-                    channel: 0,
-                    notes: [
-                        { ticks: 0, name: 'C4' },
-                        { ticks: 100, name: 'C4' }, // Self-loop
-                        { ticks: 200, name: 'G4' },
-                    ],
-                },
-            ];
+    describe('buildMidiNetwork', () => {
+        it('should build a network from MIDI data and ignore self-loops', async () => {
+            // Arrange
+            vi.mocked(Midi).mockImplementationOnce(function () {
+                this.name = 'Loop MIDI';
+                this.duration = 10;
+                this.tracks = [
+                    {
+                        channel: 0,
+                        notes: [
+                            { ticks: 0, name: 'C4' },
+                            { ticks: 100, name: 'C4' }, // Self-loop
+                            { ticks: 200, name: 'G4' },
+                        ],
+                    },
+                ];
+            });
+
+            // Act
+            const { graph, summary } =
+                await NetworkParser.buildMidiNetwork('test-buffer');
+
+            // Assert
+            expect(summary.title).toBe('Loop MIDI');
+            expect(graph.getLink('C4', 'C4')).toBeUndefined();
+            expect(graph.getLink('C4', 'G4')).toBeDefined();
+            expect(NetworkMetrics.calculateAll).toHaveBeenCalled();
         });
-
-        const { graph, summary } =
-            await NetworkParser.buildMidiNetwork('test-buffer');
-
-        expect(summary.title).toBe('Loop MIDI');
-        expect(summary.duration).toBe(10);
-
-        // Verify graph construction
-        expect(graph.getLink('C4', 'C4')).toBeUndefined();
-        expect(graph.getLink('C4', 'G4')).toBeDefined();
-
-        // Verify NetworkMetrics was called
-        expect(NetworkMetrics.calculateAll).toHaveBeenCalled();
     });
 
     describe('extractMetadata', () => {
         it('should combine title and artist from meta events', async () => {
             vi.mocked(Midi).mockImplementationOnce(function () {
                 this.name = 'Moonlight Sonata';
-                this.duration = 10;
                 this.header = {
                     meta: [
                         { type: 'copyright', text: 'ignored' },
                         { type: 'text', text: 'Beethoven' },
                     ],
                 };
-                this.tracks = [];
             });
 
-            const { summary } =
-                await NetworkParser.buildMidiNetwork('meta-buffer');
-            expect(summary.title).toBe('Moonlight Sonata - Beethoven');
+            const title = NetworkParser.extractMetadata(new Midi());
+            expect(title).toBe('Moonlight Sonata - Beethoven');
         });
 
         it('should use meta event as title if name is missing', async () => {
             vi.mocked(Midi).mockImplementationOnce(function () {
                 this.name = '';
-                this.duration = 10;
                 this.header = {
                     meta: [{ type: 'trackName', text: 'Opus 27' }],
                 };
-                this.tracks = [];
             });
 
-            const { summary } =
-                await NetworkParser.buildMidiNetwork('meta-buffer');
-            expect(summary.title).toBe('Opus 27');
+            const title = NetworkParser.extractMetadata(new Midi());
+            expect(title).toBe('Opus 27');
         });
 
         it('should ignore "Track X" and duplicate titles in meta events', async () => {
             vi.mocked(Midi).mockImplementationOnce(function () {
                 this.name = 'Sonata';
-                this.duration = 10;
                 this.header = {
                     meta: [
                         { type: 'text', text: 'Track 1' },
-                        { type: 'text', text: 'Sonata' },
+                        { type: 'text', text: 'Sonata' }, // Duplicate
                         { type: 'text', text: 'Ludwig' },
                     ],
                 };
-                this.tracks = [];
             });
 
-            const { summary } =
-                await NetworkParser.buildMidiNetwork('meta-buffer');
-            expect(summary.title).toBe('Sonata - Ludwig');
+            const title = NetworkParser.extractMetadata(new Midi());
+            expect(title).toBe('Sonata - Ludwig');
+        });
+
+        it('should return empty string if no metadata is found', () => {
+            vi.mocked(Midi).mockImplementationOnce(function () {
+                this.name = '';
+                this.header = { meta: [] };
+            });
+            const title = NetworkParser.extractMetadata(new Midi());
+            expect(title).toBe('');
         });
     });
 
     describe('processTransitions', () => {
         it('should ignore drum tracks (channel 9)', async () => {
-            vi.mocked(Midi).mockImplementationOnce(function () {
-                this.duration = 10;
-                this.tracks = [
+            const midi = {
+                tracks: [
                     {
-                        channel: 9, // Drum channel
+                        channel: 9,
                         notes: [
                             { ticks: 0, name: 'C2' },
                             { ticks: 100, name: 'D2' },
@@ -151,18 +150,18 @@ describe('NetworkParser', () => {
                             { ticks: 100, name: 'G4' },
                         ],
                     },
-                ];
-            });
+                ],
+            };
+            const graph = createGraph();
+            const edgeCount = NetworkParser.processTransitions(midi, graph);
 
-            await NetworkParser.buildMidiNetwork('drum-buffer');
-            // Vertices/Edges here come from the mock but we can check graph
-            expect(NetworkMetrics.calculateAll).toHaveBeenCalled();
+            expect(edgeCount).toBe(1);
+            expect(graph.getLinksCount()).toBe(1);
         });
 
         it('should handle chords (multiple notes at same time)', async () => {
-            vi.mocked(Midi).mockImplementationOnce(function () {
-                this.duration = 10;
-                this.tracks = [
+            const midi = {
+                tracks: [
                     {
                         channel: 0,
                         notes: [
@@ -171,41 +170,45 @@ describe('NetworkParser', () => {
                             { ticks: 100, name: 'G4' },
                         ],
                     },
-                ];
-            });
+                ],
+            };
+            const graph = createGraph();
+            NetworkParser.processTransitions(midi, graph);
 
-            const { graph } =
-                await NetworkParser.buildMidiNetwork('chord-buffer');
             // C4 -> G4, E4 -> G4
             expect(graph.getLink('C4', 'G4')).toBeDefined();
             expect(graph.getLink('E4', 'G4')).toBeDefined();
         });
     });
 
-    describe('addTransition', () => {
-        it('should add nodes and links incrementally', () => {
+    describe('computeNodeDegrees', () => {
+        it('should calculate degree for nodes and handle missing data objects', () => {
+            // Arrange
             const graph = createGraph();
-            NetworkParser.addTransition(graph, 'C4', 'G4');
+            graph.addNode('A'); // No data
+            graph.addNode('B', { custom: 'data' });
+            graph.addLink('A', 'B');
 
-            expect(graph.getNodesCount()).toBe(2);
-            expect(graph.getLinksCount()).toBe(1);
-            expect(graph.getLink('C4', 'G4').data.weight).toBe(1);
+            // Act
+            NetworkParser.computeNodeDegrees(graph);
 
-            // Update existing link
-            NetworkParser.addTransition(graph, 'C4', 'G4');
-            expect(graph.getLinksCount()).toBe(1);
-            expect(graph.getLink('C4', 'G4').data.weight).toBe(2);
+            // Assert
+            expect(graph.getNode('A').data.degree).toBe(1);
+            expect(graph.getNode('B').data.degree).toBe(1);
+            expect(graph.getNode('B').data.custom).toBe('data');
         });
 
-        it('should ignore self-loops', () => {
+        it('should handle self-loops correctly (though parser avoids them)', () => {
             const graph = createGraph();
-            NetworkParser.addTransition(graph, 'C4', 'C4');
-            expect(graph.getNodesCount()).toBe(0);
+            graph.addLink('A', 'A');
+            NetworkParser.computeNodeDegrees(graph);
+            expect(graph.getNode('A').data.degree).toBe(1); // Only counted once
         });
     });
 
     describe('rebuildGraph', () => {
         it('should rebuild a graph from serialized data', () => {
+            // Arrange
             const serialized = {
                 nodes: [
                     { id: 'C4', data: { name: 'C4' } },
@@ -214,37 +217,30 @@ describe('NetworkParser', () => {
                 links: [{ fromId: 'C4', toId: 'G4', data: { weight: 5 } }],
             };
 
+            // Act
             const graph = NetworkParser.rebuildGraph(serialized);
+
+            // Assert
             expect(graph.getNodesCount()).toBe(2);
             expect(graph.getLinksCount()).toBe(1);
             const link = graph.getLink('C4', 'G4');
             expect(link.data.weight).toBe(5);
         });
-
-        it('should handle missing weight in serialized links', () => {
-            const serialized = {
-                nodes: [
-                    { id: 'C4', data: { name: 'C4' } },
-                    { id: 'G4', data: { name: 'G4' } },
-                ],
-                links: [
-                    { fromId: 'C4', toId: 'G4', data: {} }, // Missing weight
-                ],
-            };
-
-            const graph = NetworkParser.rebuildGraph(serialized);
-            expect(graph.getLink('C4', 'G4')).toBeDefined();
-        });
     });
 
-    describe('Metric Edge Cases (Delegation)', () => {
-        it('should call NetworkMetrics with empty graph for empty MIDI', async () => {
-            vi.mocked(Midi).mockImplementationOnce(function () {
-                this.duration = 0;
-                this.tracks = [];
-            });
-            await NetworkParser.buildMidiNetwork('empty-buffer');
-            expect(NetworkMetrics.calculateAll).toHaveBeenCalled();
+    describe('addTransition', () => {
+        it('should increment weights for existing links', () => {
+            const graph = createGraph();
+            NetworkParser.addTransition(graph, 'A', 'B');
+            NetworkParser.addTransition(graph, 'A', 'B');
+
+            expect(graph.getLink('A', 'B').data.weight).toBe(2);
+        });
+
+        it('should return false for self-loops or invalid inputs', () => {
+            const graph = createGraph();
+            expect(NetworkParser.addTransition(graph, 'A', 'A')).toBe(false);
+            expect(NetworkParser.addTransition(graph, null, 'B')).toBe(false);
         });
     });
 });

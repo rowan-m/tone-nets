@@ -1,7 +1,119 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Utils } from './Utils.js';
 
 describe('Utils', () => {
+    describe('isMobile', () => {
+        let originalNavigator;
+        let originalWindow;
+
+        beforeEach(() => {
+            // Arrange: Keep a reference to the global objects to restore them later
+            originalNavigator = global.navigator;
+            originalWindow = global.window;
+        });
+
+        afterEach(() => {
+            // Teardown: Restore the global objects to avoid state leakage
+            Object.defineProperty(global, 'navigator', {
+                value: originalNavigator,
+                configurable: true,
+                writable: true,
+            });
+            Object.defineProperty(global, 'window', {
+                value: originalWindow,
+                configurable: true,
+                writable: true,
+            });
+        });
+
+        it('should return true for mobile user agents (e.g., iPhone)', () => {
+            // Arrange
+            Object.defineProperty(global, 'navigator', {
+                value: {
+                    userAgent:
+                        'Mozilla/5.0 (iPhone; CPU iPhone OS 10_3_1 like Mac OS X)',
+                },
+                configurable: true,
+                writable: true,
+            });
+            Object.defineProperty(global, 'window', {
+                value: { innerWidth: 1024 },
+                configurable: true,
+                writable: true,
+            });
+
+            // Act
+            const result = Utils.isMobile();
+
+            // Assert
+            expect(result).toBe(true);
+        });
+
+        it('should return true for narrow window widths (responsive threshold)', () => {
+            // Arrange
+            Object.defineProperty(global, 'navigator', {
+                value: {
+                    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                },
+                configurable: true,
+                writable: true,
+            });
+            Object.defineProperty(global, 'window', {
+                value: { innerWidth: 768 },
+                configurable: true,
+                writable: true,
+            });
+
+            // Act
+            const result = Utils.isMobile();
+
+            // Assert
+            expect(result).toBe(true);
+        });
+
+        it('should return false for desktop user agents and wide windows', () => {
+            // Arrange
+            Object.defineProperty(global, 'navigator', {
+                value: {
+                    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                },
+                configurable: true,
+                writable: true,
+            });
+            Object.defineProperty(global, 'window', {
+                value: { innerWidth: 1024 },
+                configurable: true,
+                writable: true,
+            });
+
+            // Act
+            const result = Utils.isMobile();
+
+            // Assert
+            expect(result).toBe(false);
+        });
+
+        it('should handle undefined navigator or window safely (SSR/Node edge case)', () => {
+            // Arrange
+            Object.defineProperty(global, 'navigator', {
+                value: undefined,
+                configurable: true,
+                writable: true,
+            });
+            Object.defineProperty(global, 'window', {
+                value: undefined,
+                configurable: true,
+                writable: true,
+            });
+
+            // Act
+            const result = Utils.isMobile();
+
+            // Assert
+            expect(result).toBe(false);
+        });
+    });
+
     describe('noteToSemitone', () => {
         it('should correctly convert natural notes to semitones', () => {
             // Arrange & Act & Assert
@@ -16,6 +128,7 @@ describe('Utils', () => {
         });
 
         it('should correctly convert sharp and flat notes', () => {
+            // Arrange & Act & Assert
             expect(Utils.noteToSemitone('C#4')).toBe(49);
             expect(Utils.noteToSemitone('Db4')).toBe(49);
             expect(Utils.noteToSemitone('D#4')).toBe(51);
@@ -28,7 +141,8 @@ describe('Utils', () => {
             expect(Utils.noteToSemitone('Bb4')).toBe(58);
         });
 
-        it('should correctly convert enharmonic equivalents (e.g., E#, B#, Cb, Fb)', () => {
+        it('should correctly convert enharmonic equivalents (edge cases: E#, B#, Cb, Fb)', () => {
+            // Arrange & Act & Assert
             expect(Utils.noteToSemitone('E#4')).toBe(53); // Same as F4
             expect(Utils.noteToSemitone('B#4')).toBe(48); // Same as C4
             // Note: In Utils.js, octave parsing is strictly string concat/math.
@@ -37,24 +151,28 @@ describe('Utils', () => {
             expect(Utils.noteToSemitone('Fb4')).toBe(52); // Same as E4
         });
 
-        it('should default to octave 4 if no octave is provided', () => {
+        it('should default to octave 4 if no octave is provided (boundary condition)', () => {
+            // Arrange & Act & Assert
             expect(Utils.noteToSemitone('C')).toBe(48);
             expect(Utils.noteToSemitone('G#')).toBe(56);
         });
 
-        it('should handle different octaves including negative and multi-digit', () => {
+        it('should handle extreme octaves including negative and multi-digit', () => {
+            // Arrange & Act & Assert
             expect(Utils.noteToSemitone('C0')).toBe(0);
             expect(Utils.noteToSemitone('C-1')).toBe(-12);
             expect(Utils.noteToSemitone('C10')).toBe(120);
         });
 
         it('should handle case insensitivity', () => {
+            // Arrange & Act & Assert
             expect(Utils.noteToSemitone('c4')).toBe(48);
             expect(Utils.noteToSemitone('Eb4')).toBe(51);
             expect(Utils.noteToSemitone('eb4')).toBe(51);
         });
 
-        it('should return 0 for invalid notes and edge case strings', () => {
+        it('should return 0 for invalid notes and edge case strings (negative scenario)', () => {
+            // Arrange & Act & Assert
             expect(Utils.noteToSemitone('H4')).toBe(0);
             expect(Utils.noteToSemitone('Invalid')).toBe(0);
             expect(Utils.noteToSemitone('')).toBe(0);
@@ -63,6 +181,7 @@ describe('Utils', () => {
         });
 
         it('should utilize the cache for subsequent identical calls', () => {
+            // Arrange: We don't have direct access to NOTE_CACHE, but we can verify it doesn't fail
             // Act: First call (cache miss)
             const firstResult = Utils.noteToSemitone('A4');
             // Act: Second call (cache hit)
@@ -75,7 +194,8 @@ describe('Utils', () => {
     });
 
     describe('midiNoteToName', () => {
-        it('should correctly convert midi notes to names', () => {
+        it('should correctly convert midi notes to string names', () => {
+            // Arrange & Act & Assert
             expect(Utils.midiNoteToName(60)).toBe('C4');
             expect(Utils.midiNoteToName(61)).toBe('C#4');
             expect(Utils.midiNoteToName(69)).toBe('A4');
@@ -86,6 +206,7 @@ describe('Utils', () => {
 
     describe('getInterval', () => {
         it('should calculate the directed pitch class interval (modulo 12)', () => {
+            // Arrange & Act & Assert
             // Upward intervals
             expect(Utils.getInterval('C4', 'C4')).toBe(0);
             expect(Utils.getInterval('C4', 'D4')).toBe(2);
@@ -98,7 +219,7 @@ describe('Utils', () => {
             expect(Utils.getInterval('E4', 'C4')).toBe(8); // 48 - 52 = -4. (-4 % 12 + 12) % 12 = 8
         });
 
-        it('should handle invalid notes gracefully (evaluates as C0 or 0)', () => {
+        it('should handle invalid notes gracefully (negative scenario)', () => {
             // Arrange & Act
             const invalidToInvalid = Utils.getInterval('Invalid', 'H4');
             const validToInvalid = Utils.getInterval('C4', 'Invalid');
@@ -113,6 +234,7 @@ describe('Utils', () => {
 
     describe('getIntervalName', () => {
         it('should return the correct interval name for all 12 pitch classes', () => {
+            // Arrange & Act & Assert
             expect(Utils.getIntervalName('C4', 'C4')).toBe('Perfect Unison');
             expect(Utils.getIntervalName('C4', 'C#4')).toBe('Minor Second');
             expect(Utils.getIntervalName('C4', 'D4')).toBe('Major Second');
@@ -127,19 +249,22 @@ describe('Utils', () => {
             expect(Utils.getIntervalName('C4', 'B4')).toBe('Major Seventh');
         });
 
-        it('should handle octave differences correctly (modulo 12)', () => {
+        it('should handle extreme octave differences correctly (boundary condition)', () => {
+            // Arrange & Act & Assert
             expect(Utils.getIntervalName('C4', 'C5')).toBe('Perfect Unison');
             expect(Utils.getIntervalName('C4', 'G5')).toBe('Perfect Fifth');
             expect(Utils.getIntervalName('C2', 'E7')).toBe('Major Third');
         });
 
         it('should handle downward intervals correctly', () => {
+            // Arrange & Act & Assert
             // G4 to C4 is a perfect 4th down (pitch class interval is 5 semitones up)
             expect(Utils.getIntervalName('G4', 'C4')).toBe('Perfect Fourth');
             expect(Utils.getIntervalName('E4', 'C4')).toBe('Minor Sixth');
         });
 
-        it('should return Perfect Unison if invalid notes are provided', () => {
+        it('should return Perfect Unison if invalid notes are provided (negative scenario)', () => {
+            // Arrange & Act & Assert
             // Invalid notes resolve to 0 difference.
             expect(Utils.getIntervalName('Invalid', 'AlsoInvalid')).toBe(
                 'Perfect Unison',
@@ -149,11 +274,13 @@ describe('Utils', () => {
 
     describe('getInstrumentEmoji', () => {
         it('should return a drum emoji if isDrums is true', () => {
+            // Arrange & Act & Assert
             expect(Utils.getInstrumentEmoji(0, true)).toBe('🥁');
             expect(Utils.getInstrumentEmoji(42, true)).toBe('🥁');
         });
 
         it('should return the correct emoji for known program families', () => {
+            // Arrange & Act & Assert
             expect(Utils.getInstrumentEmoji(0)).toBe('🎹'); // Piano (0)
             expect(Utils.getInstrumentEmoji(4)).toBe('🎹'); // Also Piano family (0-7)
             expect(Utils.getInstrumentEmoji(24)).toBe('🎸'); // Guitar
@@ -165,7 +292,8 @@ describe('Utils', () => {
             expect(Utils.getInstrumentEmoji(112)).toBe('🥁'); // Percussive
         });
 
-        it('should return a fallback emoji for unknown/out-of-range program numbers', () => {
+        it('should return a fallback emoji for unknown or out-of-range program numbers (boundary condition)', () => {
+            // Arrange & Act & Assert
             // -1 will floor to -8, mapping to undefined family, returning fallback '🎵'
             expect(Utils.getInstrumentEmoji(-1)).toBe('🎵');
             expect(Utils.getInstrumentEmoji(128)).toBe('🎵');

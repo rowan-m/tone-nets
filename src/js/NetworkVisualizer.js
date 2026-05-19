@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js';
-import createLayout from 'ngraph.forcelayout';
 import {
     EffectComposer,
     RenderPass,
@@ -8,7 +7,8 @@ import {
     BloomEffect,
 } from 'postprocessing';
 import { Utils } from './Utils.js';
-import { NetworkParser } from './NetworkParser.js';
+import { NetworkLayout } from './NetworkLayout.js';
+import { VisualEffectsManager } from './VisualEffectsManager.js';
 
 export class NetworkVisualizer {
     constructor(containerId) {
@@ -47,9 +47,7 @@ export class NetworkVisualizer {
         this.mouse = new THREE.Vector2(-1000, -1000);
         this.mouseMoved = false;
         this.onHover = null;
-        this.activeEmojis = [];
-        this.emojiPool = [];
-        this.maxEmojis = 100;
+
         this.playingNodes = new Set();
         this.playingEdges = new Set();
         this.isPaused = false;
@@ -72,6 +70,8 @@ export class NetworkVisualizer {
         this.graphCenter = new THREE.Vector3();
         this.currentTourTarget = new THREE.Vector3();
         this.scene.add(this.graphGroup);
+
+        this.effects = new VisualEffectsManager(this.scene, this.camera);
 
         this._lastFrameTime = 0;
         this._lastRaycastTime = 0;
@@ -255,6 +255,8 @@ export class NetworkVisualizer {
             this.controls.reset();
         }
 
+        this.effects.clear();
+
         // Reset tour-related state fully
         this.tourCurrentVelocity.set(0, 0, 0);
         this.tourTargetVelocity.set(0, 0, 0);
@@ -264,14 +266,6 @@ export class NetworkVisualizer {
         // Dispose pooled materials
         this.coneMaterialPool.forEach((mat) => mat.dispose());
         this.coneMaterialPool.clear();
-
-        this.emojiPool.forEach((sprite) => {
-            if (sprite.material) sprite.material.dispose();
-        });
-        this.emojiPool = [];
-
-        // We don't dispose emojiTextureCache here because those are reusable across different MIDI files
-        // but we DO dispose the sprites in the clear() call if they are active.
 
         this.nodes.clear();
         this.edges = [];
@@ -315,13 +309,6 @@ export class NetworkVisualizer {
         this.instanceIdEdgeMap.clear();
         this.edgeBufferIndexMap.clear();
 
-        // Clear active emojis
-        this.activeEmojis.forEach((emojiData) => {
-            this.scene.remove(emojiData.sprite);
-            if (emojiData.sprite.material) emojiData.sprite.material.dispose();
-        });
-        this.activeEmojis = [];
-
         this.isPaused = false;
 
         if (this.layout) {
@@ -331,57 +318,24 @@ export class NetworkVisualizer {
     }
 
     async _computeLayout(graph) {
-        this.layout = createLayout(graph, {
-            dimensions: 3,
-            physicsSettings: {
-                springLength: 40,
-                springCoefficient: 0.02,
-                gravity: -200,
-                theta: 0.8,
-                dragCoefficient: 0.6,
-                nodeMass: (nodeId) => {
-                    const node = graph.getNode(nodeId);
-                    if (!node) return 1;
-                    const degree = (node.data && node.data.degree) || 1;
-                    return 1 + Math.log2(degree + 1) * 5;
-                },
-                springTransform: (link, spring) => {
-                    if (link.data && link.data.isFake) {
-                        spring.length = 0;
-                        spring.weight = 5;
-                    } else {
-                        spring.length = 40;
-                        spring.weight = (link.data && link.data.weight) || 1;
-                    }
-                },
-            },
-        });
+        this.layout = new NetworkLayout(graph);
 
         const currentToken = {};
         this._buildToken = currentToken;
 
         const totalSteps = 3000;
-        const batchSize = 100;
 
         // Ensure isolated components are pulled together statically before simulation runs
         this._updateFakeLinks();
 
-        for (let i = 0; i < totalSteps; i++) {
-            if (this._buildToken !== currentToken) return false;
-
-            this.layout.step();
-
-            if (i % batchSize === 0) {
-                await new Promise((resolve) => setTimeout(resolve, 0));
-                if (this._buildToken !== currentToken) return false;
-
-                if (this.onLayoutProgress) {
-                    this.onLayoutProgress(Math.round((i / totalSteps) * 100));
-                }
+        await this.layout.runSimulation(totalSteps, (percent) => {
+            if (this._buildToken !== currentToken) return;
+            if (this.onLayoutProgress) {
+                this.onLayoutProgress(percent);
             }
-        }
-        if (this.onLayoutProgress) this.onLayoutProgress(100);
-        return true;
+        });
+
+        return this._buildToken === currentToken;
     }
 
     async initIncremental(graph) {
@@ -389,31 +343,7 @@ export class NetworkVisualizer {
         this.graph = graph;
         this.incrementalMode = true;
 
-        this.layout = createLayout(graph, {
-            dimensions: 3,
-            physicsSettings: {
-                springLength: 40,
-                springCoefficient: 0.02,
-                gravity: -200,
-                theta: 0.8,
-                dragCoefficient: 0.6,
-                nodeMass: (nodeId) => {
-                    const node = graph.getNode(nodeId);
-                    if (!node) return 1;
-                    const degree = (node.data && node.data.degree) || 1;
-                    return 1 + Math.log2(degree + 1) * 5;
-                },
-                springTransform: (link, spring) => {
-                    if (link.data && link.data.isFake) {
-                        spring.length = 0;
-                        spring.weight = 5;
-                    } else {
-                        spring.length = 40;
-                        spring.weight = (link.data && link.data.weight) || 1;
-                    }
-                },
-            },
-        });
+        this.layout = new NetworkLayout(graph);
 
         this.maxDegree = 1;
         this.maxWeight = 1;
@@ -639,65 +569,29 @@ export class NetworkVisualizer {
         }
     }
 
-    _processIncrementalNode(nodeId, incrementDegree) {
-        if (!nodeId) return null;
-
-        let node = this.graph.getNode(nodeId);
-        if (!node) {
-            node = this.graph.addNode(nodeId, { name: nodeId, degree: 0 });
+    _updateSpecificVisuals(sourceId, targetId, hasTransition) {
+        if (sourceId) this._updateElementVisuals(sourceId, 'node');
+        if (targetId) this._updateElementVisuals(targetId, 'node');
+        if (hasTransition) {
+            this._updateElementVisuals(`${sourceId}->${targetId}`, 'edge');
         }
-        if (!node.data) node.data = {};
-        if (typeof node.data.degree !== 'number') node.data.degree = 0;
-
-        if (incrementDegree) {
-            node.data.degree++;
-        }
-
-        if (!this.nodes.has(nodeId)) {
-            this._renderNode(node, this.layoutScale, this.maxDegree);
-        }
-
-        return node;
-    }
-
-    _processIncrementalLink(sourceId, targetId, hasTransition) {
-        if (!hasTransition) return false;
-
-        const isNewLink = NetworkParser.addTransition(
-            this.graph,
-            sourceId,
-            targetId,
-        );
-        const link = this.graph.getLink(sourceId, targetId);
-
-        if (isNewLink) {
-            this._renderEdge(link, this.layoutScale, this.maxWeight);
-        }
-
-        if (link && link.data.weight > this.maxWeight) {
-            this.maxWeight = link.data.weight;
-            return true;
-        }
-        return false;
     }
 
     addTransitionIncremental(sourceId, targetId) {
         if (!this.incrementalMode || !this.graph || !targetId) return;
 
         const hasTransition = Boolean(sourceId && sourceId !== targetId);
-        const sourceNode = hasTransition
-            ? this._processIncrementalNode(sourceId, true)
-            : null;
-        const targetNode = this._processIncrementalNode(
-            targetId,
-            hasTransition,
-        );
 
-        let globalUpdateNeeded = this._processIncrementalLink(
-            sourceId,
-            targetId,
-            hasTransition,
-        );
+        const sourceNode = hasTransition ? this.graph.getNode(sourceId) : null;
+        const targetNode = this.graph.getNode(targetId);
+
+        this._ensureNodeVisuals(sourceNode, sourceId);
+        this._ensureNodeVisuals(targetNode, targetId);
+
+        let globalUpdateNeeded = false;
+        if (hasTransition) {
+            globalUpdateNeeded = this._ensureEdgeVisuals(sourceId, targetId);
+        }
 
         if (this._updateMaxMetrics(sourceNode, targetNode)) {
             globalUpdateNeeded = true;
@@ -708,6 +602,28 @@ export class NetworkVisualizer {
         } else {
             this._updateSpecificVisuals(sourceId, targetId, hasTransition);
         }
+    }
+
+    _ensureNodeVisuals(node, id) {
+        if (node && !this.nodes.has(id)) {
+            this._renderNode(node, this.layoutScale, this.maxDegree);
+        }
+    }
+
+    _ensureEdgeVisuals(sourceId, targetId) {
+        const edgeId = `${sourceId}->${targetId}`;
+        const link = this.graph.getLink(sourceId, targetId);
+        let globalUpdateNeeded = false;
+
+        if (link && !this.edgeBufferIndexMap.has(edgeId)) {
+            this._renderEdge(link, this.layoutScale, this.maxWeight);
+        }
+
+        if (link && link.data.weight > this.maxWeight) {
+            this.maxWeight = link.data.weight;
+            globalUpdateNeeded = true;
+        }
+        return globalUpdateNeeded;
     }
 
     _updateMaxMetrics(sourceNode, targetNode) {
@@ -731,14 +647,6 @@ export class NetworkVisualizer {
             this._updateAllVisualScales();
             this._globalUpdateTimeout = null;
         }, 100);
-    }
-
-    _updateSpecificVisuals(sourceId, targetId, hasTransition) {
-        if (sourceId) this._updateElementVisuals(sourceId, 'node');
-        if (targetId) this._updateElementVisuals(targetId, 'node');
-        if (hasTransition) {
-            this._updateElementVisuals(`${sourceId}->${targetId}`, 'edge');
-        }
     }
 
     _renderNode(node, layoutScale, maxDegree) {
@@ -1538,7 +1446,7 @@ export class NetworkVisualizer {
         // Skip heavy rendering and raycasting if the visualization is completely empty
         if (
             !this.graph &&
-            this.activeEmojis.length === 0 &&
+            this.effects.activeEmojis.length === 0 &&
             this.nodes.size === 0
         ) {
             this._lastFrameTime = time;
@@ -1562,7 +1470,7 @@ export class NetworkVisualizer {
             this._lastRaycastTime = time;
         }
 
-        this._updateEmojis(delta);
+        this.effects.update(delta);
         this._updateAutoTour(delta);
         this.composer.render();
     }
@@ -1680,66 +1588,11 @@ export class NetworkVisualizer {
         }
     }
 
-    _getEmojiTexture(emoji) {
-        let texture = this.emojiTextureCache.get(emoji);
-
-        if (!texture) {
-            const canvas = document.createElement('canvas');
-            canvas.width = 64;
-            canvas.height = 64;
-            const ctx = canvas.getContext('2d');
-            ctx.font = '48px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(emoji, 32, 32);
-
-            texture = new THREE.CanvasTexture(canvas);
-            this.emojiTextureCache.set(emoji, texture);
-        }
-        return texture;
-    }
-
-    _createEmojiSprite(emoji) {
-        const texture = this._getEmojiTexture(emoji);
-
-        const material = new THREE.SpriteMaterial({
-            map: texture,
-            transparent: true,
-            depthTest: false, // Ensure it's visible over nodes
-        });
-        const sprite = new THREE.Sprite(material);
-        // Scaled up to be larger and more visible
-        sprite.scale.set(40, 40, 1);
-        return sprite;
-    }
-
     showInstrumentEmoji(nodeId, emoji) {
         const nodeData = this.nodes.get(nodeId);
         if (!nodeData) return;
 
-        // Enforce limit - recycle oldest if needed
-        if (this.activeEmojis.length >= this.maxEmojis) {
-            this._recycleEmoji(0);
-        }
-
-        let sprite;
-        if (this.emojiPool.length > 0) {
-            sprite = this.emojiPool.pop();
-            sprite.material.map = this._getEmojiTexture(emoji);
-            sprite.material.opacity = 1.0;
-        } else {
-            sprite = this._createEmojiSprite(emoji);
-        }
-
-        // Center exactly over the node's position. depthTest: false handles visibility.
-        sprite.position.copy(nodeData.mesh.position);
-
-        this.scene.add(sprite);
-        this.activeEmojis.push({
-            sprite: sprite,
-            life: 1.0,
-        });
-
+        this.effects.showInstrumentEmoji(nodeData.mesh.position, emoji);
         this.startAnimationLoop();
     }
 

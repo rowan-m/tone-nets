@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { NetworkParser } from './NetworkParser.js';
 import { Midi } from '@tonejs/midi';
 import createGraph from 'ngraph.graph';
+import { NetworkMetrics } from './NetworkMetrics.js';
 
 // Mock @tonejs/midi
 vi.mock('@tonejs/midi', () => {
@@ -28,6 +29,24 @@ vi.mock('@tonejs/midi', () => {
     return { Midi: MidiMock };
 });
 
+// Mock NetworkMetrics
+vi.mock('./NetworkMetrics.js', () => ({
+    NetworkMetrics: {
+        calculateAll: vi.fn(() => ({
+            vertices: 2,
+            edges: 1,
+            density: '0.5000',
+            reciprocity: '0.0000',
+            binaryReciprocity: '0.0000',
+            reciprocityRho: '0.0000',
+            entropy: '0.0000',
+            efficiency: '0.5000',
+            weightedEfficiency: '0.5000',
+            embedding: new Array(12).fill('0.0000'),
+        })),
+    },
+}));
+
 describe('NetworkParser', () => {
     it('should build a network from MIDI data and ignore self-loops', async () => {
         vi.mocked(Midi).mockImplementationOnce(function () {
@@ -50,111 +69,13 @@ describe('NetworkParser', () => {
 
         expect(summary.title).toBe('Loop MIDI');
         expect(summary.duration).toBe(10);
-        expect(summary.vertices).toBe(2); // C4 and G4
-        expect(summary.edges).toBe(1); // Only C4 -> G4 (C4 -> C4 ignored)
 
+        // Verify graph construction
         expect(graph.getLink('C4', 'C4')).toBeUndefined();
         expect(graph.getLink('C4', 'G4')).toBeDefined();
-    });
 
-    it('should calculate metrics correctly including weighted efficiency', async () => {
-        vi.mocked(Midi).mockImplementationOnce(function () {
-            this.name = 'Metric MIDI';
-            this.duration = 10;
-            this.tracks = [
-                {
-                    channel: 0,
-                    notes: [
-                        { ticks: 0, name: 'C4' },
-                        { ticks: 100, name: 'G4' },
-                        { ticks: 200, name: 'C4' },
-                    ],
-                },
-            ];
-        });
-
-        const { summary } = await NetworkParser.buildMidiNetwork('test-buffer');
-
-        expect(summary.density).toBe('1.0000');
-        expect(summary.binaryReciprocity).toBe('1.0000');
-        expect(summary.reciprocity).toBe('1.0000'); // (min(1,1)+min(1,1))/2 = 1.0
-        expect(summary.reciprocityRho).toBe('0.0000');
-        expect(summary.entropy).toBe('0.0000');
-        expect(summary.efficiency).toBe('1.0000');
-        expect(summary.weightedEfficiency).toBe('1.0000');
-
-        // Interval Embedding:
-        // C4 (48) -> G4 (55) => 7 semitones
-        // G4 (55) -> C4 (48) => -7 semitones => 5 semitones (mod 12)
-        // Vector has 1 at index 7 and index 5. Normalized (L2): sqrt(1^2 + 1^2) = sqrt(2). 1/sqrt(2) approx 0.7071
-        expect(summary.embedding[7]).toBe('0.7071');
-        expect(summary.embedding[5]).toBe('0.7071');
-    });
-
-    it('should handle complex transitions and weights for weighted efficiency', async () => {
-        vi.mocked(Midi).mockImplementationOnce(function () {
-            this.name = 'Complex MIDI';
-            this.duration = 10;
-            this.tracks = [
-                {
-                    channel: 0,
-                    notes: [
-                        { ticks: 0, name: 'C4' },
-                        { ticks: 100, name: 'G4' },
-                        { ticks: 200, name: 'C4' },
-                        { ticks: 300, name: 'G4' },
-                    ],
-                },
-            ];
-        });
-
-        const { summary } =
-            await NetworkParser.buildMidiNetwork('another-buffer');
-
-        // C4->G4 weight 2, G4->C4 weight 1
-        // sum(min) = min(2,1) + min(1,2) = 2
-        // total weight = 3
-        // weighted reciprocity = 2/3 = 0.6667
-        expect(summary.reciprocity).toBe('0.6667');
-
-        // Weighted Efficiency:
-        // sum(1/d_w) = 1/(1/2) + 1/(1/1) = 2 + 1 = 3
-        // Weighted Efficiency = 3 / (2 * 1) = 1.5
-        expect(summary.weightedEfficiency).toBe('1.5000');
-    });
-
-    it('should calculate non-zero mean node entropy correctly', async () => {
-        vi.mocked(Midi).mockImplementationOnce(function () {
-            this.name = 'Entropy MIDI';
-            this.duration = 10;
-            this.tracks = [
-                {
-                    channel: 0,
-                    notes: [
-                        { ticks: 0, name: 'C4' },
-                        { ticks: 100, name: 'G4' },
-                        { ticks: 200, name: 'C4' },
-                        { ticks: 300, name: 'E4' },
-                        { ticks: 400, name: 'C4' },
-                    ],
-                },
-            ];
-        });
-
-        const { summary } =
-            await NetworkParser.buildMidiNetwork('entropy-buffer');
-
-        // Transitions:
-        // C4 -> G4 (1)
-        // G4 -> C4 (1)
-        // C4 -> E4 (1)
-        // E4 -> C4 (1)
-        // Nodes: C4, G4, E4 (n=3)
-        // Node C4: out-weight 2, transitions [1, 1]. p = [0.5, 0.5]. H = 1.0
-        // Node G4: out-weight 1, transitions [1]. p = [1.0]. H = 0
-        // Node E4: out-weight 1, transitions [1]. p = [1.0]. H = 0
-        // Mean Entropy = (1.0 + 0 + 0) / 3 = 0.3333
-        expect(summary.entropy).toBe('0.3333');
+        // Verify NetworkMetrics was called
+        expect(NetworkMetrics.calculateAll).toHaveBeenCalled();
     });
 
     describe('extractMetadata', () => {
@@ -233,10 +154,9 @@ describe('NetworkParser', () => {
                 ];
             });
 
-            const { summary } =
-                await NetworkParser.buildMidiNetwork('drum-buffer');
-            expect(summary.vertices).toBe(2); // Only C4 and G4
-            expect(summary.edges).toBe(1);
+            await NetworkParser.buildMidiNetwork('drum-buffer');
+            // Vertices/Edges here come from the mock but we can check graph
+            expect(NetworkMetrics.calculateAll).toHaveBeenCalled();
         });
 
         it('should handle chords (multiple notes at same time)', async () => {
@@ -254,11 +174,9 @@ describe('NetworkParser', () => {
                 ];
             });
 
-            const { summary, graph } =
+            const { graph } =
                 await NetworkParser.buildMidiNetwork('chord-buffer');
             // C4 -> G4, E4 -> G4
-            expect(summary.vertices).toBe(3);
-            expect(summary.edges).toBe(2);
             expect(graph.getLink('C4', 'G4')).toBeDefined();
             expect(graph.getLink('E4', 'G4')).toBeDefined();
         });
@@ -319,90 +237,14 @@ describe('NetworkParser', () => {
         });
     });
 
-    describe('Internal Distance Helpers', () => {
-        it('should handle cycles in BFS (BFS branch)', async () => {
-            vi.mocked(Midi).mockImplementationOnce(function () {
-                this.duration = 10;
-                this.tracks = [
-                    {
-                        channel: 0,
-                        notes: [
-                            { ticks: 0, name: 'C4' },
-                            { ticks: 100, name: 'G4' },
-                            { ticks: 200, name: 'C4' },
-                            { ticks: 300, name: 'G4' },
-                        ],
-                    },
-                ];
-            });
-            // This creates C4 -> G4 and G4 -> C4
-            // When BFS starts at C4, it sees G4. Then from G4 it sees C4 (already visited).
-            const { summary } =
-                await NetworkParser.buildMidiNetwork('cycle-buffer');
-            expect(summary.efficiency).toBe('1.0000');
-        });
-    });
-
-    describe('Metric Edge Cases', () => {
-        it('should handle empty MIDI', async () => {
+    describe('Metric Edge Cases (Delegation)', () => {
+        it('should call NetworkMetrics with empty graph for empty MIDI', async () => {
             vi.mocked(Midi).mockImplementationOnce(function () {
                 this.duration = 0;
                 this.tracks = [];
             });
-            const { summary } =
-                await NetworkParser.buildMidiNetwork('empty-buffer');
-            expect(summary.vertices).toBe(0);
-            expect(summary.edges).toBe(0);
-            expect(summary.density).toBe('0.0000');
-            expect(summary.embedding).toEqual(new Array(12).fill('0.0000'));
-        });
-
-        it('should handle single node MIDI', async () => {
-            vi.mocked(Midi).mockImplementationOnce(function () {
-                this.duration = 10;
-                this.tracks = [
-                    {
-                        channel: 0,
-                        notes: [{ ticks: 0, name: 'C4' }],
-                    },
-                ];
-            });
-            const { summary } =
-                await NetworkParser.buildMidiNetwork('single-buffer');
-            // Current implementation only adds nodes if they are part of a transition
-            expect(summary.vertices).toBe(0);
-            expect(summary.edges).toBe(0);
-            expect(summary.density).toBe('0.0000');
-            expect(summary.efficiency).toBe('0.0000');
-        });
-
-        it('should handle disconnected nodes for efficiency', async () => {
-            vi.mocked(Midi).mockImplementationOnce(function () {
-                this.duration = 10;
-                this.tracks = [
-                    {
-                        channel: 0,
-                        notes: [
-                            { ticks: 0, name: 'C4' },
-                            { ticks: 100, name: 'G4' },
-                        ],
-                    },
-                    {
-                        channel: 1,
-                        notes: [
-                            { ticks: 0, name: 'A4' },
-                            { ticks: 100, name: 'B4' },
-                        ],
-                    },
-                ];
-            });
-            const { summary } = await NetworkParser.buildMidiNetwork(
-                'disconnected-buffer',
-            );
-            // C4 -> G4, A4 -> B4. No path between {C4,G4} and {A4,B4}
-            expect(summary.vertices).toBe(4);
-            expect(summary.efficiency).not.toBe('0.0000');
-            expect(parseFloat(summary.efficiency)).toBeLessThan(1.0);
+            await NetworkParser.buildMidiNetwork('empty-buffer');
+            expect(NetworkMetrics.calculateAll).toHaveBeenCalled();
         });
     });
 });

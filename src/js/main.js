@@ -1,9 +1,11 @@
 import { NetworkParser } from './NetworkParser.js';
 import { NetworkVisualizer } from './NetworkVisualizer.js';
 import { MidiPlayer } from './MidiPlayer.js';
+import { UIManager } from './UIManager.js';
 import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
 import createGraph from 'ngraph.graph';
+import { Utils } from './Utils.js';
 
 console.log('Tone Nets Initialized');
 
@@ -12,228 +14,6 @@ const parserWorker = new Worker(
     new URL('./parser.worker.js', import.meta.url),
     { type: 'module' },
 );
-
-import { Utils } from './Utils.js';
-
-const setupUI = (callbacks) => {
-    const els = {
-        uploadInput: document.getElementById('midi-upload'),
-        playBtn: document.getElementById('play-btn'),
-        pauseBtn: document.getElementById('pause-btn'),
-        restartBtn: document.getElementById('restart-btn'),
-        closeInfo: document.getElementById('close-info'),
-        vCountEl: document.getElementById('v-count'),
-        eCountEl: document.getElementById('e-count'),
-        infoPanel: document.getElementById('info-panel'),
-        welcomeMsg: document.getElementById('welcome-msg'),
-        hoverPanel: document.getElementById('hover-panel'),
-        hoverNode: document.getElementById('hover-node'),
-        hoverNodeId: document.getElementById('hover-node-id'),
-        hoverNodeDegree: document.getElementById('hover-node-degree'),
-        hoverEdge: document.getElementById('hover-edge'),
-        hoverEdgeFrom: document.getElementById('hover-edge-from'),
-        hoverEdgeTo: document.getElementById('hover-edge-to'),
-        hoverEdgeInterval: document.getElementById('hover-edge-interval'),
-        hoverEdgeWeight: document.getElementById('hover-edge-weight'),
-        appTitle: document.getElementById('app-title'),
-        statusModal: document.getElementById('status-modal'),
-        statusModalText: document.getElementById('status-modal-text'),
-        appEl: document.getElementById('app'),
-        hideUiBtn: document.getElementById('hide-ui'),
-        showUiBtn: document.getElementById('show-ui'),
-        autoplayToggle: document.getElementById('autoplay-toggle'),
-        loopToggle: document.getElementById('loop-toggle'),
-        incrementalToggle: document.getElementById('incremental-toggle'),
-        statsToggle: document.getElementById('stats-toggle'),
-        tourToggle: document.getElementById('tour-toggle'),
-        canvasContainer: document.getElementById('canvas-container'),
-        metricEls: {
-            efficiency: document.getElementById('metric-efficiency'),
-            weightedEfficiency: document.getElementById(
-                'metric-weighted-efficiency',
-            ),
-            entropy: document.getElementById('metric-entropy'),
-            binaryReciprocity: document.getElementById(
-                'metric-binary-reciprocity',
-            ),
-            reciprocity: document.getElementById('metric-reciprocity'),
-            reciprocityRho: document.getElementById('metric-reciprocity-rho'),
-            density: document.getElementById('metric-density'),
-            intervalBars: document.querySelectorAll('#interval-bars .bar'),
-        },
-    };
-
-    const showStatus = (text) => {
-        els.statusModalText.textContent = text;
-        if (!els.statusModal.open) {
-            els.statusModal.showModal();
-        }
-    };
-
-    const hideStatus = () => {
-        if (els.statusModal.open) {
-            els.statusModal.close();
-        }
-    };
-
-    const showError = (message, err) => {
-        console.error(message, err);
-        showStatus(`${message} See console.`);
-    };
-
-    const toggleUi = () => {
-        const isHidden = els.appEl.classList.toggle('ui-hidden');
-        if (document.activeElement === els.hideUiBtn && isHidden) {
-            els.showUiBtn.focus();
-        } else if (document.activeElement === els.showUiBtn && !isHidden) {
-            els.hideUiBtn.focus();
-        }
-    };
-    // Show non-dismissable status modal initially
-    els.statusModal.showModal();
-    els.statusModal.addEventListener('cancel', (e) => e.preventDefault());
-
-    // Event Listeners
-    els.incrementalToggle.addEventListener('change', (e) => {
-        callbacks.onIncrementalToggle(e.target.checked);
-        if (e.target.checked) {
-            els.infoPanel.classList.add('hidden');
-            els.statsToggle.disabled = true;
-            els.statsToggle.checked = false;
-        } else if (!els.playBtn.disabled) {
-            els.statsToggle.disabled = false;
-        }
-    });
-
-    els.autoplayToggle.addEventListener('change', (e) => {
-        callbacks.onAutoplayToggle(e.target.checked);
-    });
-
-    els.loopToggle.addEventListener('change', (e) => {
-        callbacks.onLoopToggle(e.target.checked);
-    });
-
-    els.statsToggle.addEventListener('change', (e) => {
-        if (e.target.checked) {
-            els.infoPanel.classList.remove('hidden');
-        } else {
-            els.infoPanel.classList.add('hidden');
-        }
-        els.statsToggle.setAttribute('aria-expanded', e.target.checked);
-    });
-
-    els.tourToggle.addEventListener('change', (e) => {
-        callbacks.onTourToggle(e.target.checked);
-        els.tourToggle.setAttribute('aria-expanded', e.target.checked);
-    });
-
-    els.hideUiBtn.addEventListener('click', toggleUi);
-    els.showUiBtn.addEventListener('click', toggleUi);
-
-    els.playBtn.addEventListener('click', callbacks.onTogglePlayPause);
-    els.pauseBtn.addEventListener('click', callbacks.onTogglePlayPause);
-    els.restartBtn.addEventListener('click', callbacks.onRestart);
-
-    els.uploadInput.addEventListener('change', (e) => {
-        callbacks.onFileSelection(e.target.files[0]);
-        e.target.value = '';
-    });
-
-    els.closeInfo.addEventListener('click', () => {
-        els.infoPanel.classList.add('hidden');
-        els.statsToggle.checked = false;
-        els.statsToggle.setAttribute('aria-expanded', 'false');
-        els.statsToggle.focus();
-    });
-
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !els.infoPanel.classList.contains('hidden')) {
-            els.infoPanel.classList.add('hidden');
-            els.statsToggle.checked = false;
-            els.statsToggle.setAttribute('aria-expanded', 'false');
-            els.statsToggle.focus();
-        }
-
-        if (e.key.toLowerCase() === 'h') {
-            if (
-                document.activeElement.tagName === 'INPUT' ||
-                document.activeElement.tagName === 'BUTTON'
-            ) {
-                return;
-            }
-            toggleUi();
-        }
-
-        if (e.key === ' ' || e.key === 'Spacebar') {
-            if (
-                document.activeElement.tagName === 'INPUT' ||
-                document.activeElement.tagName === 'BUTTON'
-            ) {
-                return;
-            }
-
-            e.preventDefault();
-
-            if (!els.playBtn.disabled) {
-                if (callbacks.isPlaying()) {
-                    els.pauseBtn.click();
-                } else {
-                    els.playBtn.click();
-                }
-            }
-        }
-    });
-
-    document.addEventListener('click', (e) => {
-        if (e.target.classList.contains('example-midi')) {
-            e.preventDefault();
-            const fileName = e.target.dataset.file;
-            callbacks.onExampleMidiClick(fileName);
-        }
-    });
-
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-            callbacks.onVisibilityChange();
-        }
-    });
-
-    els.canvasContainer.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        if (
-            !els.uploadInput.disabled &&
-            e.dataTransfer.types.includes('Files')
-        ) {
-            els.canvasContainer.classList.add('drag-active');
-        }
-    });
-
-    els.canvasContainer.addEventListener('dragleave', (e) => {
-        e.preventDefault();
-        els.canvasContainer.classList.remove('drag-active');
-    });
-
-    els.canvasContainer.addEventListener('drop', (e) => {
-        e.preventDefault();
-        els.canvasContainer.classList.remove('drag-active');
-        if (!els.uploadInput.disabled) {
-            callbacks.onFileSelection(e.dataTransfer.files[0]);
-        }
-    });
-
-    if ('mediaSession' in navigator) {
-        navigator.mediaSession.setActionHandler(
-            'play',
-            callbacks.onTogglePlayPause,
-        );
-        navigator.mediaSession.setActionHandler(
-            'pause',
-            callbacks.onTogglePlayPause,
-        );
-    }
-
-    return { els, showStatus, hideStatus, showError };
-};
 
 const init = async () => {
     let isIncrementalMode = true;
@@ -277,7 +57,7 @@ const init = async () => {
         },
     };
 
-    const ui = setupUI(callbacks);
+    const ui = new UIManager(callbacks);
 
     visualizer.onTourChange = (enabled) => {
         ui.els.tourToggle.checked = enabled;
@@ -286,39 +66,7 @@ const init = async () => {
     player.isLooping = ui.els.loopToggle.checked;
 
     const updateMetricsUI = (summary, fileName) => {
-        ui.els.appTitle.textContent = summary.title ? summary.title : fileName;
-
-        ui.els.vCountEl.textContent = summary.vertices;
-        ui.els.eCountEl.textContent = summary.edges;
-
-        Object.keys(ui.els.metricEls).forEach((key) => {
-            if (key === 'intervalBars') return;
-            if (ui.els.metricEls[key])
-                ui.els.metricEls[key].textContent = summary[key];
-        });
-
-        summary.embedding.forEach((val, i) => {
-            const percentage = Math.round(parseFloat(val) * 100);
-            const bar = ui.els.metricEls.intervalBars[i];
-            if (bar) {
-                bar.style.height = `${percentage}%`;
-                bar.title = `${Utils.INTERVAL_NAMES[i]}: ${percentage}%`;
-                bar.setAttribute('aria-valuenow', percentage);
-                bar.setAttribute('aria-valuetext', `${percentage}%`);
-            }
-        });
-
-        if (isIncrementalMode || window.innerWidth <= 768) {
-            ui.els.infoPanel.classList.add('hidden');
-            ui.els.statsToggle.checked = false;
-        } else {
-            ui.els.infoPanel.classList.remove('hidden');
-            ui.els.statsToggle.checked = true;
-        }
-        ui.els.statsToggle.setAttribute(
-            'aria-expanded',
-            ui.els.statsToggle.checked,
-        );
+        ui.updateMetrics(summary, fileName, isIncrementalMode);
     };
 
     ui.els.uploadInput.disabled = true;
@@ -339,6 +87,19 @@ const init = async () => {
                 return;
 
             if (isIncrementalMode && !isDrums) {
+                // Mutate graph here (SRP: main.js as orchestrator)
+                if (prevNodeId && prevNodeId !== nodeId) {
+                    NetworkParser.addTransition(
+                        visualizer.graph,
+                        prevNodeId,
+                        nodeId,
+                    );
+                    NetworkParser.computeNodeDegrees(visualizer.graph);
+                } else if (nodeId) {
+                    NetworkParser.ensureNodesExist(visualizer.graph, [nodeId]);
+                    NetworkParser.computeNodeDegrees(visualizer.graph);
+                }
+
                 visualizer.addTransitionIncremental(prevNodeId, nodeId);
                 const now = performance.now();
                 if (now - lastCountUpdate > 250) {
@@ -365,40 +126,12 @@ const init = async () => {
     player.onStop = () => {
         visualizer.resetPlayingHighlights();
         if (!player.isPlaying) {
-            const hadFocus = document.activeElement === ui.els.pauseBtn;
-            ui.els.playBtn.classList.remove('hidden');
-            ui.els.pauseBtn.classList.add('hidden');
-            if (hadFocus) {
-                ui.els.playBtn.focus();
-            }
+            ui.setPlaybackUI(false);
         }
     };
 
     visualizer.onHover = (data) => {
-        if (!data) {
-            ui.els.hoverPanel.classList.add('hidden');
-            return;
-        }
-
-        ui.els.hoverPanel.classList.remove('hidden');
-
-        if (data.type === 'node') {
-            ui.els.hoverNode.classList.remove('hidden');
-            ui.els.hoverEdge.classList.add('hidden');
-            ui.els.hoverNodeId.textContent = `Node: ${data.id}`;
-            ui.els.hoverNodeDegree.textContent = data.degree;
-        } else if (data.type === 'edge') {
-            ui.els.hoverNode.classList.add('hidden');
-            ui.els.hoverEdge.classList.remove('hidden');
-            const interval = Utils.getIntervalName(
-                data.sourceId,
-                data.targetId,
-            );
-            ui.els.hoverEdgeFrom.textContent = data.sourceId;
-            ui.els.hoverEdgeTo.textContent = data.targetId;
-            ui.els.hoverEdgeInterval.textContent = interval;
-            ui.els.hoverEdgeWeight.textContent = data.weight;
-        }
+        ui.updateHoverInfo(data);
     };
 
     const updateMediaSession = (titleString, fileName) => {
@@ -437,23 +170,11 @@ const init = async () => {
         if (player.isPlaying) {
             player.pause();
             visualizer.setPaused(true);
-
-            const hadFocus = document.activeElement === ui.els.pauseBtn;
-            ui.els.playBtn.classList.remove('hidden');
-            ui.els.pauseBtn.classList.add('hidden');
-            if (hadFocus) {
-                ui.els.playBtn.focus();
-            }
+            ui.setPlaybackUI(false);
         } else {
             player.resume();
             visualizer.setPaused(false);
-
-            const hadFocus = document.activeElement === ui.els.playBtn;
-            ui.els.playBtn.classList.add('hidden');
-            ui.els.pauseBtn.classList.remove('hidden');
-            if (hadFocus) {
-                ui.els.pauseBtn.focus();
-            }
+            ui.setPlaybackUI(true);
         }
     };
 
@@ -518,15 +239,8 @@ const init = async () => {
                     visualizer.startAutoTour();
                 }
 
-                if (isAutoplayMode) {
-                    ui.els.playBtn.classList.add('hidden');
-                    ui.els.pauseBtn.classList.remove('hidden');
-                    visualizer.setPaused(false);
-                } else {
-                    ui.els.playBtn.classList.remove('hidden');
-                    ui.els.pauseBtn.classList.add('hidden');
-                    visualizer.setPaused(true);
-                }
+                ui.setPlaybackUI(isAutoplayMode);
+                visualizer.setPaused(!isAutoplayMode);
 
                 ui.hideStatus();
             } else {
@@ -552,15 +266,8 @@ const init = async () => {
                     ui.els.tourToggle.disabled = false;
                     ui.els.statsToggle.disabled = false;
 
-                    if (isAutoplayMode) {
-                        ui.els.playBtn.classList.add('hidden');
-                        ui.els.pauseBtn.classList.remove('hidden');
-                        visualizer.setPaused(false);
-                    } else {
-                        ui.els.playBtn.classList.remove('hidden');
-                        ui.els.pauseBtn.classList.add('hidden');
-                        visualizer.setPaused(true);
-                    }
+                    ui.setPlaybackUI(isAutoplayMode);
+                    visualizer.setPaused(!isAutoplayMode);
 
                     console.log(
                         'Network built successfully (in worker):',
@@ -615,7 +322,7 @@ const init = async () => {
             ui.showStatus(
                 'File is too large. Please upload a MIDI file smaller than 5MB.',
             );
-            setTimeout(ui.hideStatus, 3000);
+            setTimeout(() => ui.hideStatus(), 3000);
             return;
         }
 
@@ -635,13 +342,13 @@ const init = async () => {
                 await processMidi(arrayBuffer, fileName);
             } else {
                 ui.showStatus('Invalid or corrupted MIDI file.');
-                setTimeout(ui.hideStatus, 3000);
+                setTimeout(() => ui.hideStatus(), 3000);
             }
         } else {
             ui.showStatus(
                 'Invalid file type. Please upload a .mid or .midi file.',
             );
-            setTimeout(ui.hideStatus, 3000);
+            setTimeout(() => ui.hideStatus(), 3000);
         }
     };
 };

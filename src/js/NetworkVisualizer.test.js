@@ -28,6 +28,7 @@ vi.mock('./VisualEffectsManager.js', () => ({
         this.activeEmojis = [];
         ((this.update = vi.fn()),
             (this.showInstrumentEmoji = vi.fn()),
+            (this.enableTerminatorBackground = vi.fn()),
             (this.clear = vi.fn()));
     }),
 }));
@@ -40,6 +41,9 @@ vi.mock('three', async (importOriginal) => {
             return {
                 setSize: vi.fn(),
                 setPixelRatio: vi.fn(),
+                setClearColor: vi.fn(),
+                setRenderTarget: vi.fn(),
+                render: vi.fn(),
                 domElement: {
                     appendChild: vi.fn(),
                     getBoundingClientRect: vi.fn(() => ({
@@ -199,6 +203,10 @@ describe('NetworkVisualizer', () => {
             getContext: vi.fn(() => ({
                 fillText: vi.fn(),
                 measureText: vi.fn(() => ({ width: 10 })),
+                fillRect: vi.fn(),
+                createLinearGradient: vi.fn(() => ({
+                    addColorStop: vi.fn(),
+                })),
             })),
             style: {},
             width: 0,
@@ -512,6 +520,27 @@ describe('NetworkVisualizer', () => {
             )[1];
             resizeListener();
             expect(spy).toHaveBeenCalled();
+        });
+    });
+
+    describe('Themes', () => {
+        it('should cycle through themes', () => {
+            const initialTheme = visualizer.currentThemeName;
+            visualizer.cycleTheme();
+            expect(visualizer.currentThemeName).not.toBe(initialTheme);
+        });
+
+        it('should update highlight color when theme changes', () => {
+            visualizer.setTheme('terminator');
+            expect(visualizer.highlightColor).toBe(0x00aaff); // Electric Blue for Terminator
+        });
+
+        it('should update node materials when theme changes', () => {
+            visualizer._initSharedGeometries();
+            visualizer.setTheme('terminator');
+            expect(
+                visualizer.nodeInstancedMesh.material.metalness,
+            ).toBeGreaterThan(0.5);
         });
     });
 });

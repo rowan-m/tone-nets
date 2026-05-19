@@ -20,6 +20,7 @@ describe('UIManager', () => {
         close: vi.fn(),
         focus: vi.fn(),
         click: vi.fn(),
+        appendChild: vi.fn(),
         setAttribute: vi.fn(),
         getAttribute: vi.fn(),
         dataset: {},
@@ -37,6 +38,7 @@ describe('UIManager', () => {
             onAutoplayToggle: vi.fn(),
             onLoopToggle: vi.fn(),
             onTourToggle: vi.fn(),
+            onThemeCycle: vi.fn(),
             onTogglePlayPause: vi.fn(),
             onRestart: vi.fn(),
             onFileSelection: vi.fn(),
@@ -70,6 +72,7 @@ describe('UIManager', () => {
             app: createMockElement('app'),
             'hide-ui': createMockElement('hide-ui'),
             'show-ui': createMockElement('show-ui'),
+            'theme-btn': createMockElement('theme-btn'),
             'autoplay-toggle': createMockElement('autoplay-toggle'),
             'loop-toggle': createMockElement('loop-toggle'),
             'incremental-toggle': createMockElement('incremental-toggle'),
@@ -100,6 +103,11 @@ describe('UIManager', () => {
             querySelectorAll: vi.fn(() => mockIntervalBars),
             addEventListener: vi.fn(),
             activeElement: {},
+            createElement: vi.fn((tag) => createMockElement(tag)),
+            createTextNode: vi.fn((text) => ({
+                nodeType: 3,
+                textContent: text,
+            })),
         });
 
         vi.stubGlobal('window', {
@@ -187,6 +195,14 @@ describe('UIManager', () => {
                 mockElements['pause-btn'].classList.add,
             ).toHaveBeenCalledWith('hidden');
         });
+
+        it('should update theme button emoji', () => {
+            uiManager.setThemeUI('terminator');
+            const appendCalls =
+                mockElements['theme-btn'].appendChild.mock.calls;
+            const span = appendCalls[0][0];
+            expect(span.textContent).toContain('💀');
+        });
     });
 
     describe('Metrics Updates', () => {
@@ -273,6 +289,14 @@ describe('UIManager', () => {
             expect(
                 mockElements['info-panel'].classList.add,
             ).toHaveBeenCalledWith('hidden');
+        });
+
+        it('should handle theme cycle click', () => {
+            const clickHandler = mockElements[
+                'theme-btn'
+            ].addEventListener.mock.calls.find((c) => c[0] === 'click')[1];
+            clickHandler();
+            expect(mockCallbacks.onThemeCycle).toHaveBeenCalled();
         });
 
         it('should handle file upload change', () => {

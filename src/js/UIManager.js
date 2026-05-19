@@ -37,6 +37,7 @@ export class UIManager {
             appEl: document.getElementById('app'),
             hideUiBtn: document.getElementById('hide-ui'),
             showUiBtn: document.getElementById('show-ui'),
+            themeBtn: document.getElementById('theme-btn'),
             autoplayToggle: document.getElementById('autoplay-toggle'),
             loopToggle: document.getElementById('loop-toggle'),
             incrementalToggle: document.getElementById('incremental-toggle'),
@@ -107,6 +108,9 @@ export class UIManager {
 
         this.els.hideUiBtn.addEventListener('click', () => this.toggleUi());
         this.els.showUiBtn.addEventListener('click', () => this.toggleUi());
+        this.els.themeBtn.addEventListener('click', () =>
+            this.callbacks.onThemeCycle(),
+        );
 
         this.els.playBtn.addEventListener(
             'click',
@@ -303,6 +307,21 @@ export class UIManager {
             this.els.playBtn.classList.remove('hidden');
             this.els.pauseBtn.classList.add('hidden');
         }
+    }
+
+    setThemeUI(themeName) {
+        const emojis = {
+            default: '🎨',
+            terminator: '💀',
+        };
+        const emoji = emojis[themeName] || '🎨';
+
+        this.els.themeBtn.textContent = '';
+        const span = document.createElement('span');
+        span.setAttribute('aria-hidden', 'true');
+        span.textContent = emoji;
+        this.els.themeBtn.appendChild(span);
+        this.els.themeBtn.appendChild(document.createTextNode(' Theme'));
     }
 
     updateHoverInfo(data) {

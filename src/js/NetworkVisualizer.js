@@ -59,6 +59,30 @@ export class NetworkVisualizer {
         this.autoTour = false;
         this.autoTourTime = 0;
 
+        this.themes = {
+            default: {
+                highlightColor: 0xffe600, // Electric Yellow
+                nodeMaterial: {
+                    roughness: 0.3,
+                    metalness: 0.2,
+                    emissiveIntensity: 0.15,
+                    envMapIntensity: 0.0,
+                },
+                background: 0x000000,
+            },
+            terminator: {
+                highlightColor: 0x00aaff, // Electric Blue
+                nodeMaterial: {
+                    roughness: 0.05,
+                    metalness: 1.0,
+                    emissiveIntensity: 0.25,
+                    envMapIntensity: 1.5,
+                },
+                background: 0x110000, // Deep Red background base
+            },
+        };
+        this.currentThemeName = 'default';
+
         this._isMobile = Utils.isMobile();
         this._frameCount = 0;
 
@@ -355,6 +379,9 @@ export class NetworkVisualizer {
         // Initialize geometries if not already done
         this._initSharedGeometries();
 
+        // Ensure new materials reflect the currently active theme immediately
+        this.setTheme(this.currentThemeName);
+
         this.fitCameraToGraph();
         this.startAutoTour();
         this.startAnimationLoop();
@@ -383,15 +410,88 @@ export class NetworkVisualizer {
                 emissive: 0xffffff,
                 emissiveIntensity: 0.15, // Base glow for all nodes
             });
-            // Inject instance-based emissive modulation
+            // Inject instance-based emissive modulation and procedural reflection
             nodeMat.onBeforeCompile = (shader) => {
+                shader.uniforms.uTime = { value: 0 };
+                this.nodeShader = shader; // Save reference to update uTime in loop
+
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <common>',
+                    `
+                    #include <common>
+                    uniform float uTime;
+                    
+                    float random_fire(in vec2 st) {
+                        return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+                    }
+
+                    float noise_fire(in vec2 st) {
+                        vec2 i = floor(st);
+                        vec2 f = fract(st);
+                        float a = random_fire(i);
+                        float b = random_fire(i + vec2(1.0, 0.0));
+                        float c = random_fire(i + vec2(0.0, 1.0));
+                        float d = random_fire(i + vec2(1.0, 1.0));
+                        vec2 u = f * f * (3.0 - 2.0 * f);
+                        return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+                    }
+                    `,
+                );
+
                 shader.fragmentShader = shader.fragmentShader.replace(
                     '#include <emissivemap_fragment>',
                     `
                     #include <emissivemap_fragment>
-                    #ifdef USE_INSTANCING_COLOR
-                        totalEmissiveRadiance *= vInstanceColor.rgb;
+                    
+                    float isHighlighted = 0.0;
+                    #ifdef USE_COLOR
+                        totalEmissiveRadiance *= vColor.rgb;
+                        // Detect if the node is currently highlighted (HDR values > 2.0)
+                        isHighlighted = step(2.0, length(vColor.rgb));
                     #endif
+
+                    // Procedural Reflection Layer (only active when metalness is high)
+                    if (metalnessFactor > 0.5) {
+                        // Calculate reflection vector in VIEW space instead of world space.
+                        vec3 viewIncident = -normalize(vViewPosition);
+                        vec3 ref = reflect(viewIncident, normal);
+
+                        // Convert to equirectangular UVs
+                        float u = atan(ref.z, ref.x) / (2.0 * PI) + 0.5;
+                        float v = ref.y * 0.5 + 0.5;
+                        vec2 refUv = vec2(u, v);
+
+                        vec2 st = refUv * vec2(4.0, 2.0);
+
+                        // Flow upwards faster and sway chaotically
+                        st.y -= uTime * 1.2;
+                        st.x += sin(uTime * 0.8 + refUv.y * 4.0) * 0.2 + cos(uTime * 1.5 - refUv.y * 8.0) * 0.1;
+
+                        // Layered noise with time-based offset for internal chaos
+                        float n = noise_fire(st * 2.0) * 0.5 
+                                + noise_fire(st * 5.0 - vec2(uTime * 0.3, 0.0)) * 0.25
+                                + noise_fire(st * 10.0 + vec2(0.0, uTime * 0.6)) * 0.125;
+
+                        float grad = smoothstep(1.0, 0.1, refUv.y);
+                        float intensity = n * grad * 2.5;
+
+                        vec3 dark = vec3(0.02, 0.02, 0.02);
+                        vec3 red = vec3(0.8, 0.1, 0.0);
+                        vec3 orange = vec3(1.0, 0.5, 0.0);
+
+                        vec3 fireColor = mix(dark, red, smoothstep(0.1, 0.5, intensity));
+                        fireColor = mix(fireColor, orange, smoothstep(0.4, 0.8, intensity));
+
+                        // If the node is highlighted, we fade out the fire reflection so it doesn't wash out the pure blue highlight
+                        fireColor = mix(fireColor * 1.5, vec3(0.0), isHighlighted * 0.8);
+
+                        totalEmissiveRadiance += fireColor;
+                        
+                        #ifdef USE_COLOR
+                            // Force an intense emissive boost when highlighted to guarantee a clean, bright bloom over the dark metal
+                            totalEmissiveRadiance += vColor.rgb * isHighlighted * 0.5;
+                        #endif
+                    }
                     `,
                 );
             };
@@ -435,8 +535,8 @@ export class NetworkVisualizer {
                     '#include <emissivemap_fragment>',
                     `
                     #include <emissivemap_fragment>
-                    #ifdef USE_INSTANCING_COLOR
-                        totalEmissiveRadiance *= vInstanceColor.rgb;
+                    #ifdef USE_COLOR
+                        totalEmissiveRadiance *= vColor.rgb;
                     #endif
                     `,
                 );
@@ -666,7 +766,10 @@ export class NetworkVisualizer {
         const pitchClass = Utils.noteToSemitone(node.id) % 12;
         const hue = pitchClass / 12;
         // Use full saturation (1.0) and medium lightness (0.5) for the most vibrant, pure colors
-        const baseColor = new THREE.Color().setHSL(hue, 1.0, 0.5);
+        // In terminator theme, we want mostly chrome, so we use a very desaturated, bright base color
+        const saturation = this.currentThemeName === 'terminator' ? 0.1 : 1.0;
+        const lightness = this.currentThemeName === 'terminator' ? 0.8 : 0.5;
+        const baseColor = new THREE.Color().setHSL(hue, saturation, lightness);
 
         const scale = 3 + normDegree * 15;
         this._scratchMatrix.makeTranslation(
@@ -1072,6 +1175,9 @@ export class NetworkVisualizer {
         this._renderNodes(graph, layoutScale, maxDegree);
         this._renderEdges(graph, layoutScale, maxWeight);
 
+        // Ensure new materials reflect the currently active theme immediately
+        this.setTheme(this.currentThemeName);
+
         this.fitCameraToGraph();
 
         this.startAutoTour();
@@ -1437,6 +1543,10 @@ export class NetworkVisualizer {
             this._lastRaycastTime = time;
         }
 
+        if (this.currentThemeName === 'terminator' && this.nodeShader) {
+            this.nodeShader.uniforms.uTime.value += delta;
+        }
+
         this.effects.update(delta);
         this._updateAutoTour(delta);
         this.composer.render();
@@ -1739,6 +1849,82 @@ export class NetworkVisualizer {
 
     setPaused(paused) {
         this.isPaused = paused;
+    }
+
+    _updateThemeNodeColors(themeName) {
+        for (const [id, nodeData] of this.nodes.entries()) {
+            const pitchClass = Utils.noteToSemitone(id) % 12;
+            const hue = pitchClass / 12;
+            const saturation = themeName === 'terminator' ? 0.1 : 1.0;
+            const lightness = themeName === 'terminator' ? 0.8 : 0.5;
+
+            nodeData.baseColor.setHSL(hue, saturation, lightness);
+
+            // Only update instance color if the node is not currently highlighted
+            if (
+                nodeData.playCount === 0 &&
+                this.hoveredObject !== nodeData.mesh
+            ) {
+                if (this.nodeInstancedMesh) {
+                    this.nodeInstancedMesh.setColorAt(
+                        nodeData.instanceId,
+                        nodeData.baseColor,
+                    );
+                }
+            }
+        }
+
+        if (this.nodeInstancedMesh && this.nodeInstancedMesh.instanceColor) {
+            this.nodeInstancedMesh.instanceColor.needsUpdate = true;
+        }
+    }
+
+    setTheme(themeName) {
+        if (!this.themes[themeName]) return;
+        this.currentThemeName = themeName;
+        const theme = this.themes[themeName];
+
+        this.highlightColor = theme.highlightColor;
+        this.highlightEdgeMaterial.color.setHex(this.highlightColor);
+        this.highlightConeMaterial.color.setHex(this.highlightColor);
+
+        this._updateThemeNodeColors(themeName);
+
+        if (this.nodeInstancedMesh) {
+            this.nodeInstancedMesh.material.roughness =
+                theme.nodeMaterial.roughness;
+            this.nodeInstancedMesh.material.metalness =
+                theme.nodeMaterial.metalness;
+            this.nodeInstancedMesh.material.emissiveIntensity =
+                theme.nodeMaterial.emissiveIntensity;
+            this.nodeInstancedMesh.material.needsUpdate = true;
+        }
+
+        if (this.coneInstancedMesh) {
+            this.coneInstancedMesh.material.emissiveIntensity =
+                theme.nodeMaterial.emissiveIntensity + 0.05;
+            this.coneInstancedMesh.material.needsUpdate = true;
+        }
+
+        this.renderer.setClearColor(theme.background);
+
+        if (themeName === 'terminator') {
+            this.effects.enableTerminatorBackground(true);
+        } else {
+            this.effects.enableTerminatorBackground(false);
+        }
+
+        // Refresh existing highlights with new color
+        this.resetPlayingHighlights();
+        this._updateAllVisualScales();
+    }
+
+    cycleTheme() {
+        const themeNames = Object.keys(this.themes);
+        const currentIndex = themeNames.indexOf(this.currentThemeName);
+        const nextIndex = (currentIndex + 1) % themeNames.length;
+        this.setTheme(themeNames[nextIndex]);
+        return themeNames[nextIndex];
     }
 
     dispose() {

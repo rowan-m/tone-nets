@@ -45,6 +45,10 @@ const init = async () => {
         onRestart: () => {
             player.restart();
         },
+        onThemeCycle: () => {
+            const nextTheme = visualizer.cycleTheme();
+            ui.setThemeUI(nextTheme);
+        },
         onFileSelection: (file) => {
             handleFileSelection(file);
         },

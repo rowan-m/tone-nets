@@ -161,10 +161,10 @@ export class UIManager {
                 this.toggleUi();
             }
 
-            if (e.key === ' ' || e.key === 'Spacebar') {
+            if (e.key.toLowerCase() === 'p') {
                 if (
                     document.activeElement.tagName === 'INPUT' ||
-                    document.activeElement.tagName === 'BUTTON'
+                    document.activeElement.tagName === 'TEXTAREA'
                 ) {
                     return;
                 }

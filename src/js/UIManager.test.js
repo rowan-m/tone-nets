@@ -315,14 +315,14 @@ describe('UIManager', () => {
                 (c) => c[0] === 'keydown',
             )[1];
 
-            // Spacebar play/pause
+            // 'p' play/pause
             mockElements['play-btn'].disabled = false;
             mockCallbacks.isPlaying.mockReturnValue(false);
-            keydownHandler({ key: ' ', preventDefault: vi.fn() });
+            keydownHandler({ key: 'p', preventDefault: vi.fn() });
             expect(mockElements['play-btn'].click).toHaveBeenCalled();
 
             mockCallbacks.isPlaying.mockReturnValue(true);
-            keydownHandler({ key: 'Spacebar', preventDefault: vi.fn() });
+            keydownHandler({ key: 'P', preventDefault: vi.fn() });
             expect(mockElements['pause-btn'].click).toHaveBeenCalled();
 
             // 'h' toggle UI
@@ -478,7 +478,7 @@ describe('UIManager', () => {
             expect(mockElements['stats-toggle'].checked).toBe(false);
         });
 
-        it('should not toggle UI or play/pause if input/button is focused', () => {
+        it('should not toggle UI or play/pause if input/textarea is focused', () => {
             const keydownHandler = document.addEventListener.mock.calls.find(
                 (c) => c[0] === 'keydown',
             )[1];
@@ -489,8 +489,8 @@ describe('UIManager', () => {
             keydownHandler({ key: 'h' });
             expect(mockElements['app'].classList.toggle).not.toHaveBeenCalled();
 
-            // Space key
-            keydownHandler({ key: ' ', preventDefault: vi.fn() });
+            // 'p' key
+            keydownHandler({ key: 'p', preventDefault: vi.fn() });
             expect(mockElements['play-btn'].click).not.toHaveBeenCalled();
         });
     });

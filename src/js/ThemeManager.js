@@ -55,8 +55,6 @@ export class ThemeManager {
         const themeNames = Array.from(this.themes.keys());
         const currentIndex = themeNames.indexOf(this.currentThemeName);
         const nextIndex = (currentIndex + 1) % themeNames.length;
-        const nextThemeName = themeNames[nextIndex];
-        this.setTheme(nextThemeName);
-        return nextThemeName;
+        return themeNames[nextIndex];
     }
 }

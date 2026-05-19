@@ -1740,4 +1740,40 @@ export class NetworkVisualizer {
     setPaused(paused) {
         this.isPaused = paused;
     }
+
+    dispose() {
+        this.stopAnimationLoop();
+        this.stopAutoTour();
+
+        if (this.controls) {
+            this.controls.dispose();
+        }
+
+        if (this.renderer) {
+            this.renderer.dispose();
+            if (
+                this.renderer.domElement &&
+                this.renderer.domElement.parentElement
+            ) {
+                this.renderer.domElement.parentElement.removeChild(
+                    this.renderer.domElement,
+                );
+            }
+        }
+
+        if (this.composer) {
+            this.composer.dispose();
+        }
+
+        if (this.layout) {
+            this.layout.dispose();
+        }
+
+        this.clear();
+
+        window.removeEventListener('resize', this._onWindowResize);
+        document.removeEventListener('mousemove', this._onMouseMove);
+        document.removeEventListener('touchstart', this._onTouchStart);
+        document.removeEventListener('click', this._onClick);
+    }
 }

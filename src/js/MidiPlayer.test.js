@@ -218,6 +218,26 @@ describe('MidiPlayer', () => {
             const noteKeyE = '0-64';
             expect(player.activeNotes.get(noteKeyE)).toEqual(['C4']);
         });
+
+        it('should automatically load soundfont if not present during initialize', async () => {
+            player.sf2Buffer = null;
+            const loadSpy = vi
+                .spyOn(player, 'loadSoundfont')
+                .mockResolvedValue();
+            await player.initialize();
+            expect(loadSpy).toHaveBeenCalled();
+        });
+
+        it('should connect to raw context destination on desktop', async () => {
+            vi.spyOn(Utils, 'isMobile').mockReturnValue(false);
+            player.sf2Buffer = new ArrayBuffer(8);
+            await player.initialize();
+            // We can check if masterGain was connected to rawContext.destination
+            const { context } = await import('tone');
+            expect(player.masterGain.connect).toHaveBeenCalledWith(
+                context.rawContext.destination,
+            );
+        });
     });
 
     describe('Playback Control', () => {
@@ -240,10 +260,12 @@ describe('MidiPlayer', () => {
             expect(player.sequencer.pause).toHaveBeenCalled();
         });
 
-        it('should handle songEnded and restart if looping is enabled', () => {
+        it('should handle songEnded and restart if looping is enabled and trigger onStop', () => {
             player.isPlaying = true;
             player.isLooping = true;
             const stopAllSpy = vi.spyOn(player, '_hardResetSynth');
+            const onStop = vi.fn();
+            player.onStop = onStop;
 
             sequencerEvents['songEnded']();
 
@@ -251,6 +273,7 @@ describe('MidiPlayer', () => {
             expect(stopAllSpy).toHaveBeenCalled();
             expect(player.sequencer.play).toHaveBeenCalled();
             expect(player.isPlaying).toBe(true);
+            expect(onStop).toHaveBeenCalled();
         });
 
         it('should handle songEnded and stop if looping is disabled', () => {
@@ -357,17 +380,23 @@ describe('MidiPlayer', () => {
             expect(player.sequencer.play).toHaveBeenCalled();
         });
 
-        it('should stop and reset tracking', () => {
+        it('should stop, reset tracking and trigger onStop', () => {
+            const onStop = vi.fn();
+            player.onStop = onStop;
             player.lastNotePerChannel.set(0, 'C4');
             player.stop();
             expect(player.isPlaying).toBe(false);
             expect(player.lastNotePerChannel.size).toBe(0);
+            expect(onStop).toHaveBeenCalled();
         });
 
-        it('should restart from beginning', () => {
+        it('should restart from beginning and trigger onStop', () => {
+            const onStop = vi.fn();
+            player.onStop = onStop;
             player.sequencer.currentTime = 10;
             player.restart();
             expect(player.sequencer.currentTime).toBe(0);
+            expect(onStop).toHaveBeenCalled();
         });
 
         it('should clear existing resetTimeout', () => {

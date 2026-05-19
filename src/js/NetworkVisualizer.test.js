@@ -1,10 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
-import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js';
-import { EffectComposer } from 'postprocessing';
 import { NetworkVisualizer } from './NetworkVisualizer.js';
 import { NetworkLayout } from './NetworkLayout.js';
-import { VisualEffectsManager } from './VisualEffectsManager.js';
 import { Utils } from './Utils.js';
 
 // --- Mocks ---

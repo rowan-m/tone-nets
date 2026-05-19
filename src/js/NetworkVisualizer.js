@@ -624,8 +624,12 @@ export class NetworkVisualizer {
     }
 
     _updateAllVisualScales() {
-        this.nodes.forEach((_, id) => this._updateElementVisuals(id, 'node'));
-        this.edgeMap.forEach((_, id) => this._updateElementVisuals(id, 'edge'));
+        for (const id of this.nodes.keys()) {
+            this._updateElementVisuals(id, 'node');
+        }
+        for (const id of this.edgeMap.keys()) {
+            this._updateElementVisuals(id, 'edge');
+        }
     }
 
     _processIncrementalNode(nodeId, incrementDegree) {
@@ -1421,7 +1425,7 @@ export class NetworkVisualizer {
     _updatePositionsFromLayout() {
         if (!this.layout) return;
 
-        this.nodes.forEach((nodeData, id) => {
+        for (const [id, nodeData] of this.nodes.entries()) {
             const pos = this.layout.getNodePosition(id);
             const degree = nodeData.degree || 1;
             const normDegree = Math.min(1, degree / this.maxDegree);
@@ -1451,12 +1455,13 @@ export class NetworkVisualizer {
                 pos.y * this.layoutScale,
                 pos.z * this.layoutScale,
             );
-        });
+        }
 
         this.nodeInstancedMesh.instanceMatrix.needsUpdate = true;
         this.outlineInstancedMesh.instanceMatrix.needsUpdate = true;
 
-        this.edges.forEach((edgeData) => {
+        for (let i = 0; i < this.edges.length; i++) {
+            const edgeData = this.edges[i];
             const link = this.graph.getLink(
                 edgeData.sourceId,
                 edgeData.targetId,
@@ -1469,7 +1474,7 @@ export class NetworkVisualizer {
                     this.maxWeight,
                 );
             }
-        });
+        }
 
         this._updateAutoTourBounds();
     }
@@ -1480,11 +1485,11 @@ export class NetworkVisualizer {
             let sumX = 0,
                 sumY = 0,
                 sumZ = 0;
-            this.nodes.forEach((nodeData) => {
+            for (const nodeData of this.nodes.values()) {
                 sumX += nodeData.mesh.position.x;
                 sumY += nodeData.mesh.position.y;
                 sumZ += nodeData.mesh.position.z;
-            });
+            }
 
             this.graphCenter.set(
                 sumX / this.nodes.size,
@@ -1493,12 +1498,12 @@ export class NetworkVisualizer {
             );
 
             let maxDistSq = 0;
-            this.nodes.forEach((nodeData) => {
+            for (const nodeData of this.nodes.values()) {
                 const distSq = this.graphCenter.distanceToSquared(
                     nodeData.mesh.position,
                 );
                 if (distSq > maxDistSq) maxDistSq = distSq;
-            });
+            }
 
             let radius = Math.sqrt(maxDistSq);
             if (isNaN(radius) || radius <= 0 || !isFinite(radius)) {
@@ -1830,7 +1835,7 @@ export class NetworkVisualizer {
     }
 
     resetPlayingHighlights() {
-        this.playingNodes.forEach((nodeData) => {
+        for (const nodeData of this.playingNodes.values()) {
             nodeData.playCount = 0;
             if (this.hoveredObject !== nodeData.mesh) {
                 // Update dummy mesh for tests
@@ -1842,13 +1847,13 @@ export class NetworkVisualizer {
                     nodeData.baseColor,
                 );
             }
-        });
+        }
         if (this.nodeInstancedMesh && this.nodeInstancedMesh.instanceColor) {
             this.nodeInstancedMesh.instanceColor.needsUpdate = true;
         }
         this.playingNodes.clear();
 
-        this.playingEdges.forEach((edgeData) => {
+        for (const edgeData of this.playingEdges.values()) {
             edgeData.playCount = 0;
             const edgeId = `${edgeData.sourceId}->${edgeData.targetId}`;
             const link = this.graph.getLink(
@@ -1863,7 +1868,7 @@ export class NetworkVisualizer {
                     this.maxWeight,
                 );
             }
-        });
+        }
         this.playingEdges.clear();
     }
 

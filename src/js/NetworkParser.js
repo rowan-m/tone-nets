@@ -51,16 +51,17 @@ export class NetworkParser {
         });
 
         let totalEntropy = 0;
-        nodeStats.forEach((stats) => {
+        for (const stats of nodeStats.values()) {
             let nodeEntropy = 0;
-            stats.weights.forEach((w) => {
+            for (let i = 0; i < stats.weights.length; i++) {
+                const w = stats.weights[i];
                 const p = w / stats.weight;
                 if (p > 0) {
                     nodeEntropy -= p * Math.log2(p);
                 }
-            });
+            }
             totalEntropy += nodeEntropy;
-        });
+        }
 
         return n > 0 ? (totalEntropy / n).toFixed(4) : '0.0000';
     }
@@ -354,12 +355,14 @@ export class NetworkParser {
      */
     static rebuildGraph(serializedGraph) {
         const graph = createGraph();
-        serializedGraph.nodes.forEach((node) => {
+        for (let i = 0; i < serializedGraph.nodes.length; i++) {
+            const node = serializedGraph.nodes[i];
             graph.addNode(node.id, node.data);
-        });
-        serializedGraph.links.forEach((link) => {
+        }
+        for (let i = 0; i < serializedGraph.links.length; i++) {
+            const link = serializedGraph.links[i];
             graph.addLink(link.fromId, link.toId, link.data);
-        });
+        }
         return graph;
     }
 

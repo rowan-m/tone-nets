@@ -141,6 +141,16 @@ describe('MidiPlayer', () => {
             expect(player.sf2Buffer.byteLength).toBe(8);
         });
 
+        it('should throw error if soundfont fails to load', async () => {
+            global.fetch.mockResolvedValueOnce({
+                ok: false,
+                statusText: 'Not Found',
+            });
+            await expect(player.loadSoundfont()).rejects.toThrow(
+                'Failed to load soundfont: Not Found',
+            );
+        });
+
         it('should initialize synth and sequencer when valid buffer is present', async () => {
             player.sf2Buffer = new ArrayBuffer(8);
             await player.initialize();

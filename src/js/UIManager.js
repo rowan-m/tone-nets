@@ -152,10 +152,7 @@ export class UIManager {
             }
 
             if (e.key.toLowerCase() === 'h') {
-                if (
-                    document.activeElement.tagName === 'INPUT' ||
-                    document.activeElement.tagName === 'BUTTON'
-                ) {
+                if (document.activeElement.tagName === 'INPUT') {
                     return;
                 }
                 this.toggleUi();

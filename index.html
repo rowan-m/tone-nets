@@ -4,38 +4,53 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-        <!-- Open Graph / Facebook -->
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://tone-nets.web.app/" />
-        <meta name="title" property="og:title" content="Tone Nets" />
+        <!-- SEO and Social Metadata -->
+        <title>Tone Nets | 3D MIDI Network Visualizer</title>
         <meta
             name="description"
+            content="Explore musical structures in 3D. An interactive network science approach to MIDI analysis."
+        />
+
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://tone-nets.web.app/" />
+        <meta
+            property="og:title"
+            content="Tone Nets | 3D MIDI Network Visualizer"
+        />
+        <meta
             property="og:description"
-            content="Explore an interactive 3D visualisation of the musical complexity of MIDI files."
+            content="Map MIDI note transitions into a topological network. Explore musical complexity in 3D."
         />
         <meta
             property="og:image"
             content="https://tone-nets.web.app/tone-nets-preview.png"
         />
 
-        <!-- Twitter -->
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:url" content="https://tone-nets.web.app/" />
         <meta name="twitter:title" content="Tone Nets" />
         <meta
             name="twitter:description"
-            content="Explore an interactive 3D visualisation of the musical complexity of MIDI files."
+            content="Explore musical complexity through 3D network visualization."
         />
         <meta
             name="twitter:image"
             content="https://tone-nets.web.app/tone-nets-preview.png"
         />
         <meta name="twitter:creator" content="@rowan_m" />
+
+        <!-- Typography -->
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap"
+            rel="stylesheet"
+        />
+
         <link
             rel="icon"
             href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎵</text></svg>"
         />
-        <title>Tone Nets</title>
         <link rel="stylesheet" href="./src/css/style.css" />
     </head>
 
@@ -43,7 +58,7 @@
         <div id="app">
             <button
                 id="show-ui"
-                class="btn floating-btn hidden"
+                class="btn floating-btn"
                 title="Show Controls (H)"
                 aria-keyshortcuts="h"
             >

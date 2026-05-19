@@ -280,10 +280,119 @@ describe('NetworkVisualizer', () => {
         });
     });
 
-    describe('Interactive Highlighting', () => {
-        it('should highlight and release playing elements', () => {
+    describe('Incremental Mode & Updates', () => {
+        it('should initialize incremental mode and start autoTour', async () => {
+            const mockGraph = {
+                forEachNode: vi.fn(),
+                forEachLinkedNode: vi.fn(),
+                forEachLink: vi.fn(),
+                getNodesCount: vi.fn(() => 0),
+                getNode: vi.fn(),
+            };
+
+            visualizer.initIncremental(mockGraph);
+
+            expect(visualizer.incrementalMode).toBe(true);
+            expect(visualizer.autoTour).toBe(true);
+            expect(visualizer.graph).toBe(mockGraph);
+        });
+
+        it('should handle addTransitionIncremental for new nodes and edges', () => {
+            // Arrange
+            const mockGraph = {
+                getNode: vi.fn((id) => ({ id, data: { degree: 1 } })),
+                getLink: vi.fn(() => ({
+                    fromId: 'C4',
+                    toId: 'G4',
+                    data: { weight: 1 },
+                })),
+            };
+            visualizer.graph = mockGraph;
+            visualizer.incrementalMode = true;
+            visualizer.layout = {
+                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
+            };
+
+            // Act
+            visualizer.addTransitionIncremental('C4', 'G4');
+
+            // Assert
+            expect(visualizer.nodes.has('C4')).toBe(true);
+            expect(visualizer.nodes.has('G4')).toBe(true);
+            expect(visualizer.edgeMap.has('C4->G4')).toBe(true);
+        });
+
+        it('should schedule a global update when max metrics increase', () => {
+            vi.useFakeTimers();
+            const mockGraph = {
+                getNode: vi.fn((id) => {
+                    if (id === 'C4') return { id, data: { degree: 10 } }; // High degree
+                    return { id, data: { degree: 1 } };
+                }),
+                getLink: vi.fn(() => ({
+                    fromId: 'C4',
+                    toId: 'G4',
+                    data: { weight: 1 },
+                })),
+                getNodesCount: vi.fn(() => 2),
+            };
+            visualizer.graph = mockGraph;
+            visualizer.incrementalMode = true;
+            visualizer.layout = {
+                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
+            };
+            visualizer.maxDegree = 1;
+
+            const updateSpy = vi.spyOn(visualizer, '_updateAllVisualScales');
+
+            // Act
+            visualizer.addTransitionIncremental('C4', 'G4');
+
+            // Assert
+            expect(visualizer.maxDegree).toBe(10);
+            vi.runAllTimers();
+            expect(updateSpy).toHaveBeenCalled();
+            vi.useRealTimers();
+        });
+
+        it('should step physics in incremental mode during animate()', () => {
             // Arrange
             visualizer._initSharedGeometries();
+            visualizer.incrementalMode = true;
+            visualizer.graph = {
+                forEachLink: vi.fn(),
+                forEachNode: vi.fn(),
+            };
+            visualizer.layout = {
+                step: vi.fn(),
+                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
+            };
+            visualizer._isAnimating = true;
+            visualizer._lastFrameTime = 1000;
+
+            // Act
+            visualizer.animate(1500);
+
+            // Assert
+            expect(visualizer.layout.step).toHaveBeenCalled();
+        });
+    });
+
+    describe('Interactive Highlighting', () => {
+        it('should highlight and release playing elements including edges', () => {
+            // Arrange
+            visualizer._initSharedGeometries();
+            visualizer.graph = {
+                getLink: vi.fn(() => ({
+                    fromId: 'C4',
+                    toId: 'G4',
+                    data: { weight: 1 },
+                })),
+            };
+            visualizer.layout = {
+                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
+            };
+
             const nodeMesh = new THREE.Mesh(
                 new THREE.SphereGeometry(),
                 new THREE.MeshStandardMaterial(),
@@ -302,21 +411,54 @@ describe('NetworkVisualizer', () => {
             };
             visualizer.nodes.set('C4', nodeData);
 
+            const edgeData = {
+                line: {
+                    userData: {
+                        type: 'edge',
+                        sourceId: 'C4',
+                        targetId: 'G4',
+                        weight: 1,
+                    },
+                    material: { color: new THREE.Color(), opacity: 0.5 },
+                },
+                cone: {
+                    instanceId: 0,
+                    position: new THREE.Vector3(),
+                },
+                playCount: 0,
+                sourceId: 'C4',
+                targetId: 'G4',
+                seed: 123,
+            };
+            visualizer.edgeMap.set('C4->G4', edgeData);
+            visualizer.edgeBufferIndexMap.set('C4->G4', 0);
+
+            // Arrange G4 node data
+            const nodeDataG4 = {
+                mesh: nodeMesh.clone(),
+                playCount: 0,
+                instanceId: 1,
+                baseColor: new THREE.Color(),
+            };
+            visualizer.nodes.set('G4', nodeDataG4);
+
             // Act - Highlight
-            visualizer.highlightPlayingElement('C4', null);
+            visualizer.highlightPlayingElement('G4', 'C4');
 
             // Assert
-            expect(nodeData.playCount).toBe(1);
-            expect(visualizer.playingNodes.has(nodeData)).toBe(true);
-            expect(nodeMesh.material.emissiveIntensity).toBe(1.0);
+            expect(nodeDataG4.playCount).toBe(1);
+            expect(edgeData.playCount).toBe(1);
+            expect(visualizer.playingNodes.has(nodeDataG4)).toBe(true);
+            expect(visualizer.playingEdges.has(edgeData)).toBe(true);
 
             // Act - Release
-            visualizer.releasePlayingElement('C4', null);
+            visualizer.releasePlayingElement('G4', 'C4');
 
             // Assert
-            expect(nodeData.playCount).toBe(0);
-            expect(visualizer.playingNodes.has(nodeData)).toBe(false);
-            expect(nodeMesh.material.emissiveIntensity).toBe(0.2); // Returns to normal
+            expect(nodeDataG4.playCount).toBe(0);
+            expect(edgeData.playCount).toBe(0);
+            expect(visualizer.playingNodes.has(nodeDataG4)).toBe(false);
+            expect(visualizer.playingEdges.has(edgeData)).toBe(false);
         });
 
         it('should reset all highlights', () => {
@@ -419,6 +561,80 @@ describe('NetworkVisualizer', () => {
         });
     });
 
+    describe('Raycasting & Hover', () => {
+        it('should update hover state when intersecting a node', () => {
+            // Arrange
+            visualizer._initSharedGeometries();
+            const nodeId = 'C4';
+            const nodeData = {
+                id: nodeId,
+                instanceId: 0,
+                baseColor: new THREE.Color(1, 0, 0),
+                mesh: {
+                    userData: { type: 'node', id: nodeId },
+                    material: {
+                        emissive: new THREE.Color(),
+                        emissiveIntensity: 0.2,
+                    },
+                },
+            };
+            visualizer.nodes.set(nodeId, nodeData);
+            visualizer.instanceIdNodeMap.set(0, nodeId);
+
+            // Mock raycaster
+            visualizer.raycaster.intersectObjects = vi.fn(() => [
+                { object: visualizer.nodeInstancedMesh, instanceId: 0 },
+            ]);
+            visualizer.mouseMoved = true;
+            const hoverSpy = vi.fn();
+            visualizer.onHover = hoverSpy;
+
+            // Act
+            visualizer._performRaycast();
+
+            // Assert
+            expect(visualizer.hoveredObject).toBe(nodeData.mesh);
+            expect(hoverSpy).toHaveBeenCalledWith(nodeData.mesh.userData);
+        });
+
+        it('should update hover state when intersecting an edge', () => {
+            // Arrange
+            visualizer._initSharedGeometries();
+            const edgeId = 'C4->G4';
+            const edgeData = {
+                line: {
+                    userData: { type: 'edge', sourceId: 'C4', targetId: 'G4' },
+                },
+                sourceId: 'C4',
+                targetId: 'G4',
+            };
+            visualizer.edgeMap.set(edgeId, edgeData);
+            visualizer.instanceIdEdgeMap.set(0, edgeId);
+            visualizer.graph = {
+                getLink: vi.fn(() => ({
+                    fromId: 'C4',
+                    toId: 'G4',
+                    data: { weight: 1 },
+                })),
+            };
+            visualizer.layout = {
+                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
+            };
+
+            // Mock raycaster
+            visualizer.raycaster.intersectObjects = vi.fn(() => [
+                { object: visualizer.edgeLineSegments, index: 0 },
+            ]);
+            visualizer.mouseMoved = true;
+
+            // Act
+            visualizer._performRaycast();
+
+            // Assert
+            expect(visualizer.hoveredObject).toBe(edgeData.line);
+        });
+    });
+
     describe('Visual Feedback Delegation', () => {
         it('should delegate showInstrumentEmoji to VisualEffectsManager', () => {
             // Arrange
@@ -484,6 +700,39 @@ describe('NetworkVisualizer', () => {
             expect(visualizer.camera.up.z).toBe(0);
             expect(updateProjectionSpy).toHaveBeenCalled();
             expect(controlsUpdateSpy).toHaveBeenCalled();
+        });
+
+        it('should handle empty graph in fitCameraToGraph without crashing', () => {
+            // Arrange
+            visualizer.nodes.clear();
+
+            // Act & Assert
+            expect(() => visualizer.fitCameraToGraph()).not.toThrow();
+        });
+
+        it('should update camera and controls during autoTour in animate()', () => {
+            // Arrange
+            visualizer.nodes.set('dummy', {
+                mesh: { position: new THREE.Vector3() },
+            });
+            visualizer.graphCenter = new THREE.Vector3(0, 0, 0);
+            visualizer.graphRadius = 100;
+            visualizer.startAutoTour();
+            visualizer._isAnimating = true;
+            visualizer._lastFrameTime = 1000;
+
+            const lookAtSpy = vi.spyOn(visualizer.camera, 'lookAt');
+            const updateMatrixSpy = vi.spyOn(
+                visualizer.camera,
+                'updateProjectionMatrix',
+            );
+
+            // Act
+            visualizer.animate(1500); // 500ms delta
+
+            // Assert
+            expect(lookAtSpy).toHaveBeenCalled();
+            expect(updateMatrixSpy).toHaveBeenCalled();
         });
     });
 

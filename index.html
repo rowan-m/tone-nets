@@ -123,6 +123,7 @@
                             id="stats-toggle"
                             disabled
                             aria-controls="info-panel"
+                            aria-expanded="false"
                         />
                         <label for="stats-toggle" title="Show/Hide Statistics">
                             <span aria-hidden="true">📊</span> Stats
@@ -134,6 +135,7 @@
                             id="tour-toggle"
                             checked
                             disabled
+                            aria-expanded="true"
                         />
                         <label for="tour-toggle" title="Toggle Visual Tour">
                             <span aria-hidden="true">🎥</span> Tour
@@ -245,7 +247,7 @@
                     title="Close (Escape)"
                     aria-keyshortcuts="Escape"
                 >
-                    ×
+                    <span aria-hidden="true">×</span>
                 </button>
                 <section id="network-summary">
                     <h2>Musical complexity</h2>

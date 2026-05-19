@@ -124,6 +124,7 @@ const setupUI = (callbacks) => {
 
     els.tourToggle.addEventListener('change', (e) => {
         callbacks.onTourToggle(e.target.checked);
+        els.tourToggle.setAttribute('aria-expanded', e.target.checked);
     });
 
     els.hideUiBtn.addEventListener('click', toggleUi);
@@ -280,6 +281,7 @@ const init = async () => {
 
     visualizer.onTourChange = (enabled) => {
         ui.els.tourToggle.checked = enabled;
+        ui.els.tourToggle.setAttribute('aria-expanded', enabled);
     };
     player.isLooping = ui.els.loopToggle.checked;
 
@@ -302,6 +304,7 @@ const init = async () => {
                 bar.style.height = `${percentage}%`;
                 bar.title = `${Utils.INTERVAL_NAMES[i]}: ${percentage}%`;
                 bar.setAttribute('aria-valuenow', percentage);
+                bar.setAttribute('aria-valuetext', `${percentage}%`);
             }
         });
 

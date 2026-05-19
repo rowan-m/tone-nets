@@ -176,7 +176,7 @@
 
             <main id="canvas-container">
                 <!-- Three.js canvas will be injected here -->
-                <dialog id="status-modal">
+                <dialog id="status-modal" class="pre-loading" open>
                     <div class="spinner" aria-hidden="true"></div>
                     <p
                         id="status-modal-text"
@@ -186,47 +186,61 @@
                         Loading SoundFont (7.5MB)... Please wait.
                     </p>
                 </dialog>
+                <div id="drag-overlay" class="centered-overlay">
+                    <div class="drag-message">
+                        <span aria-hidden="true">📥</span>
+                        <p>Drop MIDI file to visualize</p>
+                    </div>
+                </div>
 
-                <div id="welcome-msg">
-                    <div id="msg-prompt">
-                        <p>
-                            Upload a MIDI file to begin the visualization or try
-                            the included
-                            <a
-                                href="#"
-                                class="example-midi"
-                                data-file="beethoven-moonlight-sonata.mid"
-                                >Beethoven's Moonlight Sonata</a
-                            >
-                            <em
-                                >(via
+                <div class="centered-overlay" id="welcome-msg-container">
+                    <div id="welcome-msg">
+                        <div id="msg-prompt">
+                            <p>
+                                Upload a MIDI file to begin the visualization or
+                                try the included
                                 <a
-                                    href="https://commons.wikimedia.org/wiki/File:Beethoven_-_Moonlight_Sonata_1st_Movement.mid"
-                                    >Wikimedia Commons</a
-                                >)</em
-                            >
-                            or
-                            <a
-                                href="#"
-                                class="example-midi"
-                                data-file="chopin-funeral-march.mid"
-                                >Chopin's Funeral March</a
-                            >
-                            <em
-                                >(via
+                                    href="#"
+                                    class="example-midi"
+                                    data-file="beethoven-moonlight-sonata.mid"
+                                    >Beethoven's Moonlight Sonata</a
+                                >
+                                <em
+                                    >(via
+                                    <a
+                                        href="https://commons.wikimedia.org/wiki/File:Beethoven_-_Moonlight_Sonata_1st_Movement.mid"
+                                        >Wikimedia Commons</a
+                                    >)</em
+                                >
+                                or
                                 <a
-                                    href="https://commons.wikimedia.org/wiki/File:Chopin_-_Funeral_March.mid"
-                                    >Wikimedia Commons</a
-                                >)</em
-                            >. You can find plenty more on
-                            <a href="https://www.vgmusic.com/" target="_blank"
-                                >Video Game Music Archive</a
-                            >
-                            and
-                            <a href="https://bitmidi.com/" target="_blank"
-                                >BitMIDI</a
-                            >.
-                        </p>
+                                    href="#"
+                                    class="example-midi"
+                                    data-file="chopin-funeral-march.mid"
+                                    >Chopin's Funeral March</a
+                                >
+                                <em
+                                    >(via
+                                    <a
+                                        href="https://commons.wikimedia.org/wiki/File:Chopin_-_Funeral_March.mid"
+                                        >Wikimedia Commons</a
+                                    >)</em
+                                >. You can find plenty more on
+                                <a
+                                    href="https://www.vgmusic.com/"
+                                    target="_blank"
+                                    >Video Game Music Archive</a
+                                >
+                                and
+                                <a href="https://bitmidi.com/" target="_blank"
+                                    >BitMIDI</a
+                                >.
+                            </p>
+                            <p class="hint">
+                                Use <kbd>P</kbd> to play/pause, <kbd>R</kbd> to
+                                reset, and <kbd>H</kbd> to hide UI.
+                            </p>
+                        </div>
                     </div>
                 </div>
             </main>

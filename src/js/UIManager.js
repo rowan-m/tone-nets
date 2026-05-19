@@ -65,7 +65,10 @@ export class UIManager {
 
     _setupListeners() {
         // Show non-dismissable status modal initially
-        this.els.statusModal.showModal();
+        // Handle initial loading state
+        if (!this.els.statusModal.open) {
+            this.els.statusModal.showModal();
+        }
         this.els.statusModal.addEventListener('cancel', (e) =>
             e.preventDefault(),
         );
@@ -250,6 +253,7 @@ export class UIManager {
     hideStatus() {
         if (this.els.statusModal.open) {
             this.els.statusModal.close();
+            this.els.statusModal.classList.remove('pre-loading');
         }
     }
 

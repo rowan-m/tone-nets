@@ -310,9 +310,15 @@ const init = async () => {
 
         if (isIncrementalMode || window.innerWidth <= 768) {
             ui.els.infoPanel.classList.add('hidden');
+            ui.els.statsToggle.checked = false;
         } else {
             ui.els.infoPanel.classList.remove('hidden');
+            ui.els.statsToggle.checked = true;
         }
+        ui.els.statsToggle.setAttribute(
+            'aria-expanded',
+            ui.els.statsToggle.checked,
+        );
     };
 
     ui.els.uploadInput.disabled = true;

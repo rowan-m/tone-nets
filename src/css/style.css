@@ -240,6 +240,7 @@ a:hover {
     backdrop-filter: blur(10px);
     width: 240px;
     transition: opacity 0.5s;
+    z-index: 20;
 }
 
 #hover-panel {

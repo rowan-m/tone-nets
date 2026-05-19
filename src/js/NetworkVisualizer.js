@@ -81,9 +81,9 @@ export class NetworkVisualizer {
         this.emojiTextureCache = new Map();
 
         // Shared colors for interpolation to avoid object churn
-        this._colorLow = new THREE.Color(0xbbbbbb);
-        this._colorMid = new THREE.Color(0xdddddd);
-        this._colorHigh = new THREE.Color(0xffffff);
+        this._colorLow = new THREE.Color(0x444444);
+        this._colorMid = new THREE.Color(0x666666);
+        this._colorHigh = new THREE.Color(0x999999);
         this._scratchColor = new THREE.Color();
 
         // Reusable vectors to minimize GC
@@ -222,9 +222,14 @@ export class NetworkVisualizer {
         });
 
         this.container.addEventListener('pointermove', (e) => {
-            const rect = this.renderer.domElement.getBoundingClientRect();
+            const rect = this.container.getBoundingClientRect();
             this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            this.mouseMoved = true;
+        });
+
+        this.container.addEventListener('pointerleave', () => {
+            this.mouse.set(-1000, -1000);
             this.mouseMoved = true;
         });
     }
@@ -747,7 +752,8 @@ export class NetworkVisualizer {
 
         const pitchClass = Utils.noteToSemitone(node.id) % 12;
         const hue = pitchClass / 12;
-        const baseColor = new THREE.Color().setHSL(hue, 1.0, 0.6);
+        // Use full saturation (1.0) and medium lightness (0.5) for the most vibrant, pure colors
+        const baseColor = new THREE.Color().setHSL(hue, 1.0, 0.5);
 
         const scale = 3 + normDegree * 15;
         this._scratchMatrix.makeTranslation(
@@ -891,7 +897,7 @@ export class NetworkVisualizer {
             if (edgeData) edgeData.line.material = this.highlightEdgeMaterial;
         } else {
             edgeColor = this._getEdgeColor(normWeight);
-            edgeOpacity = 0.2 + normWeight * 0.5;
+            edgeOpacity = 0.4 + normWeight * 0.6;
             if (edgeData)
                 edgeData.line.material = edgeData.line.userData.origMaterial;
         }
@@ -1035,7 +1041,7 @@ export class NetworkVisualizer {
         const weightBucket = Math.round(normWeight * 100);
 
         const edgeColor = this._getEdgeColor(normWeight);
-        const edgeOpacity = 0.2 + normWeight * 0.5;
+        const edgeOpacity = 0.4 + normWeight * 0.6;
 
         let coneMat = this.coneMaterialPool.get(weightBucket);
         if (!coneMat) {
@@ -1142,11 +1148,13 @@ export class NetworkVisualizer {
             const degree = (node.data && node.data.degree) || 1;
             if (degree > maxDegree) maxDegree = degree;
         });
+        this.maxDegree = maxDegree;
 
         let maxWeight = 1;
         graph.forEachLink((link) => {
             if (link.data.weight > maxWeight) maxWeight = link.data.weight;
         });
+        this.maxWeight = maxWeight;
 
         this._renderNodes(graph, layoutScale, maxDegree);
         this._renderEdges(graph, layoutScale, maxWeight);
@@ -1299,7 +1307,9 @@ export class NetworkVisualizer {
     _updateHoverState(target) {
         if (this.hoveredObject !== target) {
             if (this.hoveredObject) {
-                this._clearHoverObjectState(this.hoveredObject);
+                const prevObj = this.hoveredObject;
+                this.hoveredObject = null; // Clear it first so that redraw functions (like _getEdgeVisualProperties) know it's no longer hovered
+                this._clearHoverObjectState(prevObj);
             }
 
             this.hoveredObject = target;

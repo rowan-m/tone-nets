@@ -78,7 +78,6 @@ export class NetworkVisualizer {
         this._raycastThrottleMs = 33; // ~30fps for hover logic
 
         this.coneMaterialPool = new Map();
-        this.emojiTextureCache = new Map();
 
         // Shared colors for interpolation to avoid object churn
         this._colorLow = new THREE.Color(0x444444);
@@ -1238,38 +1237,6 @@ export class NetworkVisualizer {
                 );
             }
         }
-    }
-
-    _updateEmojis(delta) {
-        // We want to float "up" relative to the screen, which is the camera's up vector
-        this._cameraUp
-            .set(0, 1, 0)
-            .applyQuaternion(this.camera.quaternion)
-            .normalize();
-
-        const lifeStep = delta * 1.25; // Expire over ~0.8s
-        const moveStep = delta * 30; // Move ~30 units/s
-
-        for (let i = this.activeEmojis.length - 1; i >= 0; i--) {
-            const emojiData = this.activeEmojis[i];
-            emojiData.life -= lifeStep;
-
-            if (emojiData.life <= 0) {
-                this._recycleEmoji(i);
-                continue;
-            }
-
-            // Move up relative to camera view
-            emojiData.sprite.position.addScaledVector(this._cameraUp, moveStep);
-            emojiData.sprite.material.opacity = emojiData.life;
-        }
-    }
-
-    _recycleEmoji(index) {
-        const emojiData = this.activeEmojis[index];
-        this.scene.remove(emojiData.sprite);
-        this.emojiPool.push(emojiData.sprite);
-        this.activeEmojis.splice(index, 1);
     }
 
     _updateFakeLinks() {

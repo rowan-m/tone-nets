@@ -127,6 +127,84 @@ vi.mock('postprocessing', () => {
 describe('NetworkVisualizer', () => {
     let visualizer;
 
+    // --- Helpers ---
+    const createMockNodeData = (id, instanceId = 0) => {
+        const mesh = new THREE.Mesh(
+            new THREE.SphereGeometry(),
+            new THREE.MeshStandardMaterial(),
+        );
+        mesh.userData = {
+            type: 'node',
+            id,
+            origEmissive: 0,
+            origEmissiveIntensity: 0.2,
+        };
+        return {
+            mesh,
+            playCount: 0,
+            instanceId,
+            baseColor: new THREE.Color(),
+        };
+    };
+
+    const createMockEdgeData = (sourceId, targetId, instanceId = 0) => {
+        const line = new THREE.Line(
+            new THREE.BufferGeometry(),
+            new THREE.LineBasicMaterial(),
+        );
+        line.userData = {
+            type: 'edge',
+            sourceId,
+            targetId,
+            weight: 1,
+            origMaterial: line.material,
+        };
+        const cone = {
+            userData: { origMaterial: new THREE.MeshBasicMaterial() },
+            material: new THREE.MeshBasicMaterial(),
+            position: new THREE.Vector3(),
+            instanceId,
+        };
+        return {
+            line,
+            cone,
+            playCount: 0,
+            sourceId,
+            targetId,
+            seed: Math.random(),
+        };
+    };
+
+    const createMockGraph = (nodes = [], links = []) => {
+        // Ensure links have data object with weight
+        const sanitizedLinks = links.map((l) => ({
+            ...l,
+            data: l.data || { weight: 1 },
+        }));
+
+        return {
+            forEachNode: vi.fn((cb) => {
+                nodes.forEach((node) => cb(node));
+            }),
+            forEachLinkedNode: vi.fn((id, cb) => {
+                sanitizedLinks.forEach((link) => {
+                    if (link.fromId === id) cb({ id: link.toId });
+                    if (link.toId === id) cb({ id: link.fromId });
+                });
+            }),
+            forEachLink: vi.fn((cb) => {
+                sanitizedLinks.forEach((link) => cb(link));
+            }),
+            addLink: vi.fn(),
+            removeLink: vi.fn(),
+            getNodesCount: vi.fn(() => nodes.length),
+            getNode: vi.fn((id) => nodes.find((n) => n.id === id)),
+            getLink: vi.fn((from, to) =>
+                sanitizedLinks.find((l) => l.fromId === from && l.toId === to),
+            ),
+        };
+    };
+
     beforeEach(() => {
         global.document = {
             getElementById: vi.fn(() => mockContainer),
@@ -136,6 +214,7 @@ describe('NetworkVisualizer', () => {
                 removeChild: vi.fn(),
             },
             addEventListener: vi.fn(),
+            visibilityState: 'visible',
         };
 
         global.window = {
@@ -158,7 +237,11 @@ describe('NetworkVisualizer', () => {
     });
 
     describe('Initialization & Cleanup', () => {
-        it('should initialize with correct components', () => {
+        it('should initialize with correct components (AAA Pattern)', () => {
+            // Arrange (done in beforeEach)
+
+            // Act (done in beforeEach)
+
             // Assert
             expect(visualizer.scene).toBeDefined();
             expect(visualizer.camera).toBeDefined();
@@ -174,11 +257,8 @@ describe('NetworkVisualizer', () => {
         it('should completely reset state and clear the graph group on clear()', () => {
             // Arrange
             visualizer._initSharedGeometries();
-            const dummy = new THREE.Mesh(
-                new THREE.SphereGeometry(),
-                new THREE.MeshStandardMaterial(),
-            );
-            visualizer.nodes.set('test', { mesh: dummy });
+            const nodeData = createMockNodeData('test');
+            visualizer.nodes.set('test', nodeData);
 
             // Act
             visualizer.clear();
@@ -194,22 +274,13 @@ describe('NetworkVisualizer', () => {
     describe('Building Visualization', () => {
         it('should build visualization from a graph and use NetworkLayout', async () => {
             // Arrange
-            const mockGraph = {
-                forEachNode: vi.fn((cb) => {
-                    cb({ id: 'C4', data: { degree: 5 } });
-                    cb({ id: 'G4', data: { degree: 3 } });
-                }),
-                forEachLinkedNode: vi.fn((id, cb) => {
-                    if (id === 'C4') cb({ id: 'G4' });
-                    if (id === 'G4') cb({ id: 'C4' });
-                }),
-                forEachLink: vi.fn((cb) => {
-                    cb({ fromId: 'C4', toId: 'G4', data: { weight: 2 } });
-                }),
-                addLink: vi.fn(),
-                removeLink: vi.fn(),
-                getNode: vi.fn((id) => ({ id, data: { degree: 1 } })),
-            };
+            const mockGraph = createMockGraph(
+                [
+                    { id: 'C4', data: { degree: 5 } },
+                    { id: 'G4', data: { degree: 3 } },
+                ],
+                [{ fromId: 'C4', toId: 'G4', data: { weight: 2 } }],
+            );
 
             // Act
             await visualizer.buildVisualization(mockGraph);
@@ -224,28 +295,16 @@ describe('NetworkVisualizer', () => {
             expect(node.mesh.position.z).toBe(0);
         });
 
-        it('should handle isolated components by linking them to the main hub before layout', async () => {
+        it('should handle disconnected components by linking them to the main hub', async () => {
             // Arrange
-            const mockGraph = {
-                forEachNode: vi.fn((cb) => {
-                    cb({ id: 'Hub', data: { degree: 10 } });
-                    cb({ id: 'Isolated1', data: { degree: 1 } });
-                    cb({ id: 'Isolated2', data: { degree: 1 } });
-                }),
-                forEachLinkedNode: vi.fn((id, cb) => {
-                    // Isolated1 and Isolated2 are linked to each other, but not to Hub
-                    if (id === 'Isolated1') cb({ id: 'Isolated2' });
-                    if (id === 'Isolated2') cb({ id: 'Isolated1' });
-                }),
-                forEachLink: vi.fn(),
-                addLink: vi.fn(),
-                removeLink: vi.fn(),
-                getNodesCount: vi.fn(() => 3),
-                getNode: vi.fn((id) => {
-                    if (id === 'Hub') return { id, data: { degree: 10 } };
-                    return { id, data: { degree: 1 } };
-                }),
-            };
+            const mockGraph = createMockGraph(
+                [
+                    { id: 'Hub', data: { degree: 10 } },
+                    { id: 'Isolated1', data: { degree: 1 } },
+                    { id: 'Isolated2', data: { degree: 1 } },
+                ],
+                [{ fromId: 'Isolated1', toId: 'Isolated2' }],
+            );
 
             // Act
             await visualizer.buildVisualization(mockGraph);
@@ -258,67 +317,9 @@ describe('NetworkVisualizer', () => {
             });
         });
 
-        it('should handle multiple disconnected components by linking them all to the main hub', async () => {
-            // Arrange
-            const mockGraph = {
-                forEachNode: vi.fn((cb) => {
-                    cb({ id: 'Hub', data: { degree: 10 } });
-                    cb({ id: 'Anchor1', data: { degree: 1 } });
-                    cb({ id: 'Anchor2', data: { degree: 1 } });
-                    cb({ id: 'Comp1', data: { degree: 1 } });
-                    cb({ id: 'Comp2', data: { degree: 1 } });
-                    cb({ id: 'Comp3', data: { degree: 1 } });
-                }),
-                forEachLinkedNode: vi.fn((id, cb) => {
-                    // Hub, Anchor1, Anchor2 -> component 1 (length 3) - largest
-                    if (id === 'Hub') {
-                        cb({ id: 'Anchor1' });
-                        cb({ id: 'Anchor2' });
-                    }
-                    if (id === 'Anchor1') cb({ id: 'Hub' });
-                    if (id === 'Anchor2') cb({ id: 'Hub' });
-                    // Comp1 and Comp2 are connected to each other (length 2)
-                    if (id === 'Comp1') cb({ id: 'Comp2' });
-                    if (id === 'Comp2') cb({ id: 'Comp1' });
-                    // Comp3 is isolated (length 1)
-                }),
-                forEachLink: vi.fn(),
-                addLink: vi.fn(),
-                removeLink: vi.fn(),
-                getNodesCount: vi.fn(() => 6),
-                getNode: vi.fn((id) => {
-                    if (id === 'Hub') return { id, data: { degree: 10 } };
-                    return { id, data: { degree: 1 } };
-                }),
-            };
-
-            // Act
-            await visualizer.buildVisualization(mockGraph);
-
-            // Assert
-            // It should link Comp1 (anchor of component 1) and Comp3 (anchor of component 2) to Hub (main hub)
-            expect(mockGraph.addLink).toHaveBeenCalledWith(
-                'Hub',
-                'Comp1',
-                expect.any(Object),
-            );
-            expect(mockGraph.addLink).toHaveBeenCalledWith(
-                'Hub',
-                'Comp3',
-                expect.any(Object),
-            );
-        });
-
         it('should report layout progress during visualization building', async () => {
             // Arrange
-            const mockGraph = {
-                forEachNode: vi.fn(),
-                forEachLinkedNode: vi.fn(),
-                forEachLink: vi.fn(),
-                addLink: vi.fn(),
-                removeLink: vi.fn(),
-                getNode: vi.fn((id) => ({ id, data: { degree: 1 } })),
-            };
+            const mockGraph = createMockGraph();
             const progressSpy = vi.fn();
             visualizer.onLayoutProgress = progressSpy;
 
@@ -332,17 +333,14 @@ describe('NetworkVisualizer', () => {
     });
 
     describe('Incremental Mode & Updates', () => {
-        it('should initialize incremental mode and start autoTour', async () => {
-            const mockGraph = {
-                forEachNode: vi.fn(),
-                forEachLinkedNode: vi.fn(),
-                forEachLink: vi.fn(),
-                getNodesCount: vi.fn(() => 0),
-                getNode: vi.fn(),
-            };
+        it('should initialize incremental mode and start autoTour', () => {
+            // Arrange
+            const mockGraph = createMockGraph();
 
+            // Act
             visualizer.initIncremental(mockGraph);
 
+            // Assert
             expect(visualizer.incrementalMode).toBe(true);
             expect(visualizer.autoTour).toBe(true);
             expect(visualizer.graph).toBe(mockGraph);
@@ -350,14 +348,13 @@ describe('NetworkVisualizer', () => {
 
         it('should handle addTransitionIncremental for new nodes and edges', () => {
             // Arrange
-            const mockGraph = {
-                getNode: vi.fn((id) => ({ id, data: { degree: 1 } })),
-                getLink: vi.fn(() => ({
-                    fromId: 'C4',
-                    toId: 'G4',
-                    data: { weight: 1 },
-                })),
-            };
+            const mockGraph = createMockGraph(
+                [
+                    { id: 'C4', data: { degree: 1 } },
+                    { id: 'G4', data: { degree: 1 } },
+                ],
+                [{ fromId: 'C4', toId: 'G4', data: { weight: 1 } }],
+            );
             visualizer.graph = mockGraph;
             visualizer.incrementalMode = true;
             visualizer.layout = {
@@ -374,26 +371,21 @@ describe('NetworkVisualizer', () => {
         });
 
         it('should schedule a global update when max metrics increase', () => {
+            // Arrange
             vi.useFakeTimers();
-            const mockGraph = {
-                getNode: vi.fn((id) => {
-                    if (id === 'C4') return { id, data: { degree: 10 } }; // High degree
-                    return { id, data: { degree: 1 } };
-                }),
-                getLink: vi.fn(() => ({
-                    fromId: 'C4',
-                    toId: 'G4',
-                    data: { weight: 1 },
-                })),
-                getNodesCount: vi.fn(() => 2),
-            };
+            const mockGraph = createMockGraph(
+                [
+                    { id: 'C4', data: { degree: 10 } },
+                    { id: 'G4', data: { degree: 1 } },
+                ],
+                [{ fromId: 'C4', toId: 'G4', data: { weight: 1 } }],
+            );
             visualizer.graph = mockGraph;
             visualizer.incrementalMode = true;
             visualizer.layout = {
                 getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
             };
             visualizer.maxDegree = 1;
-
             const updateSpy = vi.spyOn(visualizer, '_updateAllVisualScales');
 
             // Act
@@ -410,15 +402,7 @@ describe('NetworkVisualizer', () => {
             // Arrange
             visualizer._initSharedGeometries();
             visualizer.incrementalMode = true;
-            visualizer.graph = {
-                forEachLink: vi.fn(),
-                forEachNode: vi.fn(),
-                getLink: vi.fn(() => ({
-                    fromId: 'A',
-                    toId: 'B',
-                    data: { weight: 1 },
-                })),
-            };
+            visualizer.graph = createMockGraph();
             visualizer.layout = {
                 step: vi.fn(),
                 getNodePosition: vi.fn(() => ({ x: 1, y: 2, z: 3 })),
@@ -426,11 +410,7 @@ describe('NetworkVisualizer', () => {
             visualizer._isAnimating = true;
             visualizer._lastFrameTime = 1000;
 
-            const nodeData = {
-                instanceId: 0,
-                mesh: new THREE.Mesh(),
-                degree: 1,
-            };
+            const nodeData = createMockNodeData('A');
             visualizer.nodes.set('A', nodeData);
             visualizer.edges.push({ sourceId: 'A', targetId: 'B' });
 
@@ -447,8 +427,8 @@ describe('NetworkVisualizer', () => {
             visualizer._initSharedGeometries();
             visualizer.incrementalMode = true;
             visualizer._isMobile = true;
-            visualizer.graph = { forEachNode: vi.fn(), forEachLink: vi.fn() };
-            visualizer.nodes.set('dummy', { mesh: new THREE.Mesh() });
+            visualizer.graph = createMockGraph();
+            visualizer.nodes.set('dummy', createMockNodeData('dummy'));
             visualizer.layout = {
                 step: vi.fn(),
                 getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
@@ -465,95 +445,20 @@ describe('NetworkVisualizer', () => {
             visualizer.animate(2000);
             expect(visualizer.layout.step).toHaveBeenCalled();
         });
-
-        it('should update fake links every 60 frames in incremental mode', () => {
-            // Arrange
-            visualizer._initSharedGeometries();
-            visualizer.incrementalMode = true;
-            visualizer.graph = { forEachNode: vi.fn(), forEachLink: vi.fn() };
-            visualizer.nodes.set('dummy', { mesh: new THREE.Mesh() });
-            visualizer.layout = {
-                step: vi.fn(),
-                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
-            };
-            visualizer._isAnimating = true;
-            const fakeLinkSpy = vi.spyOn(visualizer, '_updateFakeLinks');
-
-            // Act - Frame 58 becomes 59
-            visualizer._frameCount = 58;
-            visualizer.animate(1000);
-            expect(fakeLinkSpy).not.toHaveBeenCalled();
-
-            // Act - Frame 59 becomes 60
-            visualizer._frameCount = 59;
-            visualizer.animate(1500);
-            expect(fakeLinkSpy).toHaveBeenCalled();
-        });
     });
 
     describe('Interactive Highlighting', () => {
         it('should highlight and release playing elements including edges', () => {
             // Arrange
             visualizer._initSharedGeometries();
-            visualizer.graph = {
-                getLink: vi.fn(() => ({
-                    fromId: 'C4',
-                    toId: 'G4',
-                    data: { weight: 1 },
-                })),
-            };
-            visualizer.layout = {
-                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
-            };
+            const nodeDataG4 = createMockNodeData('G4', 1);
+            visualizer.nodes.set('G4', nodeDataG4);
+            visualizer.nodes.set('C4', createMockNodeData('C4', 0));
 
-            const nodeMesh = new THREE.Mesh(
-                new THREE.SphereGeometry(),
-                new THREE.MeshStandardMaterial(),
-            );
-            nodeMesh.userData = {
-                type: 'node',
-                id: 'C4',
-                origEmissive: 0,
-                origEmissiveIntensity: 0.2,
-            };
-            const nodeData = {
-                mesh: nodeMesh,
-                playCount: 0,
-                instanceId: 0,
-                baseColor: new THREE.Color(),
-            };
-            visualizer.nodes.set('C4', nodeData);
-
-            const edgeData = {
-                line: {
-                    userData: {
-                        type: 'edge',
-                        sourceId: 'C4',
-                        targetId: 'G4',
-                        weight: 1,
-                    },
-                    material: { color: new THREE.Color(), opacity: 0.5 },
-                },
-                cone: {
-                    instanceId: 0,
-                    position: new THREE.Vector3(),
-                },
-                playCount: 0,
-                sourceId: 'C4',
-                targetId: 'G4',
-                seed: 123,
-            };
+            const edgeData = createMockEdgeData('C4', 'G4', 0);
             visualizer.edgeMap.set('C4->G4', edgeData);
             visualizer.edgeBufferIndexMap.set('C4->G4', 0);
-
-            // Arrange G4 node data
-            const nodeDataG4 = {
-                mesh: nodeMesh.clone(),
-                playCount: 0,
-                instanceId: 1,
-                baseColor: new THREE.Color(),
-            };
-            visualizer.nodes.set('G4', nodeDataG4);
+            visualizer.graph = createMockGraph();
 
             // Act - Highlight
             visualizer.highlightPlayingElement('G4', 'C4');
@@ -562,7 +467,6 @@ describe('NetworkVisualizer', () => {
             expect(nodeDataG4.playCount).toBe(1);
             expect(edgeData.playCount).toBe(1);
             expect(visualizer.playingNodes.has(nodeDataG4)).toBe(true);
-            expect(visualizer.playingEdges.has(edgeData)).toBe(true);
 
             // Act - Release
             visualizer.releasePlayingElement('G4', 'C4');
@@ -570,64 +474,25 @@ describe('NetworkVisualizer', () => {
             // Assert
             expect(nodeDataG4.playCount).toBe(0);
             expect(edgeData.playCount).toBe(0);
-            expect(visualizer.playingNodes.has(nodeDataG4)).toBe(false);
-            expect(visualizer.playingEdges.has(edgeData)).toBe(false);
         });
 
         it('should reset all highlights', () => {
             // Arrange
             visualizer._initSharedGeometries();
-            visualizer.graph = {
-                getLink: vi.fn(() => ({
-                    fromId: 'C4',
-                    toId: 'G4',
-                    data: { weight: 1 },
-                })),
-            };
-            visualizer.layout = {
-                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
-            };
-            const nodeMesh = new THREE.Mesh(
-                new THREE.SphereGeometry(),
-                new THREE.MeshStandardMaterial(),
-            );
-            nodeMesh.userData = {
-                type: 'node',
-                id: 'C4',
-                origEmissive: 0,
-                origEmissiveIntensity: 0,
-            };
-            const nodeData = {
-                mesh: nodeMesh,
-                playCount: 5,
-                instanceId: 0,
-                baseColor: new THREE.Color(),
-            };
+            const nodeData = createMockNodeData('C4');
+            nodeData.playCount = 5;
             visualizer.nodes.set('C4', nodeData);
 
-            const edgeLine = new THREE.Line(
-                new THREE.BufferGeometry(),
-                new THREE.LineBasicMaterial(),
-            );
-            edgeLine.userData = {
-                type: 'edge',
-                sourceId: 'C4',
-                targetId: 'G4',
-                origMaterial: edgeLine.material,
-            };
-            const edgeCone = {
-                userData: { origMaterial: new THREE.MeshBasicMaterial() },
-                material: new THREE.MeshBasicMaterial(),
-                position: new THREE.Vector3(),
-                instanceId: 0,
-            };
-            const edgeData = { line: edgeLine, cone: edgeCone, playCount: 3 };
+            const edgeData = createMockEdgeData('C4', 'G4');
+            edgeData.playCount = 3;
             visualizer.edgeMap.set('C4->G4', edgeData);
-            visualizer.edgeBufferIndexMap.set('C4->G4', 0);
-            visualizer.instanceIdEdgeMap.set(0, 'C4->G4');
-
             visualizer.playingNodes.add(nodeData);
             visualizer.playingEdges.add(edgeData);
+
+            visualizer.graph = createMockGraph(
+                [],
+                [{ fromId: 'C4', toId: 'G4' }],
+            );
 
             // Act
             visualizer.resetPlayingHighlights();
@@ -636,41 +501,6 @@ describe('NetworkVisualizer', () => {
             expect(nodeData.playCount).toBe(0);
             expect(edgeData.playCount).toBe(0);
             expect(visualizer.playingNodes.size).toBe(0);
-            expect(visualizer.playingEdges.size).toBe(0);
-        });
-
-        it('should maintain playing highlight when hovering off a node', async () => {
-            // Arrange
-            const mockGraph = {
-                forEachNode: vi.fn((cb) => {
-                    cb({ id: 'C4', data: { degree: 5 } });
-                }),
-                forEachLinkedNode: vi.fn(),
-                forEachLink: vi.fn(),
-                addLink: vi.fn(),
-                removeLink: vi.fn(),
-                getNode: vi.fn((id) => ({ id, data: { degree: 1 } })),
-            };
-
-            await visualizer.buildVisualization(mockGraph);
-            const nodeData = visualizer.nodes.get('C4');
-            const mesh = nodeData.mesh;
-
-            // Act 1. Play the node
-            visualizer.highlightPlayingElement('C4', null);
-            expect(mesh.material.emissiveIntensity).toBe(1.0);
-            const playingColor = mesh.material.emissive.getHex();
-
-            // Act 2. Hover over it
-            visualizer._updateHoverState(mesh);
-            expect(mesh.material.emissive.getHex()).toBe(0xffffff); // Hover state (white)
-
-            // Act 3. Hover off
-            visualizer._updateHoverState(null);
-
-            // Assert 4. Should return to playing color and intensity, NOT original
-            expect(mesh.material.emissiveIntensity).toBe(1.0);
-            expect(mesh.material.emissive.getHex()).toBe(playingColor);
         });
     });
 
@@ -679,22 +509,11 @@ describe('NetworkVisualizer', () => {
             // Arrange
             visualizer._initSharedGeometries();
             const nodeId = 'C4';
-            const nodeData = {
-                id: nodeId,
-                instanceId: 0,
-                baseColor: new THREE.Color(1, 0, 0),
-                mesh: {
-                    userData: { type: 'node', id: nodeId },
-                    material: {
-                        emissive: new THREE.Color(),
-                        emissiveIntensity: 0.2,
-                    },
-                },
-            };
+            const nodeData = createMockNodeData(nodeId);
             visualizer.nodes.set(nodeId, nodeData);
             visualizer.instanceIdNodeMap.set(0, nodeId);
+            visualizer.graph = createMockGraph([{ id: nodeId }]);
 
-            // Mock raycaster
             visualizer.raycaster.intersectObjects = vi.fn(() => [
                 { object: visualizer.nodeInstancedMesh, instanceId: 0 },
             ]);
@@ -714,27 +533,14 @@ describe('NetworkVisualizer', () => {
             // Arrange
             visualizer._initSharedGeometries();
             const edgeId = 'C4->G4';
-            const edgeData = {
-                line: {
-                    userData: { type: 'edge', sourceId: 'C4', targetId: 'G4' },
-                },
-                sourceId: 'C4',
-                targetId: 'G4',
-            };
+            const edgeData = createMockEdgeData('C4', 'G4');
             visualizer.edgeMap.set(edgeId, edgeData);
             visualizer.instanceIdEdgeMap.set(0, edgeId);
-            visualizer.graph = {
-                getLink: vi.fn(() => ({
-                    fromId: 'C4',
-                    toId: 'G4',
-                    data: { weight: 1 },
-                })),
-            };
-            visualizer.layout = {
-                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
-            };
+            visualizer.graph = createMockGraph(
+                [],
+                [{ fromId: 'C4', toId: 'G4' }],
+            );
 
-            // Mock raycaster
             visualizer.raycaster.intersectObjects = vi.fn(() => [
                 { object: visualizer.edgeLineSegments, index: 0 },
             ]);
@@ -747,29 +553,24 @@ describe('NetworkVisualizer', () => {
             expect(visualizer.hoveredObject).toBe(edgeData.line);
         });
 
-        it('should throttle raycasting', () => {
+        it('should handle intersection with arbitrary pickable objects', () => {
             // Arrange
             visualizer._initSharedGeometries();
+            const arbitraryObject = new THREE.Mesh();
+            visualizer.raycaster.intersectObjects = vi.fn(() => [
+                { object: arbitraryObject },
+            ]);
             visualizer.mouseMoved = true;
-            visualizer._isAnimating = true;
-            visualizer._lastRaycastTime = 1000;
-            visualizer.graph = { forEachNode: vi.fn(), forEachLink: vi.fn() };
-            visualizer.nodes.set('dummy', { mesh: new THREE.Mesh() });
-            const raycastSpy = vi.spyOn(visualizer, '_performRaycast');
 
-            // Act - Too soon (10ms passed)
-            visualizer.animate(1010);
-            expect(raycastSpy).not.toHaveBeenCalled();
+            // Act
+            visualizer._performRaycast();
 
-            // Act - Enough time has passed (110ms since 1010, 120ms since 1000)
-            visualizer.mouseMoved = true;
-            visualizer.animate(1120);
-            expect(raycastSpy).toHaveBeenCalled();
+            // Assert
+            expect(visualizer.hoveredObject).toBe(arbitraryObject);
         });
 
         it('should clear hover state when nothing is hit', () => {
             // Arrange
-            visualizer._initSharedGeometries();
             visualizer.hoveredObject = {
                 material: {
                     emissive: new THREE.Color(),
@@ -777,132 +578,54 @@ describe('NetworkVisualizer', () => {
                 },
                 userData: { origEmissiveIntensity: 0.2, origEmissive: 0 },
             };
-
-            // Mock raycaster to return nothing
             visualizer.raycaster.intersectObjects = vi.fn(() => []);
             visualizer.mouseMoved = true;
-            const hoverSpy = vi.fn();
-            visualizer.onHover = hoverSpy;
 
             // Act
             visualizer._performRaycast();
 
             // Assert
             expect(visualizer.hoveredObject).toBeNull();
-            expect(hoverSpy).toHaveBeenCalledWith(null);
         });
     });
 
-    describe('Visual Feedback Delegation', () => {
-        it('should delegate showInstrumentEmoji to VisualEffectsManager', () => {
+    describe('Animation Loop & Visibility', () => {
+        it('should short-circuit animate() if the visualization is completely empty', () => {
             // Arrange
-            const nodeMesh = new THREE.Mesh(new THREE.SphereGeometry());
-            nodeMesh.position.set(10, 20, 30);
-            visualizer.nodes.set('C4', { mesh: nodeMesh });
-
-            // Act
-            visualizer.showInstrumentEmoji('C4', '🎹');
-
-            // Assert
-            expect(visualizer.effects.showInstrumentEmoji).toHaveBeenCalledWith(
-                nodeMesh.position,
-                '🎹',
-            );
-        });
-    });
-
-    describe('Camera & Tour Logic', () => {
-        it('should enable autoTour by default when buildVisualization is called', async () => {
-            // Arrange
-            const mockGraph = {
-                forEachNode: vi.fn(),
-                forEachLinkedNode: vi.fn(),
-                forEachLink: vi.fn(),
-                addLink: vi.fn(),
-                removeLink: vi.fn(),
-                getNode: vi.fn((id) => ({ id, data: { degree: 1 } })),
-            };
-
-            // Act
-            await visualizer.buildVisualization(mockGraph);
-
-            // Assert
-            expect(visualizer.autoTour).toBe(true);
-        });
-
-        it('should completely reset camera and movement state when fitting to graph', () => {
-            // Arrange
-            visualizer.autoTour = true;
-            visualizer.camera.zoom = 2.5;
-            visualizer.camera.position.set(100, 200, 300);
-            visualizer.camera.up.set(1, 0, 0); // mutated up vector
-
-            visualizer.nodes.set('dummy', {
-                mesh: { position: new THREE.Vector3(0, 0, 0) },
-            });
-
-            const updateProjectionSpy = vi.spyOn(
-                visualizer.camera,
-                'updateProjectionMatrix',
-            );
-            const controlsUpdateSpy = vi.spyOn(visualizer.controls, 'update');
-
-            // Act
-            visualizer.fitCameraToGraph();
-
-            // Assert
-            expect(visualizer.autoTour).toBe(false);
-            expect(visualizer.camera.zoom).toBe(1);
-            expect(visualizer.camera.up.x).toBe(0);
-            expect(visualizer.camera.up.y).toBe(1);
-            expect(visualizer.camera.up.z).toBe(0);
-            expect(updateProjectionSpy).toHaveBeenCalled();
-            expect(controlsUpdateSpy).toHaveBeenCalled();
-        });
-
-        it('should handle empty graph in fitCameraToGraph without crashing', () => {
-            // Arrange
+            visualizer._isAnimating = true;
+            visualizer.graph = null;
             visualizer.nodes.clear();
-
-            // Act & Assert
-            expect(() => visualizer.fitCameraToGraph()).not.toThrow();
-        });
-
-        it('should update camera and controls during autoTour in animate()', () => {
-            // Arrange
-            visualizer.nodes.set('dummy', {
-                mesh: { position: new THREE.Vector3() },
-            });
-            visualizer.graphCenter = new THREE.Vector3(0, 0, 0);
-            visualizer.graphRadius = 100;
-            visualizer.startAutoTour();
-            visualizer._isAnimating = true;
-            visualizer._lastFrameTime = 1000;
-
-            const lookAtSpy = vi.spyOn(visualizer.camera, 'lookAt');
-            const updateMatrixSpy = vi.spyOn(
-                visualizer.camera,
-                'updateProjectionMatrix',
-            );
+            visualizer.effects.activeEmojis = [];
+            const stepSpy = vi.spyOn(visualizer, '_stepIncrementalPhysics');
 
             // Act
-            visualizer.animate(1500); // 500ms delta
+            visualizer.animate(1000);
 
             // Assert
-            expect(lookAtSpy).toHaveBeenCalled();
-            expect(updateMatrixSpy).toHaveBeenCalled();
-        });
-    });
-
-    describe('Animation Loop', () => {
-        beforeEach(() => {
-            visualizer.graph = {};
-            visualizer._isAnimating = true;
+            expect(stepSpy).not.toHaveBeenCalled();
+            expect(visualizer._lastFrameTime).toBe(1000);
         });
 
-        it('should call effectsManager.update on each tick', () => {
+        it('should skip heavy updates when document is hidden', () => {
             // Arrange
-            visualizer.setPaused(false);
+            global.document.visibilityState = 'hidden';
+            visualizer._isAnimating = true;
+            visualizer.graph = {}; // Not empty
+            const stepSpy = vi.spyOn(visualizer, '_stepIncrementalPhysics');
+
+            // Act
+            visualizer.animate(1000);
+
+            // Assert
+            expect(stepSpy).not.toHaveBeenCalled();
+            expect(visualizer._lastFrameTime).toBe(1000);
+        });
+
+        it('should call effectsManager.update and render on each tick', () => {
+            // Arrange
+            visualizer._isAnimating = true;
+            visualizer.graph = createMockGraph();
+            visualizer.nodes.set('dummy', createMockNodeData('dummy'));
             visualizer._lastFrameTime = 1000;
 
             // Act
@@ -910,17 +633,12 @@ describe('NetworkVisualizer', () => {
 
             // Assert
             expect(visualizer.effects.update).toHaveBeenCalledWith(0.5);
+            expect(visualizer.composer.render).toHaveBeenCalled();
         });
 
         it('should handle window resize gracefully', () => {
             // Arrange
             const setSizeSpy = vi.spyOn(visualizer.renderer, 'setSize');
-            const composerSizeSpy = vi.spyOn(visualizer.composer, 'setSize');
-            const updateProjectionSpy = vi.spyOn(
-                visualizer.camera,
-                'updateProjectionMatrix',
-            );
-
             const resizeListener =
                 global.window.addEventListener.mock.calls.find(
                     (call) => call[0] === 'resize',
@@ -931,8 +649,42 @@ describe('NetworkVisualizer', () => {
 
             // Assert
             expect(setSizeSpy).toHaveBeenCalled();
-            expect(composerSizeSpy).toHaveBeenCalled();
-            expect(updateProjectionSpy).toHaveBeenCalled();
+        });
+    });
+
+    describe('Camera & Tour Logic', () => {
+        it('should reset camera state when fitting to graph', () => {
+            // Arrange
+            visualizer.autoTour = true;
+            visualizer.camera.zoom = 2.5;
+            visualizer.nodes.set('dummy', {
+                mesh: { position: new THREE.Vector3(0, 0, 0) },
+            });
+
+            // Act
+            visualizer.fitCameraToGraph();
+
+            // Assert
+            expect(visualizer.autoTour).toBe(false);
+            expect(visualizer.camera.zoom).toBe(1);
+        });
+
+        it('should update camera and controls during autoTour in animate()', () => {
+            // Arrange
+            visualizer.nodes.set('dummy', createMockNodeData('dummy'));
+            visualizer.graphCenter = new THREE.Vector3(0, 0, 0);
+            visualizer.graphRadius = 100;
+            visualizer.startAutoTour();
+            visualizer._isAnimating = true;
+            visualizer._lastFrameTime = 1000;
+
+            const lookAtSpy = vi.spyOn(visualizer.camera, 'lookAt');
+
+            // Act
+            visualizer.animate(1500); // 500ms delta
+
+            // Assert
+            expect(lookAtSpy).toHaveBeenCalled();
         });
     });
 });

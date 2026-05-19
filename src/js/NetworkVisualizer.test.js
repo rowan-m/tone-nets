@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { NetworkVisualizer } from './NetworkVisualizer.js';
 import { NetworkLayout } from './NetworkLayout.js';
 import { Utils } from './Utils.js';
+import { DefaultTheme, TerminatorTheme } from './Themes.js';
 
 // --- Mocks ---
 
@@ -242,6 +243,9 @@ describe('NetworkVisualizer', () => {
         });
 
         visualizer = new NetworkVisualizer('visualizer-container');
+        visualizer.themeManager.registerTheme(DefaultTheme);
+        visualizer.themeManager.registerTheme(TerminatorTheme);
+        visualizer.setTheme('default');
     });
 
     afterEach(() => {

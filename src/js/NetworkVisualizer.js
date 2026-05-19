@@ -9,6 +9,7 @@ import {
 import { Utils } from './Utils.js';
 import { NetworkLayout } from './NetworkLayout.js';
 import { VisualEffectsManager } from './VisualEffectsManager.js';
+import { ThemeManager } from './ThemeManager.js';
 
 export class NetworkVisualizer {
     constructor(containerId) {
@@ -59,29 +60,8 @@ export class NetworkVisualizer {
         this.autoTour = false;
         this.autoTourTime = 0;
 
-        this.themes = {
-            default: {
-                highlightColor: 0xffe600, // Electric Yellow
-                nodeMaterial: {
-                    roughness: 0.3,
-                    metalness: 0.2,
-                    emissiveIntensity: 0.15,
-                    envMapIntensity: 0.0,
-                },
-                background: 0x000000,
-            },
-            terminator: {
-                highlightColor: 0x00aaff, // Electric Blue
-                nodeMaterial: {
-                    roughness: 0.05,
-                    metalness: 1.0,
-                    emissiveIntensity: 0.25,
-                    envMapIntensity: 1.5,
-                },
-                background: 0x110000, // Deep Red background base
-            },
-        };
-        this.currentThemeName = 'default';
+        this.themeManager = new ThemeManager();
+        this.currentThemeName = null;
 
         this._isMobile = Utils.isMobile();
         this._frameCount = 0;
@@ -764,11 +744,20 @@ export class NetworkVisualizer {
         const normDegree = Math.min(1, degree / maxDegree);
 
         const pitchClass = Utils.noteToSemitone(node.id) % 12;
-        const hue = pitchClass / 12;
-        // Use full saturation (1.0) and medium lightness (0.5) for the most vibrant, pure colors
-        // In terminator theme, we want mostly chrome, so we use a very desaturated, bright base color
-        const saturation = this.currentThemeName === 'terminator' ? 0.1 : 1.0;
-        const lightness = this.currentThemeName === 'terminator' ? 0.8 : 0.5;
+        const currentTheme = this.themeManager.getCurrentTheme();
+
+        let hue, saturation, lightness;
+        if (currentTheme && currentTheme.getNodeColor) {
+            ({ hue, saturation, lightness } = currentTheme.getNodeColor(
+                pitchClass,
+                Utils,
+            ));
+        } else {
+            hue = pitchClass / 12;
+            saturation = 1.0;
+            lightness = 0.5;
+        }
+
         const baseColor = new THREE.Color().setHSL(hue, saturation, lightness);
 
         const scale = 3 + normDegree * 15;
@@ -1851,12 +1840,22 @@ export class NetworkVisualizer {
         this.isPaused = paused;
     }
 
-    _updateThemeNodeColors(themeName) {
+    _updateThemeNodeColors() {
+        const currentTheme = this.themeManager.getCurrentTheme();
         for (const [id, nodeData] of this.nodes.entries()) {
             const pitchClass = Utils.noteToSemitone(id) % 12;
-            const hue = pitchClass / 12;
-            const saturation = themeName === 'terminator' ? 0.1 : 1.0;
-            const lightness = themeName === 'terminator' ? 0.8 : 0.5;
+            let hue, saturation, lightness;
+
+            if (currentTheme && currentTheme.getNodeColor) {
+                ({ hue, saturation, lightness } = currentTheme.getNodeColor(
+                    pitchClass,
+                    Utils,
+                ));
+            } else {
+                hue = pitchClass / 12;
+                saturation = 1.0;
+                lightness = 0.5;
+            }
 
             nodeData.baseColor.setHSL(hue, saturation, lightness);
 
@@ -1880,9 +1879,14 @@ export class NetworkVisualizer {
     }
 
     setTheme(themeName) {
-        if (!this.themes[themeName]) return;
+        const oldTheme = this.themeManager.getCurrentTheme();
+        if (oldTheme && oldTheme.onDeactivate) {
+            oldTheme.onDeactivate(this);
+        }
+
+        this.themeManager.setTheme(themeName);
         this.currentThemeName = themeName;
-        const theme = this.themes[themeName];
+        const theme = this.themeManager.getCurrentTheme();
 
         this.highlightColor = theme.highlightColor;
         this.highlightEdgeMaterial.color.setHex(this.highlightColor);
@@ -1908,10 +1912,8 @@ export class NetworkVisualizer {
 
         this.renderer.setClearColor(theme.background);
 
-        if (themeName === 'terminator') {
-            this.effects.enableTerminatorBackground(true);
-        } else {
-            this.effects.enableTerminatorBackground(false);
+        if (theme.onActivate) {
+            theme.onActivate(this);
         }
 
         // Refresh existing highlights with new color
@@ -1920,11 +1922,9 @@ export class NetworkVisualizer {
     }
 
     cycleTheme() {
-        const themeNames = Object.keys(this.themes);
-        const currentIndex = themeNames.indexOf(this.currentThemeName);
-        const nextIndex = (currentIndex + 1) % themeNames.length;
-        this.setTheme(themeNames[nextIndex]);
-        return themeNames[nextIndex];
+        const nextTheme = this.themeManager.cycleTheme();
+        this.setTheme(nextTheme);
+        return nextTheme;
     }
 
     dispose() {

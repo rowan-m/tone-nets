@@ -197,7 +197,7 @@ describe('UIManager', () => {
         });
 
         it('should update theme button emoji', () => {
-            uiManager.setThemeUI('terminator');
+            uiManager.setThemeUI({ name: 'terminator', emoji: '💀' });
             const appendCalls =
                 mockElements['theme-btn'].appendChild.mock.calls;
             const span = appendCalls[0][0];

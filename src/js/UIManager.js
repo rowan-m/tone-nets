@@ -309,12 +309,8 @@ export class UIManager {
         }
     }
 
-    setThemeUI(themeName) {
-        const emojis = {
-            default: '🎨',
-            terminator: '💀',
-        };
-        const emoji = emojis[themeName] || '🎨';
+    setThemeUI(theme) {
+        const emoji = theme.emoji || '🎨';
 
         this.els.themeBtn.textContent = '';
         const span = document.createElement('span');

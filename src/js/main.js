@@ -6,6 +6,7 @@ import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
 import createGraph from 'ngraph.graph';
 import { Utils } from './Utils.js';
+import { DefaultTheme, TerminatorTheme } from './Themes.js';
 
 console.log('Tone Nets Initialized');
 
@@ -20,6 +21,12 @@ const init = async () => {
     let isAutoplayMode = true;
 
     const visualizer = new NetworkVisualizer('canvas-container');
+
+    // Register themes
+    visualizer.themeManager.registerTheme(DefaultTheme);
+    visualizer.themeManager.registerTheme(TerminatorTheme);
+    visualizer.setTheme('default');
+
     const player = new MidiPlayer();
 
     const callbacks = {
@@ -46,7 +53,8 @@ const init = async () => {
             player.restart();
         },
         onThemeCycle: () => {
-            const nextTheme = visualizer.cycleTheme();
+            const nextThemeName = visualizer.cycleTheme();
+            const nextTheme = visualizer.themeManager.getTheme(nextThemeName);
             ui.setThemeUI(nextTheme);
         },
         onFileSelection: (file) => {

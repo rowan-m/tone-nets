@@ -65,15 +65,15 @@ export class MidiPlayer {
             // Complex MIDI files can easily exceed 200+ voices which is heavy for SF2 synthesis
             const isMobile = Utils.isMobile();
             const voiceCap = isMobile ? 64 : 128;
-            this.synth.setMasterParameter('voiceCap', voiceCap);
+            this.synth.setSystemParameter('voiceCap', voiceCap);
 
             // Dynamic allocation causes garbage collection pauses (audio crackling/corruption)
             // in the AudioWorklet thread on mobile, so we disable it there.
-            this.synth.setMasterParameter('autoAllocateVoices', !isMobile);
+            this.synth.setSystemParameter('autoAllocateVoices', !isMobile);
 
             if (isMobile) {
                 // Use linear interpolation (0) instead of higher quality ones to save CPU
-                this.synth.setMasterParameter('interpolationType', 0);
+                this.synth.setSystemParameter('interpolationType', 0);
             }
 
             // Connect synthesizer to master gain

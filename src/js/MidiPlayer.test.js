@@ -60,7 +60,7 @@ vi.mock('spessasynth_lib', () => {
             programChange: vi.fn(),
             pitchWheel: vi.fn(),
             stopAll: vi.fn(),
-            setMasterParameter: vi.fn(),
+            setSystemParameter: vi.fn(),
             getMasterParameter: vi.fn(),
         };
     });

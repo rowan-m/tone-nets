@@ -628,10 +628,7 @@ export class NetworkVisualizer {
         } else if (type === 'edge') {
             const edgeData = this.edgeMap.get(id);
             if (!edgeData) return;
-            const link = this.graph.getLink(
-                edgeData.sourceId,
-                edgeData.targetId,
-            );
+            const link = edgeData.link;
             if (link) {
                 this._updateEdgeBuffer(
                     id,
@@ -1129,6 +1126,7 @@ export class NetworkVisualizer {
             },
             sourceId: link.fromId,
             targetId: link.toId,
+            link: link,
             seed: seed,
         };
         this.edges.push(edgeData);
@@ -1262,10 +1260,7 @@ export class NetworkVisualizer {
         const edgeData = this.edgeMap.get(edgeId);
         if (!edgeData) return;
 
-        const link = this.graph.getLink(
-            obj.userData.sourceId,
-            obj.userData.targetId,
-        );
+        const link = edgeData.link;
         if (link) {
             this._updateEdgeBuffer(
                 edgeId,
@@ -1304,17 +1299,17 @@ export class NetworkVisualizer {
             }
         } else if (obj.userData.type === 'edge') {
             const edgeId = `${obj.userData.sourceId}->${obj.userData.targetId}`;
-            const link = this.graph.getLink(
-                obj.userData.sourceId,
-                obj.userData.targetId,
-            );
-            if (link) {
-                this._updateEdgeBuffer(
-                    edgeId,
-                    link,
-                    this.layoutScale,
-                    this.maxWeight,
-                );
+            const edgeData = this.edgeMap.get(edgeId);
+            if (edgeData) {
+                const link = edgeData.link;
+                if (link) {
+                    this._updateEdgeBuffer(
+                        edgeId,
+                        link,
+                        this.layoutScale,
+                        this.maxWeight,
+                    );
+                }
             }
         }
     }
@@ -1454,10 +1449,7 @@ export class NetworkVisualizer {
 
         for (let i = 0; i < this.edges.length; i++) {
             const edgeData = this.edges[i];
-            const link = this.graph.getLink(
-                edgeData.sourceId,
-                edgeData.targetId,
-            );
+            const link = edgeData.link;
             if (link) {
                 this._updateEdgeBuffer(
                     `${edgeData.sourceId}->${edgeData.targetId}`,
@@ -1711,7 +1703,7 @@ export class NetworkVisualizer {
             edgeData.playCount++;
             this.playingEdges.add(edgeData);
 
-            const link = this.graph.getLink(prevNodeId, nodeId);
+            const link = edgeData.link;
             if (link) {
                 this._updateEdgeBuffer(
                     edgeId,
@@ -1759,7 +1751,7 @@ export class NetworkVisualizer {
             edgeData.playCount--;
             if (edgeData.playCount === 0) {
                 this.playingEdges.delete(edgeData);
-                const link = this.graph.getLink(prevNodeId, nodeId);
+                const link = edgeData.link;
                 if (link) {
                     this._updateEdgeBuffer(
                         edgeId,
@@ -1799,10 +1791,7 @@ export class NetworkVisualizer {
         for (const edgeData of this.playingEdges.values()) {
             edgeData.playCount = 0;
             const edgeId = `${edgeData.sourceId}->${edgeData.targetId}`;
-            const link = this.graph.getLink(
-                edgeData.sourceId,
-                edgeData.targetId,
-            );
+            const link = edgeData.link;
             if (link) {
                 this._updateEdgeBuffer(
                     edgeId,

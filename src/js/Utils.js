@@ -55,8 +55,20 @@ export class Utils {
     };
 
     static isMobile() {
-        if (typeof navigator === 'undefined' || typeof window === 'undefined')
+        if (typeof window === 'undefined' || typeof navigator === 'undefined')
             return false;
+
+        // Modern pointer/touch detection using matchMedia
+        if (typeof window.matchMedia === 'function') {
+            const hasTouch = window.matchMedia('(pointer: coarse)').matches;
+            const isSmallScreen =
+                window.matchMedia('(max-width: 768px)').matches;
+            if (hasTouch || isSmallScreen) {
+                return true;
+            }
+        }
+
+        // Legacy/fallback checking (also crucial for unit tests using mocks)
         return (
             /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
                 navigator.userAgent,

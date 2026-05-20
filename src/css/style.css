@@ -1,23 +1,42 @@
 :root {
-    --bg-color: #050508;
-    --text-color: #f0f0f0;
-    --text-muted: #a0a0a5;
-
-    /* Neon Colors */
-    --accent-color: hsl(180, 100%, 50%); /* Neon Cyan */
-    --accent-glow: hsla(180, 100%, 50%, 0.3);
-    --accent-secondary: hsl(300, 100%, 50%); /* Neon Magenta */
-
-    /* Glassmorphism */
-    --panel-bg: rgba(15, 15, 22, 0.65);
-    --panel-border: rgba(255, 255, 255, 0.08);
-    --panel-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
-
     /* Layout */
     --radius-lg: 16px;
     --radius-md: 10px;
     --radius-sm: 6px;
     --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Default Theme (as fallback) */
+    --bg-color: #050508;
+    --text-color: #f0f0f0;
+    --text-muted: #a0a0a5;
+    --accent-color: hsl(180, 100%, 50%); /* Neon Cyan */
+    --accent-glow: hsla(180, 100%, 50%, 0.3);
+    --accent-secondary: hsl(300, 100%, 50%); /* Neon Magenta */
+    --panel-bg: rgba(15, 15, 22, 0.65);
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --panel-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+}
+
+[data-theme='default'] {
+    --bg-color: #050508;
+    --text-color: #f0f0f0;
+    --text-muted: #a0a0a5;
+    --accent-color: hsl(180, 100%, 50%);
+    --accent-glow: hsla(180, 100%, 50%, 0.3);
+    --accent-secondary: hsl(300, 100%, 50%);
+    --panel-bg: rgba(15, 15, 22, 0.65);
+    --panel-border: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme='terminator'] {
+    --bg-color: #110000;
+    --text-color: #ffe6e6;
+    --text-muted: #cfaaaa;
+    --accent-color: hsl(200, 100%, 55%); /* Bright Electric Blue */
+    --accent-glow: hsla(200, 100%, 55%, 0.3);
+    --accent-secondary: hsl(0, 100%, 50%); /* Bright Red */
+    --panel-bg: rgba(30, 5, 5, 0.75);
+    --panel-border: rgba(255, 100, 100, 0.15);
 }
 
 body,
@@ -86,6 +105,11 @@ header {
     align-items: center;
     flex-wrap: wrap;
     gap: 1.5rem;
+    transition:
+        opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+        transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+        visibility 0.3s;
+    transform: translateY(0);
 }
 
 h1 {
@@ -282,6 +306,10 @@ h1 {
     width: 260px;
     z-index: 20;
     animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+    transition:
+        opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+        transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+        visibility 0.3s;
 }
 
 #info-panel {
@@ -363,6 +391,11 @@ hr {
     display: flex;
     gap: 1.25rem;
     z-index: 10;
+    transition:
+        opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+        transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+        visibility 0.3s;
+    transform: translateY(0);
 }
 
 .app-footer a {
@@ -390,6 +423,11 @@ hr {
     text-align: center;
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
     outline: none;
+}
+
+#status-modal::backdrop {
+    background: rgba(5, 5, 8, 0.85);
+    backdrop-filter: blur(10px);
 }
 
 #status-modal.pre-loading {
@@ -434,11 +472,32 @@ hr {
     display: none;
 }
 
-#app.ui-hidden header,
-#app.ui-hidden #info-panel,
-#app.ui-hidden #hover-panel,
+#app.ui-hidden header {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-20px);
+    pointer-events: none;
+}
+
+#app.ui-hidden #info-panel {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(20px);
+    pointer-events: none;
+}
+
+#app.ui-hidden #hover-panel {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-20px);
+    pointer-events: none;
+}
+
 #app.ui-hidden .app-footer {
-    display: none;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(20px);
+    pointer-events: none;
 }
 
 .floating-btn {

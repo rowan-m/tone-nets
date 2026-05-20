@@ -70,6 +70,7 @@ const init = async () => {
     };
 
     const ui = new UIManager(callbacks);
+    ui.setThemeUI(visualizer.themeManager.getCurrentTheme());
 
     visualizer.onTourChange = (enabled) => {
         ui.els.tourToggle.checked = enabled;

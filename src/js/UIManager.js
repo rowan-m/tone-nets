@@ -330,6 +330,10 @@ export class UIManager {
         span.textContent = emoji;
         this.els.themeBtn.appendChild(span);
         this.els.themeBtn.appendChild(document.createTextNode(' Theme'));
+
+        if (typeof document !== 'undefined' && document.documentElement) {
+            document.documentElement.setAttribute('data-theme', theme.name);
+        }
     }
 
     updateHoverInfo(data) {

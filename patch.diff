@@ -1,0 +1,22 @@
+--- src/js/NetworkVisualizer.js
++++ src/js/NetworkVisualizer.js
+@@ -35,7 +35,9 @@
+         this.highlightIntensity = 12.0; // HDR multiplier for bloom. High value needed because base emissiveIntensity is ~0.15
+
+         this.nodes = new Map();
++        this.nodeList = [];
+         this.edges = [];
++        this.edgeList = [];
+         this.edgeMap = new Map();
+         this.pickableObjects = [];
+         this.hoveredObject = null;
+@@ -1134,7 +1136,9 @@
+
+     clear() {
+         this.nodes.clear();
++        this.nodeList = [];
+         this.edgeMap.clear();
++        this.edgeList = [];
+         this.edges = [];
+         this.pickableObjects = [];
+         this.hoveredObject = null;

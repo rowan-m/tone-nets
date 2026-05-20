@@ -1,0 +1,26 @@
+
+> tone-nets@0.0.1 dev /app
+> vite
+
+
+  VITE v8.0.13  ready in 264 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+10:49:21 AM [vite] (client) [optimizer] bundling dependencies...
+10:53:49 AM [vite] (client) page reload src/js/NetworkVisualizer.js
+10:55:22 AM [vite] (client) page reload src/js/NetworkVisualizer.js
+10:55:40 AM [vite] (client) page reload coverage/MidiPlayer.js.html
+10:55:40 AM [vite] (client) page reload coverage/NetworkLayout.js.html
+10:55:40 AM [vite] (client) page reload coverage/MinHeap.js.html
+10:55:40 AM [vite] (client) page reload coverage/NetworkMetrics.js.html
+10:55:40 AM [vite] (client) page reload coverage/NetworkParser.js.html
+10:55:40 AM [vite] (client) page reload coverage/NetworkVisualizer.js.html
+10:55:40 AM [vite] (client) page reload coverage/ThemeManager.js.html
+10:55:40 AM [vite] (client) page reload coverage/Themes.js.html
+10:55:40 AM [vite] (client) page reload coverage/UIManager.js.html
+10:55:40 AM [vite] (client) page reload coverage/Utils.js.html
+10:55:40 AM [vite] (client) page reload coverage/VisualEffectsManager.js.html
+10:55:40 AM [vite] (client) page reload coverage/index.html
+10:55:40 AM [vite] (client) page reload coverage/main.js.html
+10:55:40 AM [vite] (client) page reload coverage/parser.worker.js.html

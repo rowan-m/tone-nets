@@ -1,0 +1,12 @@
+--- src/js/NetworkVisualizer.js
++++ src/js/NetworkVisualizer.js
+@@ -274,7 +274,9 @@
+         this.coneMaterialPool.clear();
+
+         this.nodes.clear();
++        this.nodeList = [];
+         this.edges = [];
++        this.edgeList = [];
+         this.edgeMap.clear();
+         this.playingNodes.clear();
+         this.playingEdges.clear();

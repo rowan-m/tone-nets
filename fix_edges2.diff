@@ -1,0 +1,35 @@
+--- src/js/NetworkVisualizer.js
++++ src/js/NetworkVisualizer.js
+@@ -40,8 +40,7 @@
+         this.nodeList = [];
+         this.edges = [];
+-        this.edgeList = [];
+         this.edgeMap = new Map();
+         this.pickableObjects = [];
+         this.hoveredObject = null;
+@@ -276,8 +275,7 @@
+         this.nodeList = [];
+         this.edges = [];
+-        this.edgeList = [];
+         this.edgeMap.clear();
+         this.playingNodes.clear();
+         this.playingEdges.clear();
+@@ -647,8 +645,8 @@
+         for (let i = 0; i < this.nodeList.length; i++) {
+             this._updateElementVisuals(this.nodeList[i].id, 'node');
+         }
+-        for (let i = 0; i < this.edgeList.length; i++) {
+-            const edgeData = this.edgeList[i];
++        for (let i = 0; i < this.edges.length; i++) {
++            const edgeData = this.edges[i];
+             const edgeId = `${edgeData.sourceId}->${edgeData.targetId}`;
+             this._updateElementVisuals(edgeId, 'edge');
+         }
+@@ -1130,8 +1128,7 @@
+         };
+         this.edges.push(edgeData);
+         this.edgeMap.set(edgeId, edgeData);
+-        this.edgeList.push(edgeData);
+
+         this._updateEdgeBuffer(edgeId, link, layoutScale, maxWeight);
+     }

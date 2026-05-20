@@ -1,0 +1,37 @@
+--- src/js/NetworkVisualizer.js
++++ src/js/NetworkVisualizer.js
+@@ -1352,13 +1352,14 @@
+                 fakeLinksToRemove.push(link);
+             }
+         });
+-        fakeLinksToRemove.forEach((link) => {
++        for (let i = 0; i < fakeLinksToRemove.length; i++) {
++            const link = fakeLinksToRemove[i];
+             if (this.graph.removeLink) {
+                 this.graph.removeLink(link);
+             } else if (this.graph.removeEdge) {
+                 this.graph.removeEdge(link);
+             }
+-        });
++        }
+
+         // 2. Identify isolated components
+         const components = [];
+@@ -1393,14 +1394,15 @@
+         // 4. Find the highest degree node in the main component to act as the central anchor
+         let anchorNodeId = mainComp[0];
+         let maxDeg = -1;
+-        mainComp.forEach((nodeId) => {
++        for (let i = 0; i < mainComp.length; i++) {
++            const nodeId = mainComp[i];
+             const node = this.graph.getNode(nodeId);
+             const degree = (node.data && node.data.degree) || 0;
+             if (degree > maxDeg) {
+                 maxDeg = degree;
+                 anchorNodeId = nodeId;
+             }
+-        });
++        }
+
+         // 5. Link the isolated components to this central anchor
+         for (let i = 1; i < components.length; i++) {

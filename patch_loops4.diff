@@ -1,0 +1,12 @@
+--- src/js/NetworkVisualizer.js
++++ src/js/NetworkVisualizer.js
+@@ -1490,7 +1490,8 @@
+             );
+
+             let maxDistSq = 0;
+-            for (const nodeData of this.nodes.values()) {
++            for (let i = 0; i < this.nodeList.length; i++) {
++                const nodeData = this.nodeList[i];
+                 const distSq = this.graphCenter.distanceToSquared(
+                     nodeData.mesh.position,
+                 );

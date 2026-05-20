@@ -227,6 +227,30 @@ describe('UIManager', () => {
             expect(mockElements['metric-efficiency'].textContent).toBe(0.5);
         });
 
+        it('should truncate the app title if it is too long (over 35 characters)', () => {
+            const longSummary = {
+                ...mockSummary,
+                title: 'This is an extremely long MIDI title that will definitely overflow on mobile screens',
+            };
+            uiManager.updateMetrics(longSummary, 'short.mid', false);
+            expect(mockElements['app-title'].textContent).toBe(
+                'This is an extremely long MIDI t...',
+            );
+
+            const shortSummaryWithNoTitle = {
+                ...mockSummary,
+                title: '',
+            };
+            uiManager.updateMetrics(
+                shortSummaryWithNoTitle,
+                'extremely_long_midi_filename_fallback_test_case.mid',
+                false,
+            );
+            expect(mockElements['app-title'].textContent).toBe(
+                'extremely_long_midi_filename_fal...',
+            );
+        });
+
         it('should update interval bars', () => {
             uiManager.updateMetrics(mockSummary, 'test.mid', false);
             const bars = document.querySelectorAll();

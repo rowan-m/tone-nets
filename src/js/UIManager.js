@@ -263,9 +263,11 @@ export class UIManager {
     }
 
     updateMetrics(summary, fileName, isIncrementalMode) {
-        this.els.appTitle.textContent = summary.title
-            ? summary.title
-            : fileName;
+        let displayTitle = summary.title ? summary.title : fileName;
+        if (displayTitle && displayTitle.length > 35) {
+            displayTitle = displayTitle.slice(0, 32) + '...';
+        }
+        this.els.appTitle.textContent = displayTitle;
 
         this.els.vCountEl.textContent = summary.vertices;
         this.els.eCountEl.textContent = summary.edges;

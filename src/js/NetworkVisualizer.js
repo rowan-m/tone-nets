@@ -37,7 +37,9 @@ export class NetworkVisualizer {
         this.highlightIntensity = 12.0; // HDR multiplier for bloom. High value needed because base emissiveIntensity is ~0.15
 
         this.nodes = new Map();
+        this.nodeList = [];
         this.edges = [];
+
         this.edgeMap = new Map();
         this.pickableObjects = [];
         this.hoveredObject = null;
@@ -271,7 +273,9 @@ export class NetworkVisualizer {
         this.coneMaterialPool.clear();
 
         this.nodes.clear();
+        this.nodeList = [];
         this.edges = [];
+
         this.edgeMap.clear();
         this.playingNodes.clear();
         this.playingEdges.clear();
@@ -624,10 +628,7 @@ export class NetworkVisualizer {
         } else if (type === 'edge') {
             const edgeData = this.edgeMap.get(id);
             if (!edgeData) return;
-            const link = this.graph.getLink(
-                edgeData.sourceId,
-                edgeData.targetId,
-            );
+            const link = edgeData.link;
             if (link) {
                 this._updateEdgeBuffer(
                     id,
@@ -640,11 +641,13 @@ export class NetworkVisualizer {
     }
 
     _updateAllVisualScales() {
-        for (const id of this.nodes.keys()) {
-            this._updateElementVisuals(id, 'node');
+        for (let i = 0; i < this.nodeList.length; i++) {
+            this._updateElementVisuals(this.nodeList[i].id, 'node');
         }
-        for (const id of this.edgeMap.keys()) {
-            this._updateElementVisuals(id, 'edge');
+        for (let i = 0; i < this.edges.length; i++) {
+            const edgeData = this.edges[i];
+            const edgeId = `${edgeData.sourceId}->${edgeData.targetId}`;
+            this._updateElementVisuals(edgeId, 'edge');
         }
     }
 
@@ -808,6 +811,7 @@ export class NetworkVisualizer {
             },
         };
         this.nodes.set(node.id, nodeData);
+        this.nodeList.push(nodeData);
     }
 
     _renderNodes(graph, layoutScale, maxDegree) {
@@ -1122,6 +1126,7 @@ export class NetworkVisualizer {
             },
             sourceId: link.fromId,
             targetId: link.toId,
+            link: link,
             seed: seed,
         };
         this.edges.push(edgeData);
@@ -1255,10 +1260,7 @@ export class NetworkVisualizer {
         const edgeData = this.edgeMap.get(edgeId);
         if (!edgeData) return;
 
-        const link = this.graph.getLink(
-            obj.userData.sourceId,
-            obj.userData.targetId,
-        );
+        const link = edgeData.link;
         if (link) {
             this._updateEdgeBuffer(
                 edgeId,
@@ -1297,17 +1299,17 @@ export class NetworkVisualizer {
             }
         } else if (obj.userData.type === 'edge') {
             const edgeId = `${obj.userData.sourceId}->${obj.userData.targetId}`;
-            const link = this.graph.getLink(
-                obj.userData.sourceId,
-                obj.userData.targetId,
-            );
-            if (link) {
-                this._updateEdgeBuffer(
-                    edgeId,
-                    link,
-                    this.layoutScale,
-                    this.maxWeight,
-                );
+            const edgeData = this.edgeMap.get(edgeId);
+            if (edgeData) {
+                const link = edgeData.link;
+                if (link) {
+                    this._updateEdgeBuffer(
+                        edgeId,
+                        link,
+                        this.layoutScale,
+                        this.maxWeight,
+                    );
+                }
             }
         }
     }
@@ -1344,13 +1346,14 @@ export class NetworkVisualizer {
                 fakeLinksToRemove.push(link);
             }
         });
-        fakeLinksToRemove.forEach((link) => {
+        for (let i = 0; i < fakeLinksToRemove.length; i++) {
+            const link = fakeLinksToRemove[i];
             if (this.graph.removeLink) {
                 this.graph.removeLink(link);
             } else if (this.graph.removeEdge) {
                 this.graph.removeEdge(link);
             }
-        });
+        }
 
         // 2. Identify isolated components
         const components = [];
@@ -1385,14 +1388,15 @@ export class NetworkVisualizer {
         // 4. Find the highest degree node in the main component to act as the central anchor
         let anchorNodeId = mainComp[0];
         let maxDeg = -1;
-        mainComp.forEach((nodeId) => {
+        for (let i = 0; i < mainComp.length; i++) {
+            const nodeId = mainComp[i];
             const node = this.graph.getNode(nodeId);
             const degree = (node.data && node.data.degree) || 0;
             if (degree > maxDeg) {
                 maxDeg = degree;
                 anchorNodeId = nodeId;
             }
-        });
+        }
 
         // 5. Link the isolated components to this central anchor
         for (let i = 1; i < components.length; i++) {
@@ -1407,8 +1411,9 @@ export class NetworkVisualizer {
     _updatePositionsFromLayout() {
         if (!this.layout) return;
 
-        for (const [id, nodeData] of this.nodes.entries()) {
-            const pos = this.layout.getNodePosition(id);
+        for (let i = 0; i < this.nodeList.length; i++) {
+            const nodeData = this.nodeList[i];
+            const pos = this.layout.getNodePosition(nodeData.id);
             const degree = nodeData.degree || 1;
             const normDegree = Math.min(1, degree / this.maxDegree);
             const scale = 3 + normDegree * 15;
@@ -1444,10 +1449,7 @@ export class NetworkVisualizer {
 
         for (let i = 0; i < this.edges.length; i++) {
             const edgeData = this.edges[i];
-            const link = this.graph.getLink(
-                edgeData.sourceId,
-                edgeData.targetId,
-            );
+            const link = edgeData.link;
             if (link) {
                 this._updateEdgeBuffer(
                     `${edgeData.sourceId}->${edgeData.targetId}`,
@@ -1467,7 +1469,8 @@ export class NetworkVisualizer {
             let sumX = 0,
                 sumY = 0,
                 sumZ = 0;
-            for (const nodeData of this.nodes.values()) {
+            for (let i = 0; i < this.nodeList.length; i++) {
+                const nodeData = this.nodeList[i];
                 sumX += nodeData.mesh.position.x;
                 sumY += nodeData.mesh.position.y;
                 sumZ += nodeData.mesh.position.z;
@@ -1480,7 +1483,8 @@ export class NetworkVisualizer {
             );
 
             let maxDistSq = 0;
-            for (const nodeData of this.nodes.values()) {
+            for (let i = 0; i < this.nodeList.length; i++) {
+                const nodeData = this.nodeList[i];
                 const distSq = this.graphCenter.distanceToSquared(
                     nodeData.mesh.position,
                 );
@@ -1699,7 +1703,7 @@ export class NetworkVisualizer {
             edgeData.playCount++;
             this.playingEdges.add(edgeData);
 
-            const link = this.graph.getLink(prevNodeId, nodeId);
+            const link = edgeData.link;
             if (link) {
                 this._updateEdgeBuffer(
                     edgeId,
@@ -1747,7 +1751,7 @@ export class NetworkVisualizer {
             edgeData.playCount--;
             if (edgeData.playCount === 0) {
                 this.playingEdges.delete(edgeData);
-                const link = this.graph.getLink(prevNodeId, nodeId);
+                const link = edgeData.link;
                 if (link) {
                     this._updateEdgeBuffer(
                         edgeId,
@@ -1787,10 +1791,7 @@ export class NetworkVisualizer {
         for (const edgeData of this.playingEdges.values()) {
             edgeData.playCount = 0;
             const edgeId = `${edgeData.sourceId}->${edgeData.targetId}`;
-            const link = this.graph.getLink(
-                edgeData.sourceId,
-                edgeData.targetId,
-            );
+            const link = edgeData.link;
             if (link) {
                 this._updateEdgeBuffer(
                     edgeId,
@@ -1842,8 +1843,9 @@ export class NetworkVisualizer {
 
     _updateThemeNodeColors() {
         const currentTheme = this.themeManager.getCurrentTheme();
-        for (const [id, nodeData] of this.nodes.entries()) {
-            const pitchClass = Utils.noteToSemitone(id) % 12;
+        for (let i = 0; i < this.nodeList.length; i++) {
+            const nodeData = this.nodeList[i];
+            const pitchClass = Utils.noteToSemitone(nodeData.id) % 12;
             let hue, saturation, lightness;
 
             if (currentTheme && currentTheme.getNodeColor) {

@@ -157,6 +157,11 @@ h1 {
     outline-offset: 2px;
 }
 
+.hidden-input:disabled + .btn {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 .btn {
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--panel-border);

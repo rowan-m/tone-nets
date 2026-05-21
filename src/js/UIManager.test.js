@@ -177,6 +177,7 @@ describe('UIManager', () => {
 
     describe('Playback UI', () => {
         it('should update buttons for playing state', () => {
+            document.activeElement = mockElements['play-btn'];
             uiManager.setPlaybackUI(true);
             expect(mockElements['play-btn'].classList.add).toHaveBeenCalledWith(
                 'hidden',
@@ -184,9 +185,11 @@ describe('UIManager', () => {
             expect(
                 mockElements['pause-btn'].classList.remove,
             ).toHaveBeenCalledWith('hidden');
+            expect(mockElements['pause-btn'].focus).toHaveBeenCalled();
         });
 
         it('should update buttons for paused state', () => {
+            document.activeElement = mockElements['pause-btn'];
             uiManager.setPlaybackUI(false);
             expect(
                 mockElements['play-btn'].classList.remove,
@@ -194,6 +197,7 @@ describe('UIManager', () => {
             expect(
                 mockElements['pause-btn'].classList.add,
             ).toHaveBeenCalledWith('hidden');
+            expect(mockElements['play-btn'].focus).toHaveBeenCalled();
         });
 
         it('should update theme button emoji', () => {

@@ -304,11 +304,20 @@ export class UIManager {
 
     setPlaybackUI(isPlaying) {
         if (isPlaying) {
+            const playBtnFocused = document.activeElement === this.els.playBtn;
             this.els.playBtn.classList.add('hidden');
             this.els.pauseBtn.classList.remove('hidden');
+            if (playBtnFocused) {
+                this.els.pauseBtn.focus();
+            }
         } else {
+            const pauseBtnFocused =
+                document.activeElement === this.els.pauseBtn;
             this.els.playBtn.classList.remove('hidden');
             this.els.pauseBtn.classList.add('hidden');
+            if (pauseBtnFocused) {
+                this.els.playBtn.focus();
+            }
         }
     }
 

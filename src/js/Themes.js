@@ -7,7 +7,7 @@ export const DefaultTheme = {
         emissiveIntensity: 0.15,
         envMapIntensity: 0.0,
     },
-    background: 0x000000,
+    background: 0x050508,
     emoji: '🎨',
 };
 

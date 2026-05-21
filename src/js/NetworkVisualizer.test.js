@@ -27,10 +27,10 @@ vi.mock('./NetworkLayout.js', () => ({
 vi.mock('./VisualEffectsManager.js', () => ({
     VisualEffectsManager: vi.fn().mockImplementation(function () {
         this.activeEmojis = [];
-        ((this.update = vi.fn()),
-            (this.showInstrumentEmoji = vi.fn()),
-            (this.enableTerminatorBackground = vi.fn()),
-            (this.clear = vi.fn()));
+        this.update = vi.fn();
+        this.showInstrumentEmoji = vi.fn();
+        this.enableTerminatorBackground = vi.fn();
+        this.clear = vi.fn();
     }),
 }));
 

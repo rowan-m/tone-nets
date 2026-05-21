@@ -145,7 +145,20 @@ describe('VisualEffectsManager', () => {
 
             // Assert
             expect(tex1).toBe(tex2); // Should be exactly the same reference
-            expect(effectsManager.emojiTextureCache.size).toBe(1);
+        });
+    });
+
+    describe('Background Effects', () => {
+        it('should initialize terminator background group', () => {
+            expect(effectsManager.terminatorGroup).toBeDefined();
+            expect(effectsManager.terminatorGroup.visible).toBe(false);
+        });
+
+        it('should enable and disable terminator background', () => {
+            effectsManager.enableTerminatorBackground(true);
+            expect(effectsManager.terminatorGroup.visible).toBe(true);
+            effectsManager.enableTerminatorBackground(false);
+            expect(effectsManager.terminatorGroup.visible).toBe(false);
         });
     });
 

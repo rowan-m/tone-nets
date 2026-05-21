@@ -434,7 +434,7 @@ export class NetworkVisualizer {
                         isHighlighted = step(2.0, length(vColor.rgb));
                     #endif
 
-                    // Procedural Reflection Layer (only active when metalness is high)
+                    // Procedural Reflection Layer
                     if (metalnessFactor > 0.5) {
                         // Calculate reflection vector in VIEW space instead of world space.
                         vec3 viewIncident = -normalize(vViewPosition);
@@ -462,9 +462,11 @@ export class NetworkVisualizer {
                         vec3 dark = vec3(0.02, 0.02, 0.02);
                         vec3 red = vec3(0.8, 0.1, 0.0);
                         vec3 orange = vec3(1.0, 0.5, 0.0);
+                        vec3 gold = vec3(1.0, 0.85, 0.2);
 
                         vec3 fireColor = mix(dark, red, smoothstep(0.1, 0.5, intensity));
                         fireColor = mix(fireColor, orange, smoothstep(0.4, 0.8, intensity));
+                        fireColor = mix(fireColor, gold, smoothstep(0.7, 0.95, intensity));
 
                         // If the node is highlighted, we fade out the fire reflection so it doesn't wash out the pure blue highlight
                         fireColor = mix(fireColor * 1.5, vec3(0.0), isHighlighted * 0.8);
@@ -1536,7 +1538,7 @@ export class NetworkVisualizer {
             this._lastRaycastTime = time;
         }
 
-        if (this.currentThemeName === 'terminator' && this.nodeShader) {
+        if (this.nodeShader) {
             this.nodeShader.uniforms.uTime.value += delta;
         }
 

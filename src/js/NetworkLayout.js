@@ -1,5 +1,31 @@
 import createLayout from 'ngraph.forcelayout';
 
+function createPhysicsSettings(graph, options) {
+    return {
+        springLength: 40,
+        springCoefficient: 0.02,
+        gravity: -200,
+        theta: 0.8,
+        dragCoefficient: 0.6,
+        nodeMass: (nodeId) => {
+            const node = graph.getNode(nodeId);
+            if (!node) return 1;
+            const degree = (node.data && node.data.degree) || 1;
+            return 1 + Math.log2(degree + 1) * 5;
+        },
+        springTransform: (link, spring) => {
+            if (link.data && link.data.isFake) {
+                spring.length = 0;
+                spring.weight = 5;
+            } else {
+                spring.length = 40;
+                spring.weight = (link.data && link.data.weight) || 1;
+            }
+        },
+        ...options.physicsSettings,
+    };
+}
+
 /**
  * Manages the force-directed layout simulation for the network.
  * Separated from the visualizer to follow SRP.
@@ -9,29 +35,7 @@ export class NetworkLayout {
         this.graph = graph;
         this.layout = createLayout(graph, {
             dimensions: 3,
-            physicsSettings: {
-                springLength: 40,
-                springCoefficient: 0.02,
-                gravity: -200,
-                theta: 0.8,
-                dragCoefficient: 0.6,
-                nodeMass: (nodeId) => {
-                    const node = graph.getNode(nodeId);
-                    if (!node) return 1;
-                    const degree = (node.data && node.data.degree) || 1;
-                    return 1 + Math.log2(degree + 1) * 5;
-                },
-                springTransform: (link, spring) => {
-                    if (link.data && link.data.isFake) {
-                        spring.length = 0;
-                        spring.weight = 5;
-                    } else {
-                        spring.length = 40;
-                        spring.weight = (link.data && link.data.weight) || 1;
-                    }
-                },
-                ...options.physicsSettings,
-            },
+            physicsSettings: createPhysicsSettings(graph, options),
         });
     }
 

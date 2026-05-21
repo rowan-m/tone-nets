@@ -121,11 +121,19 @@ export class NetworkParser {
     }
 
     static ensureNodesExist(graph, nodeIds) {
+        let needsUpdate = false;
         for (let i = 0; i < nodeIds.length; i++) {
             const id = nodeIds[i];
-            if (!graph.getNode(id)) {
+            if (!graph.hasNode(id)) {
+                if (!needsUpdate) {
+                    graph.beginUpdate();
+                    needsUpdate = true;
+                }
                 graph.addNode(id, { name: id });
             }
+        }
+        if (needsUpdate) {
+            graph.endUpdate();
         }
     }
 

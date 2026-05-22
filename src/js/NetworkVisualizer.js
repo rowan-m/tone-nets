@@ -823,12 +823,17 @@ export class NetworkVisualizer {
         });
     }
 
+    static _hashCache = new Map();
+
     static _hashString(str) {
+        let cached = this._hashCache.get(str);
+        if (cached !== undefined) return cached;
         let h = 0;
         for (let i = 0; i < str.length; i++) {
             h = (h << 5) - h + str.charCodeAt(i);
             h |= 0;
         }
+        this._hashCache.set(str, h);
         return h;
     }
 

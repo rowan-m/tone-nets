@@ -493,13 +493,6 @@ hr {
     pointer-events: none;
 }
 
-#app.ui-hidden .app-footer {
-    opacity: 0;
-    visibility: hidden;
-    transform: translateY(20px);
-    pointer-events: none;
-}
-
 .floating-btn {
     display: none;
     position: absolute;

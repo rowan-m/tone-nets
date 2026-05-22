@@ -285,7 +285,6 @@ export class MidiPlayer {
     }
 
     _playDummyAudio() {
-        this.dummyAudio.currentTime = 0;
         this.dummyAudio
             .play()
             .catch((e) => console.warn('Dummy audio play failed:', e));
@@ -318,6 +317,13 @@ export class MidiPlayer {
 
         if (this._currentPlayToken !== playToken) return;
 
+        if (autoplay) {
+            // Stabilize AudioContext clock and sample rate before loading and starting sequencer.
+            // This ensures the AudioContext clock is locked and stable with the hardware sample rate.
+            await this._delay(1000);
+            if (this._currentPlayToken !== playToken) return;
+        }
+
         this._hardResetSynth();
 
         // Reset tracking
@@ -325,11 +331,34 @@ export class MidiPlayer {
         this.lastNotePerChannel.clear();
         this.activeNotes.clear();
 
+        // Setup loading promise to wait for songChange event
+        const loadPromise = new Promise((resolve) => {
+            this.sequencer.eventHandler.addEvent(
+                'songChange',
+                'midi-player-load',
+                (data) => {
+                    this.sequencer.eventHandler.removeEvent(
+                        'songChange',
+                        'midi-player-load',
+                    );
+                    resolve(data);
+                },
+            );
+        });
+
         // Load MIDI data into sequencer
         this.sequencer.loadNewSongList([
             { binary: new Uint8Array(midiBuffer) },
         ]);
 
+        await loadPromise;
+
+        if (this._currentPlayToken !== playToken) return;
+
+        this._finalizePlayback(autoplay);
+    }
+
+    _finalizePlayback(autoplay) {
         // Only update duration if sequencer has a valid one
         if (this.sequencer.duration > 0) {
             this.duration = this.sequencer.duration;
@@ -341,11 +370,6 @@ export class MidiPlayer {
 
         if (autoplay) {
             this._setMasterGainTarget(1);
-
-            // Stabilize AudioContext clock and sample rate before starting sequencer
-            await this._delay(1000);
-            if (this._currentPlayToken !== playToken) return;
-
             this.sequencer.play();
             this._playDummyAudio();
             this._setMediaSessionState('playing');
@@ -398,6 +422,10 @@ export class MidiPlayer {
 
     stop() {
         if (this.sequencer) {
+            this.sequencer.eventHandler.removeEvent(
+                'songChange',
+                'midi-player-load',
+            );
             this.sequencer.pause();
             this.sequencer.currentTime = 0;
         }

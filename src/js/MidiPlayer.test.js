@@ -68,7 +68,15 @@ vi.mock('spessasynth_lib', () => {
 
     const Sequencer = vi.fn().mockImplementation(function () {
         return {
-            loadNewSongList: vi.fn(),
+            loadNewSongList: vi.fn(function () {
+                if (sequencerEvents['songChange']) {
+                    setTimeout(() => {
+                        if (sequencerEvents['songChange']) {
+                            sequencerEvents['songChange']({ songIndex: 0 });
+                        }
+                    }, 0);
+                }
+            }),
             play: vi.fn(),
             pause: vi.fn(),
             currentTime: 0,
@@ -76,8 +84,11 @@ vi.mock('spessasynth_lib', () => {
             playbackRate: 1,
             loopCount: 0,
             eventHandler: {
-                addEvent: vi.fn((name, id, cb) => {
-                    sequencerEvents[name] = cb;
+                addEvent: vi.fn((...args) => {
+                    sequencerEvents[args[0]] = args[2];
+                }),
+                removeEvent: vi.fn((name) => {
+                    delete sequencerEvents[name];
                 }),
             },
         };

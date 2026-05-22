@@ -389,18 +389,18 @@ export class NetworkVisualizer {
 
     _initSharedGeometries() {
         if (!this.sphereGeo) {
-            const sphereSegments = 20;
+            const sphereSegments = 32;
             this.sphereGeo = new THREE.SphereGeometry(
                 1,
                 sphereSegments,
                 sphereSegments,
             );
-            this.outlineGeo = new THREE.SphereGeometry(1.08, 12, 12);
+            this.outlineGeo = new THREE.SphereGeometry(1.08, 20, 20);
             this.outlineMat = new THREE.MeshBasicMaterial({
                 color: 0x000000,
                 side: THREE.BackSide,
             });
-            this.coneGeo = new THREE.ConeGeometry(1.2, 3.5, 8);
+            this.coneGeo = new THREE.ConeGeometry(1.2, 3.5, 16);
             this.coneGeo.rotateX(Math.PI / 2);
 
             // Initialize InstancedMeshes

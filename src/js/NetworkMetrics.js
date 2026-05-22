@@ -140,7 +140,12 @@ export class NetworkMetrics {
             intervalVector[interval] += link.data.weight;
         });
 
-        const sumSq = intervalVector.reduce((a, b) => a + b * b, 0);
+        let sumSq = 0;
+        for (let i = 0; i < intervalVector.length; i++) {
+            const val = intervalVector[i];
+            sumSq += val * val;
+        }
+
         const denom = Math.sqrt(sumSq);
         return denom > 0
             ? intervalVector.map((v) => (v / denom).toFixed(4))

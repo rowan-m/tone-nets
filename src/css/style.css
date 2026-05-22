@@ -552,7 +552,8 @@ hr {
     }
 
     .app-footer {
-        display: none;
+        left: 1rem;
+        bottom: 1rem;
     }
 }
 

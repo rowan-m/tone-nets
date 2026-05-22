@@ -42,6 +42,7 @@ export class NetworkVisualizer {
 
         this.edgeMap = new Map();
         this.pickableObjects = [];
+        this._objectsToIntersect = [];
         this.hoveredObject = null;
         this.layout = null;
         this.graphGroup = new THREE.Group();
@@ -1564,39 +1565,52 @@ export class NetworkVisualizer {
         }
     }
 
-    _performRaycast() {
-        this.raycaster.setFromCamera(this.mouse, this.camera);
-
-        const objectsToIntersect = [
-            this.nodeInstancedMesh,
-            this.edgeLineSegments,
-            ...this.pickableObjects,
-        ].filter(Boolean);
-
-        const intersects = this.raycaster.intersectObjects(
-            objectsToIntersect,
-            false,
-        );
-        let target = null;
-        if (intersects.length > 0) {
-            const intersect = intersects[0];
-            if (intersect.object === this.nodeInstancedMesh) {
-                const instanceId = intersect.instanceId;
-                const nodeId = this.instanceIdNodeMap.get(instanceId);
-                const nodeData = this.nodes.get(nodeId);
-                target = nodeData ? nodeData.mesh : null;
-            } else if (intersect.object === this.edgeLineSegments) {
-                const vertexIndex = intersect.index;
-                const edgeIndex = Math.floor(
-                    vertexIndex / (this.maxEdgeSegments * 2),
-                );
-                const edgeId = this.instanceIdEdgeMap.get(edgeIndex);
-                const edgeData = this.edgeMap.get(edgeId);
-                target = edgeData ? edgeData.line : null;
-            } else {
-                target = intersect.object;
+    _populateObjectsToIntersect() {
+        this._objectsToIntersect.length = 0;
+        if (this.nodeInstancedMesh) {
+            this._objectsToIntersect.push(this.nodeInstancedMesh);
+        }
+        if (this.edgeLineSegments) {
+            this._objectsToIntersect.push(this.edgeLineSegments);
+        }
+        for (let i = 0; i < this.pickableObjects.length; i++) {
+            if (this.pickableObjects[i]) {
+                this._objectsToIntersect.push(this.pickableObjects[i]);
             }
         }
+    }
+
+    _resolveRaycastTarget(intersects) {
+        if (intersects.length === 0) return null;
+
+        const intersect = intersects[0];
+        if (intersect.object === this.nodeInstancedMesh) {
+            const instanceId = intersect.instanceId;
+            const nodeId = this.instanceIdNodeMap.get(instanceId);
+            const nodeData = this.nodes.get(nodeId);
+            return nodeData ? nodeData.mesh : null;
+        } else if (intersect.object === this.edgeLineSegments) {
+            const vertexIndex = intersect.index;
+            const edgeIndex = Math.floor(
+                vertexIndex / (this.maxEdgeSegments * 2),
+            );
+            const edgeId = this.instanceIdEdgeMap.get(edgeIndex);
+            const edgeData = this.edgeMap.get(edgeId);
+            return edgeData ? edgeData.line : null;
+        }
+        return intersect.object;
+    }
+
+    _performRaycast() {
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+        this._populateObjectsToIntersect();
+
+        const intersects = this.raycaster.intersectObjects(
+            this._objectsToIntersect,
+            false,
+        );
+
+        const target = this._resolveRaycastTarget(intersects);
 
         this._updateHoverState(target);
         this.mouseMoved = false;

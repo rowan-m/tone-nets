@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ObjectPool } from './ObjectPool.js';
 
 /**
  * Manages visual feedback like highlights and floating emojis.
@@ -9,10 +10,21 @@ export class VisualEffectsManager {
         this.scene = scene;
         this.camera = camera;
 
-        this.activeEmojis = [];
-        this.emojiPool = [];
-        this.emojiTextureCache = new Map();
         this.maxEmojis = 100;
+        this.emojiTextureCache = new Map();
+
+        this.emojiPool = new ObjectPool(
+            (emoji) => this._createEmojiSprite(emoji),
+            (item, emoji) => {
+                item.sprite.material.map = this._getEmojiTexture(emoji);
+                item.sprite.material.opacity = 1.0;
+                item.life = 1.0;
+            },
+            (item) => {
+                this.scene.remove(item.sprite);
+            },
+            this.maxEmojis,
+        );
 
         this._cameraUp = new THREE.Vector3();
 
@@ -223,12 +235,12 @@ export class VisualEffectsManager {
         const lifeStep = delta * 1.25;
         const moveStep = delta * 30;
 
-        for (let i = this.activeEmojis.length - 1; i >= 0; i--) {
-            const emojiData = this.activeEmojis[i];
+        for (let i = this.emojiPool.active.length - 1; i >= 0; i--) {
+            const emojiData = this.emojiPool.active[i];
             emojiData.life -= lifeStep;
 
             if (emojiData.life <= 0) {
-                this._recycleEmoji(i);
+                this.emojiPool.releaseIndex(i);
                 continue;
             }
 
@@ -237,34 +249,10 @@ export class VisualEffectsManager {
         }
     }
 
-    _recycleEmoji(index) {
-        const emojiData = this.activeEmojis[index];
-        this.scene.remove(emojiData.sprite);
-        this.emojiPool.push(emojiData.sprite);
-        this.activeEmojis.splice(index, 1);
-    }
-
     showInstrumentEmoji(position, emoji) {
-        if (this.activeEmojis.length >= this.maxEmojis) {
-            this._recycleEmoji(0);
-        }
-
-        let sprite;
-        if (this.emojiPool.length > 0) {
-            sprite = this.emojiPool.pop();
-            sprite.material.map = this._getEmojiTexture(emoji);
-            sprite.material.opacity = 1.0;
-        } else {
-            sprite = this._createEmojiSprite(emoji);
-        }
-
-        sprite.position.copy(position);
-
-        this.scene.add(sprite);
-        this.activeEmojis.push({
-            sprite: sprite,
-            life: 1.0,
-        });
+        const item = this.emojiPool.acquire(emoji);
+        item.sprite.position.copy(position);
+        this.scene.add(item.sprite);
     }
 
     _getEmojiTexture(emoji) {
@@ -296,19 +284,13 @@ export class VisualEffectsManager {
         });
         const sprite = new THREE.Sprite(material);
         sprite.scale.set(40, 40, 1);
-        return sprite;
+        return { sprite: sprite, life: 1.0 };
     }
 
     clear() {
-        this.activeEmojis.forEach((emojiData) => {
-            this.scene.remove(emojiData.sprite);
-            if (emojiData.sprite.material) emojiData.sprite.material.dispose();
+        this.emojiPool.clear((item) => {
+            this.scene.remove(item.sprite);
+            if (item.sprite.material) item.sprite.material.dispose();
         });
-        this.activeEmojis = [];
-
-        this.emojiPool.forEach((sprite) => {
-            if (sprite.material) sprite.material.dispose();
-        });
-        this.emojiPool = [];
     }
 }

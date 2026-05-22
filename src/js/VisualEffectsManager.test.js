@@ -44,8 +44,8 @@ describe('VisualEffectsManager', () => {
             effectsManager.showInstrumentEmoji(position, '🎹');
 
             // Assert
-            expect(effectsManager.activeEmojis.length).toBe(1);
-            const sprite = effectsManager.activeEmojis[0].sprite;
+            expect(effectsManager.emojiPool.active.length).toBe(1);
+            const sprite = effectsManager.emojiPool.active[0].sprite;
 
             expect(sprite.position.x).toBe(10);
             expect(sprite.position.y).toBe(20);
@@ -61,29 +61,29 @@ describe('VisualEffectsManager', () => {
             // Show 2 emojis
             effectsManager.showInstrumentEmoji(position, '🎹');
             effectsManager.showInstrumentEmoji(position, '🎸');
-            expect(effectsManager.activeEmojis.length).toBe(2);
+            expect(effectsManager.emojiPool.active.length).toBe(2);
 
             // Act: Force expiration
-            effectsManager.activeEmojis[0].life = 0;
-            effectsManager.activeEmojis[1].life = 0;
+            effectsManager.emojiPool.active[0].life = 0;
+            effectsManager.emojiPool.active[1].life = 0;
             effectsManager.update(1.0); // Delta forces update loop to check life
 
             // Assert
-            expect(effectsManager.activeEmojis.length).toBe(0);
-            expect(effectsManager.emojiPool.length).toBe(2);
+            expect(effectsManager.emojiPool.active.length).toBe(0);
+            expect(effectsManager.emojiPool.pool.length).toBe(2);
             expect(scene.remove).toHaveBeenCalledTimes(2);
 
             // Act: Show another emoji, should reuse from pool
             effectsManager.showInstrumentEmoji(position, '🎻');
 
             // Assert
-            expect(effectsManager.activeEmojis.length).toBe(1);
-            expect(effectsManager.emojiPool.length).toBe(1);
+            expect(effectsManager.emojiPool.active.length).toBe(1);
+            expect(effectsManager.emojiPool.pool.length).toBe(1);
         });
 
         it('should strictly limit the number of active emojis to maxEmojis (boundary condition)', () => {
             // Arrange
-            effectsManager.maxEmojis = 5; // Lower limit for testing
+            effectsManager.emojiPool.maxActive = 5; // Lower limit for testing
             const pos = new THREE.Vector3();
 
             // Act
@@ -92,7 +92,7 @@ describe('VisualEffectsManager', () => {
             }
 
             // Assert
-            expect(effectsManager.activeEmojis.length).toBe(5);
+            expect(effectsManager.emojiPool.active.length).toBe(5);
         });
     });
 
@@ -110,7 +110,7 @@ describe('VisualEffectsManager', () => {
             effectsManager.update(delta); // moveStep = 0.5 * 30 = 15
 
             // Assert
-            const sprite = effectsManager.activeEmojis[0].sprite;
+            const sprite = effectsManager.emojiPool.active[0].sprite;
             expect(sprite.position.y).toBeCloseTo(15, 4);
             expect(sprite.position.x).toBe(0);
         });
@@ -118,7 +118,7 @@ describe('VisualEffectsManager', () => {
         it('should decrease opacity based on life span', () => {
             // Arrange
             effectsManager.showInstrumentEmoji(new THREE.Vector3(), '🎹');
-            const sprite = effectsManager.activeEmojis[0].sprite;
+            const sprite = effectsManager.emojiPool.active[0].sprite;
             expect(sprite.material.opacity).toBe(1.0);
 
             // Act
@@ -126,7 +126,7 @@ describe('VisualEffectsManager', () => {
             effectsManager.update(delta); // lifeStep = 0.4 * 1.25 = 0.5
 
             // Assert
-            expect(effectsManager.activeEmojis[0].life).toBeCloseTo(0.5, 4);
+            expect(effectsManager.emojiPool.active[0].life).toBeCloseTo(0.5, 4);
             expect(sprite.material.opacity).toBeCloseTo(0.5, 4);
         });
     });
@@ -135,12 +135,12 @@ describe('VisualEffectsManager', () => {
         it('should cache canvas textures for the same emoji', () => {
             // Arrange
             effectsManager.showInstrumentEmoji(new THREE.Vector3(), '🎹');
-            const sprite1 = effectsManager.activeEmojis[0].sprite;
+            const sprite1 = effectsManager.emojiPool.active[0].sprite;
             const tex1 = sprite1.material.map;
 
             // Act
             effectsManager.showInstrumentEmoji(new THREE.Vector3(), '🎹');
-            const sprite2 = effectsManager.activeEmojis[1].sprite;
+            const sprite2 = effectsManager.emojiPool.active[1].sprite;
             const tex2 = sprite2.material.map;
 
             // Assert
@@ -169,22 +169,22 @@ describe('VisualEffectsManager', () => {
             effectsManager.showInstrumentEmoji(new THREE.Vector3(), '🎸');
 
             // Push one to pool manually to simulate usage
-            const pooledSprite = effectsManager._createEmojiSprite('🎻');
-            vi.spyOn(pooledSprite.material, 'dispose');
-            effectsManager.emojiPool.push(pooledSprite);
+            const pooledItem = effectsManager._createEmojiSprite('🎻');
+            vi.spyOn(pooledItem.sprite.material, 'dispose');
+            effectsManager.emojiPool.pool.push(pooledItem);
 
-            const activeSprite = effectsManager.activeEmojis[0].sprite;
+            const activeSprite = effectsManager.emojiPool.active[0].sprite;
             vi.spyOn(activeSprite.material, 'dispose');
 
             // Act
             effectsManager.clear();
 
             // Assert
-            expect(effectsManager.activeEmojis.length).toBe(0);
-            expect(effectsManager.emojiPool.length).toBe(0);
+            expect(effectsManager.emojiPool.active.length).toBe(0);
+            expect(effectsManager.emojiPool.pool.length).toBe(0);
             expect(scene.remove).toHaveBeenCalled();
             expect(activeSprite.material.dispose).toHaveBeenCalled();
-            expect(pooledSprite.material.dispose).toHaveBeenCalled();
+            expect(pooledItem.sprite.material.dispose).toHaveBeenCalled();
         });
     });
 });

@@ -6,7 +6,7 @@
     --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
     /* Default Theme (as fallback) */
-    --bg-color: #050508;
+    --bg-color: #000000;
     --text-color: #f0f0f0;
     --text-muted: #a0a0a5;
     --accent-color: hsl(180, 100%, 50%); /* Neon Cyan */
@@ -18,7 +18,7 @@
 }
 
 [data-theme='default'] {
-    --bg-color: #050508;
+    --bg-color: #000000;
     --text-color: #f0f0f0;
     --text-muted: #a0a0a5;
     --accent-color: hsl(180, 100%, 50%);
@@ -426,7 +426,7 @@ hr {
 }
 
 #status-modal::backdrop {
-    background: rgba(5, 5, 8, 0.85);
+    background: rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(10px);
 }
 

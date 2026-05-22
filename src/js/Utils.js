@@ -76,32 +76,32 @@ export class Utils {
         );
     }
 
+    static PC_MAP = {
+        C: 0,
+        'B#': 0,
+        'C#': 1,
+        Db: 1,
+        D: 2,
+        'D#': 3,
+        Eb: 3,
+        E: 4,
+        Fb: 4,
+        F: 5,
+        'E#': 5,
+        'F#': 6,
+        Gb: 6,
+        G: 7,
+        'G#': 8,
+        Ab: 8,
+        A: 9,
+        'A#': 10,
+        Bb: 10,
+        B: 11,
+        Cb: 11,
+    };
+
     static noteToSemitone(note) {
         if (NOTE_CACHE.has(note)) return NOTE_CACHE.get(note);
-
-        const pcMap = {
-            C: 0,
-            'B#': 0,
-            'C#': 1,
-            Db: 1,
-            D: 2,
-            'D#': 3,
-            Eb: 3,
-            E: 4,
-            Fb: 4,
-            F: 5,
-            'E#': 5,
-            'F#': 6,
-            Gb: 6,
-            G: 7,
-            'G#': 8,
-            Ab: 8,
-            A: 9,
-            'A#': 10,
-            Bb: 10,
-            B: 11,
-            Cb: 11,
-        };
 
         // Match A-G (case-insensitive) followed optionally by #, b, or B, then optional octave
         const match = note.match(/^([a-gA-G])([#bB]?)(-?\d{1,2})?$/);
@@ -111,7 +111,7 @@ export class Utils {
             const accidental = match[2].toLowerCase(); // Normalize 'B' to 'b'
             const pitchClassStr = letter + accidental;
 
-            const val = pcMap[pitchClassStr];
+            const val = this.PC_MAP[pitchClassStr];
             if (val !== undefined) {
                 const oct = match[3] ? parseInt(match[3], 10) : 4;
                 result = oct * 12 + val;

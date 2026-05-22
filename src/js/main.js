@@ -27,6 +27,23 @@ const init = async () => {
     visualizer.themeManager.registerTheme(TerminatorTheme);
     visualizer.setTheme('default');
 
+    // Warm-up visualizer and shaders to prevent JIT/shader compilation lag on first play
+    const warmUpGraph = createGraph();
+    warmUpGraph.addNode('A');
+    warmUpGraph.addNode('B');
+    warmUpGraph.addLink('A', 'B');
+    await visualizer.initIncremental(warmUpGraph);
+    for (let i = 0; i < 5; i++) {
+        visualizer.layout.step();
+    }
+    if (
+        visualizer.composer &&
+        typeof visualizer.composer.render === 'function'
+    ) {
+        visualizer.composer.render();
+    }
+    visualizer.clear();
+
     const player = new MidiPlayer();
 
     const callbacks = {
@@ -58,10 +75,22 @@ const init = async () => {
             ui.setThemeUI(nextTheme);
         },
         onFileSelection: (file) => {
+            player.initialize().catch((err) => {
+                console.warn(
+                    'Early player initialization failed during file selection:',
+                    err,
+                );
+            });
             handleFileSelection(file);
         },
         isPlaying: () => player.isPlaying,
         onExampleMidiClick: (fileName) => {
+            player.initialize().catch((err) => {
+                console.warn(
+                    'Early player initialization failed during example click:',
+                    err,
+                );
+            });
             loadMidiFromUrl(`./${fileName}`, fileName);
         },
         onVisibilityChange: () => {
@@ -92,51 +121,98 @@ const init = async () => {
         ui.showError('Error loading SoundFont.', error);
     }
 
+    const notePlayQueue = [];
+    const noteReleaseQueue = [];
     let lastCountUpdate = 0;
-    player.onNotePlay = (nodeId, prevNodeId, instrumentId, isDrums) => {
-        if (document.visibilityState === 'hidden' || !player.isPlaying) return;
-        requestAnimationFrame(() => {
-            if (document.visibilityState === 'hidden' || !player.isPlaying)
-                return;
 
-            if (isIncrementalMode && !isDrums) {
-                // Mutate graph here (SRP: main.js as orchestrator)
-                if (prevNodeId && prevNodeId !== nodeId) {
-                    NetworkParser.addTransition(
-                        visualizer.graph,
-                        prevNodeId,
-                        nodeId,
-                    );
-                    NetworkParser.computeNodeDegrees(visualizer.graph);
-                } else if (nodeId) {
-                    NetworkParser.ensureNodesExist(visualizer.graph, [nodeId]);
-                    NetworkParser.computeNodeDegrees(visualizer.graph);
-                }
+    const processSingleNotePlay = (event) => {
+        const { nodeId, prevNodeId, instrumentId, isDrums } = event;
+        let graphChanged = false;
 
-                visualizer.addTransitionIncremental(prevNodeId, nodeId);
-                const now = performance.now();
-                if (now - lastCountUpdate > 250) {
-                    ui.els.vCountEl.textContent =
-                        visualizer.graph.getNodesCount();
-                    ui.els.eCountEl.textContent =
-                        visualizer.graph.getLinksCount();
-                    lastCountUpdate = now;
-                }
+        if (isIncrementalMode && !isDrums) {
+            // Mutate graph here (SRP: main.js as orchestrator)
+            if (prevNodeId && prevNodeId !== nodeId) {
+                NetworkParser.addTransition(
+                    visualizer.graph,
+                    prevNodeId,
+                    nodeId,
+                );
+                graphChanged = true;
+            } else if (nodeId) {
+                const isNewNode = NetworkParser.ensureNodesExist(
+                    visualizer.graph,
+                    [nodeId],
+                );
+                if (isNewNode) graphChanged = true;
             }
 
-            visualizer.highlightPlayingElement(nodeId, prevNodeId);
-            const emoji = Utils.getInstrumentEmoji(instrumentId, isDrums);
-            visualizer.showInstrumentEmoji(nodeId, emoji);
+            visualizer.addTransitionIncremental(prevNodeId, nodeId);
+        }
+
+        visualizer.highlightPlayingElement(nodeId, prevNodeId);
+        const emoji = Utils.getInstrumentEmoji(instrumentId, isDrums);
+        visualizer.showInstrumentEmoji(nodeId, emoji);
+
+        return graphChanged;
+    };
+
+    const processQueuedNoteEvents = () => {
+        if (notePlayQueue.length === 0 && noteReleaseQueue.length === 0) return;
+
+        // Process all releases first to ensure correct overlap release mapping
+        for (let i = 0; i < noteReleaseQueue.length; i++) {
+            const { nodeId, prevNodeId } = noteReleaseQueue[i];
+            visualizer.releasePlayingElement(nodeId, prevNodeId);
+        }
+        noteReleaseQueue.length = 0;
+
+        let graphChanged = false;
+        for (let i = 0; i < notePlayQueue.length; i++) {
+            if (processSingleNotePlay(notePlayQueue[i])) {
+                graphChanged = true;
+            }
+        }
+        notePlayQueue.length = 0;
+
+        if (graphChanged) {
+            const now = performance.now();
+            if (now - lastCountUpdate > 250) {
+                ui.els.vCountEl.textContent = visualizer.graph.getNodesCount();
+                ui.els.eCountEl.textContent = visualizer.graph.getLinksCount();
+                lastCountUpdate = now;
+            }
+        }
+    };
+
+    visualizer.onBeforeFrame = processQueuedNoteEvents;
+
+    player.onNotePlay = (nodeId, prevNodeId, instrumentId, isDrums) => {
+        if (document.visibilityState === 'hidden' || !player.isPlaying) return;
+        notePlayQueue.push({
+            nodeId,
+            prevNodeId:
+                prevNodeId !== undefined && prevNodeId !== null
+                    ? prevNodeId
+                    : null,
+            instrumentId,
+            isDrums,
         });
     };
+
     player.onNoteRelease = (nodeId, prevNodeId) => {
         if (document.visibilityState === 'hidden') return;
-        requestAnimationFrame(() => {
-            if (document.visibilityState === 'hidden') return;
-            visualizer.releasePlayingElement(nodeId, prevNodeId);
+        noteReleaseQueue.push({
+            nodeId,
+            prevNodeId:
+                prevNodeId !== undefined && prevNodeId !== null
+                    ? prevNodeId
+                    : null,
         });
     };
+
     player.onStop = () => {
+        notePlayQueue.length = 0;
+        noteReleaseQueue.length = 0;
         visualizer.resetPlayingHighlights();
         if (!player.isPlaying) {
             ui.setPlaybackUI(false);
@@ -192,8 +268,6 @@ const init = async () => {
     };
 
     const processMidi = async (arrayBuffer, fileName) => {
-        await Tone.start();
-
         console.log(
             'Processing MIDI:',
             fileName,
@@ -238,8 +312,11 @@ const init = async () => {
                 await visualizer.initIncremental(graph);
                 ui.els.welcomeMsg.classList.add('hidden');
 
-                await player.play(arrayBuffer.slice(0), isAutoplayMode);
+                // Initialize audio early so AudioContext starts running and stabilizing
+                await Tone.start();
+                await player.initialize();
 
+                // Set up UI and start visualizer rendering loop before starting audio playback
                 ui.els.playBtn.disabled = false;
                 ui.els.pauseBtn.disabled = false;
                 ui.els.restartBtn.disabled = false;
@@ -256,9 +333,10 @@ const init = async () => {
                 visualizer.setPaused(!isAutoplayMode);
 
                 ui.hideStatus();
-            } else {
-                await player.play(arrayBuffer.slice(0), isAutoplayMode);
 
+                // Trigger playback after the UI has updated and visualizer rendering has started
+                await player.play(arrayBuffer.slice(0), isAutoplayMode);
+            } else {
                 parserWorker.onmessage = (e) => {
                     const { summary, serializedGraph, error } = e.data;
 
@@ -273,14 +351,6 @@ const init = async () => {
                     }
                     updateMetricsUI(summary, fileName);
                     updateMediaSession(summary.title, fileName);
-                    ui.els.playBtn.disabled = false;
-                    ui.els.pauseBtn.disabled = false;
-                    ui.els.restartBtn.disabled = false;
-                    ui.els.tourToggle.disabled = false;
-                    ui.els.statsToggle.disabled = false;
-
-                    ui.setPlaybackUI(isAutoplayMode);
-                    visualizer.setPaused(!isAutoplayMode);
 
                     console.log(
                         'Network built successfully (in worker):',
@@ -295,14 +365,39 @@ const init = async () => {
                         );
                     };
 
-                    visualizer.buildVisualization(graph).then(() => {
-                        ui.els.welcomeMsg.classList.add('hidden');
-                        ui.hideStatus();
+                    visualizer.buildVisualization(graph).then(async () => {
+                        try {
+                            ui.els.welcomeMsg.classList.add('hidden');
 
-                        if (ui.els.tourToggle.checked) {
-                            visualizer.startAutoTour();
-                        } else {
-                            visualizer.stopAutoTour();
+                            // Initialize audio early so AudioContext starts running and stabilizing
+                            await Tone.start();
+                            await player.initialize();
+
+                            // Set up UI and start visualizer rendering loop before starting audio playback
+                            ui.els.playBtn.disabled = false;
+                            ui.els.pauseBtn.disabled = false;
+                            ui.els.restartBtn.disabled = false;
+                            ui.els.tourToggle.disabled = false;
+                            ui.els.statsToggle.disabled = false;
+
+                            ui.setPlaybackUI(isAutoplayMode);
+                            visualizer.setPaused(!isAutoplayMode);
+
+                            if (ui.els.tourToggle.checked) {
+                                visualizer.startAutoTour();
+                            } else {
+                                visualizer.stopAutoTour();
+                            }
+
+                            ui.hideStatus();
+
+                            // Trigger playback after the UI has updated and visualizer rendering has started
+                            await player.play(
+                                arrayBuffer.slice(0),
+                                isAutoplayMode,
+                            );
+                        } catch (err) {
+                            ui.showError('Error starting audio playback.', err);
                         }
                     });
                 };

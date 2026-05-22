@@ -242,5 +242,22 @@ describe('NetworkParser', () => {
             expect(NetworkParser.addTransition(graph, 'A', 'A')).toBe(false);
             expect(NetworkParser.addTransition(graph, null, 'B')).toBe(false);
         });
+
+        it('should update node degrees incrementally', () => {
+            const graph = createGraph();
+            NetworkParser.addTransition(graph, 'A', 'B');
+            expect(graph.getNode('A').data.degree).toBe(1);
+            expect(graph.getNode('B').data.degree).toBe(1);
+
+            // Adding same link shouldn't increase node degree
+            NetworkParser.addTransition(graph, 'A', 'B');
+            expect(graph.getNode('A').data.degree).toBe(1);
+            expect(graph.getNode('B').data.degree).toBe(1);
+
+            // Adding A -> C
+            NetworkParser.addTransition(graph, 'A', 'C');
+            expect(graph.getNode('A').data.degree).toBe(2);
+            expect(graph.getNode('C').data.degree).toBe(1);
+        });
     });
 });

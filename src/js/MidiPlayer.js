@@ -23,6 +23,7 @@ export class MidiPlayer {
         this.onNotePlay = null;
         this.onNoteRelease = null;
         this.onStop = null;
+        this._initPromise = null;
     }
 
     async loadSoundfont(url = '/creative-emu10k1-8mbgmsfx.sf2') {
@@ -32,70 +33,97 @@ export class MidiPlayer {
         this.sf2Buffer = await response.arrayBuffer();
     }
 
-    async initialize() {
-        // If we haven't fetched the buffer yet, do it now
-        if (!this.sf2Buffer) {
-            await this.loadSoundfont();
+    initialize() {
+        if (this._initPromise) {
+            return this._initPromise;
         }
 
-        // Only create the synth once the user has interacted
-        if (Tone.context.state !== 'running') {
-            await Tone.start();
-        }
+        this._initPromise = (async () => {
+            try {
+                // If we haven't fetched the buffer yet, do it now
+                if (!this.sf2Buffer) {
+                    await this.loadSoundfont();
+                }
 
-        if (!this.synth) {
-            // Use Tone's underlying native AudioContext so all scheduled times align perfectly
-            const rawCtx =
-                Tone.context.rawContext._nativeContext ||
-                Tone.context.rawContext;
-            if (rawCtx.state === 'suspended') {
-                await rawCtx.resume();
+                // Only create the synth once the user has interacted
+                if (Tone.context.state !== 'running') {
+                    await Tone.start();
+                }
+
+                if (!this.synth) {
+                    // Use Tone's underlying native AudioContext so all scheduled times align perfectly
+                    const rawCtx =
+                        Tone.context.rawContext._nativeContext ||
+                        Tone.context.rawContext;
+                    if (rawCtx.state === 'suspended') {
+                        await rawCtx.resume();
+                    }
+
+                    // Register the AudioWorklet processor BEFORE creating the synthesizer
+                    await rawCtx.audioWorklet.addModule(processorUrl);
+
+                    // Create master gain for muting/pausing
+                    this.masterGain = rawCtx.createGain();
+
+                    // Initialize SpessaSynth
+                    this.synth = new WorkletSynthesizer(rawCtx);
+
+                    // Limit voice count on mobile/low-end to prevent stuttering/corruption
+                    // Complex MIDI files can easily exceed 200+ voices which is heavy for SF2 synthesis
+                    const isMobile = Utils.isMobile();
+                    const voiceCap = isMobile ? 64 : 128;
+                    this.synth.setSystemParameter('voiceCap', voiceCap);
+
+                    // Dynamic allocation causes garbage collection pauses (audio crackling/corruption)
+                    // in the AudioWorklet thread, so we disable it for both mobile and desktop.
+                    this.synth.setSystemParameter('autoAllocateVoices', false);
+
+                    if (isMobile) {
+                        // Use linear interpolation (0) instead of higher quality ones to save CPU
+                        this.synth.setSystemParameter('interpolationType', 0);
+                    }
+
+                    // Connect synthesizer to master gain
+                    this.synth.connect(this.masterGain);
+
+                    this._setupBackgroundAudio(rawCtx, isMobile);
+
+                    // Wait for worklet to be ready
+                    await this.synth.isReady;
+
+                    // Load the SoundFont
+                    await this.synth.soundBankManager.addSoundBank(
+                        this.sf2Buffer,
+                        'default',
+                    );
+
+                    // Initialize Sequencer
+                    this.sequencer = new Sequencer(this.synth);
+
+                    // Setup Synth Events for visualization
+                    this._setupSynthEvents();
+
+                    // Warm up synthesizer JIT compilation
+                    const currentGain = this.masterGain.gain.value;
+                    this.masterGain.gain.setValueAtTime(0, rawCtx.currentTime);
+                    const warmUpChannels = [0, 1, 2, 9];
+                    for (const ch of warmUpChannels) {
+                        this.synth.noteOn(ch, 60, 1);
+                        this.synth.noteOff(ch, 60);
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 50));
+                    this.masterGain.gain.setValueAtTime(
+                        currentGain,
+                        rawCtx.currentTime,
+                    );
+                }
+            } catch (error) {
+                this._initPromise = null;
+                throw error;
             }
+        })();
 
-            // Register the AudioWorklet processor BEFORE creating the synthesizer
-            await rawCtx.audioWorklet.addModule(processorUrl);
-
-            // Create master gain for muting/pausing
-            this.masterGain = rawCtx.createGain();
-
-            // Initialize SpessaSynth
-            this.synth = new WorkletSynthesizer(rawCtx);
-
-            // Limit voice count on mobile/low-end to prevent stuttering/corruption
-            // Complex MIDI files can easily exceed 200+ voices which is heavy for SF2 synthesis
-            const isMobile = Utils.isMobile();
-            const voiceCap = isMobile ? 64 : 128;
-            this.synth.setSystemParameter('voiceCap', voiceCap);
-
-            // Dynamic allocation causes garbage collection pauses (audio crackling/corruption)
-            // in the AudioWorklet thread on mobile, so we disable it there.
-            this.synth.setSystemParameter('autoAllocateVoices', !isMobile);
-
-            if (isMobile) {
-                // Use linear interpolation (0) instead of higher quality ones to save CPU
-                this.synth.setSystemParameter('interpolationType', 0);
-            }
-
-            // Connect synthesizer to master gain
-            this.synth.connect(this.masterGain);
-
-            this._setupBackgroundAudio(rawCtx, isMobile);
-
-            // Wait for worklet to be ready
-            await this.synth.isReady;
-
-            // Load the SoundFont
-            await this.synth.soundBankManager.addSoundBank(
-                this.sf2Buffer,
-                'default',
-            );
-
-            // Initialize Sequencer
-            this.sequencer = new Sequencer(this.synth);
-
-            // Setup Synth Events for visualization
-            this._setupSynthEvents();
-        }
+        return this._initPromise;
     }
 
     _setupBackgroundAudio(rawCtx, isMobile) {
@@ -137,8 +165,8 @@ export class MidiPlayer {
             const prevNoteName = this.lastNotePerChannel.get(data.channel);
             this.lastNotePerChannel.set(data.channel, noteName);
 
-            // Store prevNoteName for this specific note instance
-            const noteKey = `${data.channel}-${data.midiNote}`;
+            // Store prevNoteName for this specific note instance using integer keys to avoid garbage string allocation
+            const noteKey = (data.channel << 8) | data.midiNote;
             if (!this.activeNotes.has(noteKey)) {
                 this.activeNotes.set(noteKey, []);
             }
@@ -156,7 +184,7 @@ export class MidiPlayer {
 
         this.synth.eventHandler.addEvent('noteOff', 'viz-release', (data) => {
             const noteName = Utils.midiNoteToName(data.midiNote);
-            const noteKey = `${data.channel}-${data.midiNote}`;
+            const noteKey = (data.channel << 8) | data.midiNote;
             const stack = this.activeNotes.get(noteKey);
             const prevNoteName = stack ? stack.shift() : undefined;
             if (stack && stack.length === 0) {
@@ -275,6 +303,9 @@ export class MidiPlayer {
     }
 
     async play(midiBuffer, autoplay = true) {
+        const playToken = Symbol('play');
+        this._currentPlayToken = playToken;
+
         this.stop(); // Stop any existing playback
 
         if (this._resetTimeout) {
@@ -284,6 +315,10 @@ export class MidiPlayer {
 
         // Ensure audio context is started and synth exists
         await this.initialize();
+
+        if (this._currentPlayToken !== playToken) return;
+
+        this._hardResetSynth();
 
         // Reset tracking
         this.channelInstruments = new Array(16).fill(0);
@@ -306,6 +341,11 @@ export class MidiPlayer {
 
         if (autoplay) {
             this._setMasterGainTarget(1);
+
+            // Stabilize AudioContext clock and sample rate before starting sequencer
+            await this._delay(1000);
+            if (this._currentPlayToken !== playToken) return;
+
             this.sequencer.play();
             this._playDummyAudio();
             this._setMediaSessionState('playing');
@@ -429,5 +469,9 @@ export class MidiPlayer {
                 this.onStop();
             }
         }
+    }
+
+    _delay(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
     }
 }

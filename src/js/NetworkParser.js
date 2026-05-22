@@ -148,7 +148,7 @@ export class NetworkParser {
                     graph.beginUpdate();
                     needsUpdate = true;
                 }
-                graph.addNode(id, { name: id });
+                graph.addNode(id, { name: id, degree: 0 });
             }
         }
         if (needsUpdate) {
@@ -168,6 +168,19 @@ export class NetworkParser {
             weight: weightInc,
             id: `${source}->${target}`,
         });
+
+        // Increment node degrees incrementally for newly created links
+        const sNode = graph.getNode(source);
+        if (sNode) {
+            if (!sNode.data) sNode.data = {};
+            sNode.data.degree = (sNode.data.degree || 0) + 1;
+        }
+        const tNode = graph.getNode(target);
+        if (tNode) {
+            if (!tNode.data) tNode.data = {};
+            tNode.data.degree = (tNode.data.degree || 0) + 1;
+        }
+
         return true;
     }
 

@@ -51,6 +51,7 @@ export class NetworkVisualizer {
         this.mouse = new THREE.Vector2(-1000, -1000);
         this.mouseMoved = false;
         this.onHover = null;
+        this.onBeforeFrame = null;
 
         this.playingNodes = new Set();
         this.playingEdges = new Set();
@@ -131,6 +132,18 @@ export class NetworkVisualizer {
         this.maxEdgeCapacity = 4096;
         this.maxEdgeSegments = 20;
 
+        // Precompute Bezier coefficients for each segment index to avoid dynamic calculations in the hot loop
+        this._bezierCoefficients = [];
+        for (let i = 0; i <= this.maxEdgeSegments; i++) {
+            const t = i / this.maxEdgeSegments;
+            const u = 1 - t;
+            this._bezierCoefficients.push({
+                c0: u * u,
+                c1: 2 * u * t,
+                c2: t * t,
+            });
+        }
+
         this.edgePositions = new Float32Array(
             this.maxEdgeCapacity * this.maxEdgeSegments * 2 * 3,
         );
@@ -151,6 +164,7 @@ export class NetworkVisualizer {
         this.edgeInstanceIdMap = new Map(); // edgeId -> instanceId
         this.instanceIdEdgeMap = new Map(); // instanceId -> edgeId
         this.edgeBufferIndexMap = new Map(); // edgeId -> bufferIndex (in segments)
+        this._graphDirtySinceLastFakeLinks = true;
 
         this._scratchMatrix = new THREE.Matrix4();
 
@@ -284,6 +298,7 @@ export class NetworkVisualizer {
         this.graph = null;
         this.incrementalMode = false;
         this.maxDegree = 1;
+        this._graphDirtySinceLastFakeLinks = true;
         this.maxWeight = 1;
 
         if (this.nodeInstancedMesh) {
@@ -737,6 +752,7 @@ export class NetworkVisualizer {
     _renderNode(node, layoutScale, maxDegree) {
         if (this.nodeInstanceIdMap.has(node.id)) return;
 
+        this._graphDirtySinceLastFakeLinks = true;
         this._initSharedGeometries();
 
         const instanceId = this.nodeInstanceIdMap.size;
@@ -850,13 +866,23 @@ export class NetworkVisualizer {
             tPosRaw.z * layoutScale,
         );
 
-        const dist = sPos.distanceTo(tPos);
+        const dx = tPos.x - sPos.x;
+        const dy = tPos.y - sPos.y;
+        const dz = tPos.z - sPos.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
         const midPoint = this._scratchVec3_1
             .copy(sPos)
             .add(tPos)
             .multiplyScalar(0.5);
 
-        const edgeDir = this._scratchVec3_2.subVectors(tPos, sPos).normalize();
+        const edgeDir = this._scratchVec3_2;
+        if (dist > 0) {
+            edgeDir.set(dx / dist, dy / dist, dz / dist);
+        } else {
+            edgeDir.set(0, 0, 0);
+        }
+
         const pickAxis =
             Math.abs(edgeDir.y) < 0.9
                 ? this._upVec
@@ -867,7 +893,7 @@ export class NetworkVisualizer {
 
         // Introduce organic variation by rotating the perpendicular vector around the edge direction.
         // We use the pre-computed seed to create a stable but unique rotation for each edge pair.
-        const angle = (seed % 360) * (Math.PI / 180);
+        const angle = (seed % 360) * 0.017453292519943295;
         perp.applyAxisAngle(edgeDir, angle);
 
         // Curvature amount: reduced to ~15% of distance for a cleaner, more readable network.
@@ -922,7 +948,13 @@ export class NetworkVisualizer {
         return { edgeColor, edgeOpacity, edgeData };
     }
 
-    _updateEdgeBuffer(edgeId, link, layoutScale, maxWeight) {
+    _updateEdgeBuffer(
+        edgeId,
+        link,
+        layoutScale,
+        maxWeight,
+        needsUpdateAttribute = true,
+    ) {
         const edgeIndex = this.edgeBufferIndexMap.get(edgeId);
         if (edgeIndex === undefined) return;
 
@@ -952,22 +984,45 @@ export class NetworkVisualizer {
         );
 
         for (let i = 0; i < this.maxEdgeSegments; i++) {
-            const t1 = i / this.maxEdgeSegments;
-            const t2 = (i + 1) / this.maxEdgeSegments;
+            const coef1 = this._bezierCoefficients[i];
+            const coef2 = this._bezierCoefficients[i + 1];
 
-            curve.getPoint(t1, this._scratchVec3_1);
-            curve.getPoint(t2, this._scratchVec3_2);
+            const p1x =
+                coef1.c0 * curve.v0.x +
+                coef1.c1 * curve.v1.x +
+                coef1.c2 * curve.v2.x;
+            const p1y =
+                coef1.c0 * curve.v0.y +
+                coef1.c1 * curve.v1.y +
+                coef1.c2 * curve.v2.y;
+            const p1z =
+                coef1.c0 * curve.v0.z +
+                coef1.c1 * curve.v1.z +
+                coef1.c2 * curve.v2.z;
+
+            const p2x =
+                coef2.c0 * curve.v0.x +
+                coef2.c1 * curve.v1.x +
+                coef2.c2 * curve.v2.x;
+            const p2y =
+                coef2.c0 * curve.v0.y +
+                coef2.c1 * curve.v1.y +
+                coef2.c2 * curve.v2.y;
+            const p2z =
+                coef2.c0 * curve.v0.z +
+                coef2.c1 * curve.v1.z +
+                coef2.c2 * curve.v2.z;
 
             const vIdx1 = (baseIdx + i * 2) * 3;
             const vIdx2 = (baseIdx + i * 2 + 1) * 3;
 
-            posAttr.array[vIdx1] = this._scratchVec3_1.x;
-            posAttr.array[vIdx1 + 1] = this._scratchVec3_1.y;
-            posAttr.array[vIdx1 + 2] = this._scratchVec3_1.z;
+            posAttr.array[vIdx1] = p1x;
+            posAttr.array[vIdx1 + 1] = p1y;
+            posAttr.array[vIdx1 + 2] = p1z;
 
-            posAttr.array[vIdx2] = this._scratchVec3_2.x;
-            posAttr.array[vIdx2 + 1] = this._scratchVec3_2.y;
-            posAttr.array[vIdx2 + 2] = this._scratchVec3_2.z;
+            posAttr.array[vIdx2] = p2x;
+            posAttr.array[vIdx2 + 1] = p2y;
+            posAttr.array[vIdx2 + 2] = p2z;
 
             colorAttr.array[vIdx1] = edgeColor.r;
             colorAttr.array[vIdx1 + 1] = edgeColor.g;
@@ -980,9 +1035,11 @@ export class NetworkVisualizer {
             alphaAttr.array[baseIdx + i * 2 + 1] = edgeOpacity;
         }
 
-        posAttr.needsUpdate = true;
-        colorAttr.needsUpdate = true;
-        alphaAttr.needsUpdate = true;
+        if (needsUpdateAttribute) {
+            posAttr.needsUpdate = true;
+            colorAttr.needsUpdate = true;
+            alphaAttr.needsUpdate = true;
+        }
 
         // Update cone
         if (
@@ -990,8 +1047,17 @@ export class NetworkVisualizer {
             edgeData.cone &&
             edgeData.cone.instanceId !== undefined
         ) {
-            curve.getPoint(0.5, this._scratchVec3_1);
-            curve.getTangent(0.5, this._scratchVec3_2).normalize();
+            // Midpoint at t = 0.5: 0.25 * v0 + 0.5 * v1 + 0.25 * v2
+            const midX =
+                0.25 * curve.v0.x + 0.5 * curve.v1.x + 0.25 * curve.v2.x;
+            const midY =
+                0.25 * curve.v0.y + 0.5 * curve.v1.y + 0.25 * curve.v2.y;
+            const midZ =
+                0.25 * curve.v0.z + 0.5 * curve.v1.z + 0.25 * curve.v2.z;
+            this._scratchVec3_1.set(midX, midY, midZ);
+
+            // Tangent direction at t = 0.5: v2 - v0
+            this._scratchVec3_2.subVectors(curve.v2, curve.v0).normalize();
 
             this._scratchMatrix.makeTranslation(
                 this._scratchVec3_1.x,
@@ -1013,9 +1079,11 @@ export class NetworkVisualizer {
                 edgeData.cone.instanceId,
                 edgeColor,
             );
-            this.coneInstancedMesh.instanceMatrix.needsUpdate = true;
-            if (this.coneInstancedMesh.instanceColor) {
-                this.coneInstancedMesh.instanceColor.needsUpdate = true;
+            if (needsUpdateAttribute) {
+                this.coneInstancedMesh.instanceMatrix.needsUpdate = true;
+                if (this.coneInstancedMesh.instanceColor) {
+                    this.coneInstancedMesh.instanceColor.needsUpdate = true;
+                }
             }
 
             edgeData.cone.position.copy(this._scratchVec3_1);
@@ -1033,6 +1101,7 @@ export class NetworkVisualizer {
         const edgeId = `${link.fromId}->${link.toId}`;
         if (this.edgeBufferIndexMap.has(edgeId)) return;
 
+        this._graphDirtySinceLastFakeLinks = true;
         const edgeIndex = this.edgeBufferIndexMap.size;
         if (edgeIndex >= this.maxEdgeCapacity) return;
 
@@ -1070,10 +1139,15 @@ export class NetworkVisualizer {
             this.coneMaterialPool.set(weightBucket, coneMat);
         }
 
-        const tMid = 0.5;
-        curve.getPoint(tMid, this._scratchVec3_1);
+        // Midpoint at t = 0.5: 0.25 * v0 + 0.5 * v1 + 0.25 * v2
+        const midX = 0.25 * curve.v0.x + 0.5 * curve.v1.x + 0.25 * curve.v2.x;
+        const midY = 0.25 * curve.v0.y + 0.5 * curve.v1.y + 0.25 * curve.v2.y;
+        const midZ = 0.25 * curve.v0.z + 0.5 * curve.v1.z + 0.25 * curve.v2.z;
+        this._scratchVec3_1.set(midX, midY, midZ);
         const arrowPos = this._scratchVec3_1;
-        curve.getTangent(tMid, this._scratchVec3_2).normalize();
+
+        // Tangent direction at t = 0.5: v2 - v0
+        this._scratchVec3_2.subVectors(curve.v2, curve.v0).normalize();
         const arrowDir = this._scratchVec3_2;
 
         const coneInstanceId = this.edgeInstanceIdMap.size;
@@ -1346,6 +1420,8 @@ export class NetworkVisualizer {
 
     _updateFakeLinks() {
         if (!this.graph || !this.layout) return;
+        if (!this._graphDirtySinceLastFakeLinks) return;
+        this._graphDirtySinceLastFakeLinks = false;
 
         // 1. Remove previously added fake links
         const fakeLinksToRemove = [];
@@ -1416,9 +1492,7 @@ export class NetworkVisualizer {
         }
     }
 
-    _updatePositionsFromLayout() {
-        if (!this.layout) return;
-
+    _updateNodePositions() {
         for (let i = 0; i < this.nodeList.length; i++) {
             const nodeData = this.nodeList[i];
             const pos = this.layout.getNodePosition(nodeData.id);
@@ -1454,7 +1528,9 @@ export class NetworkVisualizer {
 
         this.nodeInstancedMesh.instanceMatrix.needsUpdate = true;
         this.outlineInstancedMesh.instanceMatrix.needsUpdate = true;
+    }
 
+    _updateEdgePositions() {
         for (let i = 0; i < this.edges.length; i++) {
             const edgeData = this.edges[i];
             const link = edgeData.link;
@@ -1464,11 +1540,38 @@ export class NetworkVisualizer {
                     link,
                     this.layoutScale,
                     this.maxWeight,
+                    false, // Defer attribute updates
                 );
             }
         }
 
-        this._updateAutoTourBounds();
+        // Batch update GPU attributes once for all edges
+        if (this.edgeLineSegments && this.edges.length > 0) {
+            const posAttr = this.edgeLineSegments.geometry.attributes.position;
+            const colorAttr = this.edgeLineSegments.geometry.attributes.color;
+            const alphaAttr = this.edgeLineSegments.geometry.attributes.alpha;
+            if (posAttr) posAttr.needsUpdate = true;
+            if (colorAttr) colorAttr.needsUpdate = true;
+            if (alphaAttr) alphaAttr.needsUpdate = true;
+        }
+
+        if (this.coneInstancedMesh && this.edges.length > 0) {
+            this.coneInstancedMesh.instanceMatrix.needsUpdate = true;
+            if (this.coneInstancedMesh.instanceColor) {
+                this.coneInstancedMesh.instanceColor.needsUpdate = true;
+            }
+        }
+    }
+
+    _updatePositionsFromLayout() {
+        if (!this.layout) return;
+
+        this._updateNodePositions();
+        this._updateEdgePositions();
+
+        if (this.autoTour) {
+            this._updateAutoTourBounds();
+        }
     }
 
     _updateAutoTourBounds() {
@@ -1511,6 +1614,10 @@ export class NetworkVisualizer {
     animate(time) {
         if (!this._isAnimating) return;
         this._animationFrameId = requestAnimationFrame(this.animate);
+
+        if (this.onBeforeFrame) {
+            this.onBeforeFrame();
+        }
 
         if (document.visibilityState === 'hidden') {
             this._lastFrameTime = time;
@@ -1738,7 +1845,11 @@ export class NetworkVisualizer {
 
     highlightPlayingElement(nodeId, prevNodeId) {
         this._highlightNode(nodeId, this.highlightColor);
-        this._highlightEdge(prevNodeId, nodeId);
+        const normPrev =
+            prevNodeId !== undefined && prevNodeId !== null ? prevNodeId : null;
+        if (normPrev !== null) {
+            this._highlightEdge(normPrev, nodeId);
+        }
     }
 
     _releaseNode(nodeId) {
@@ -1787,7 +1898,11 @@ export class NetworkVisualizer {
 
     releasePlayingElement(nodeId, prevNodeId) {
         this._releaseNode(nodeId);
-        this._releaseEdge(prevNodeId, nodeId);
+        const normPrev =
+            prevNodeId !== undefined && prevNodeId !== null ? prevNodeId : null;
+        if (normPrev !== null) {
+            this._releaseEdge(normPrev, nodeId);
+        }
     }
 
     resetPlayingHighlights() {

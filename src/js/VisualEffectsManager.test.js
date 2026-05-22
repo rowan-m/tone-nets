@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
 import { VisualEffectsManager } from './VisualEffectsManager.js';
+import { Utils } from './Utils.js';
 
 describe('VisualEffectsManager', () => {
     let scene;
@@ -8,17 +9,7 @@ describe('VisualEffectsManager', () => {
     let effectsManager;
 
     beforeEach(() => {
-        // Arrange
-        scene = {
-            add: vi.fn(),
-            remove: vi.fn(),
-        };
-        camera = {
-            quaternion: new THREE.Quaternion(),
-        };
-        effectsManager = new VisualEffectsManager(scene, camera);
-
-        // Mock DOM element creation for emoji canvas
+        // Mock DOM element creation for emoji canvas (must be done before constructing the manager)
         global.document = {
             createElement: vi.fn(() => ({
                 getContext: vi.fn(() => ({
@@ -29,10 +20,37 @@ describe('VisualEffectsManager', () => {
                 height: 0,
             })),
         };
+
+        scene = {
+            add: vi.fn(),
+            remove: vi.fn(),
+        };
+        camera = {
+            quaternion: new THREE.Quaternion(),
+        };
+        effectsManager = new VisualEffectsManager(scene, camera);
     });
 
     afterEach(() => {
         delete global.document;
+    });
+
+    describe('Warm-up and Initialization Optimization', () => {
+        it('should pre-cache textures for all instrument emojis on creation', () => {
+            // Check that all emojis from Utils.INSTRUMENT_EMOJIS are cached
+            const uniqueEmojis = new Set(
+                Object.values(Utils.INSTRUMENT_EMOJIS),
+            );
+            for (const emoji of uniqueEmojis) {
+                expect(effectsManager.emojiTextureCache.has(emoji)).toBe(true);
+            }
+        });
+
+        it('should pre-populate the emoji pool with inactive sprites to avoid runtime allocation', () => {
+            // Check that the pool is pre-populated with 40 inactive sprites
+            expect(effectsManager.emojiPool.pool.length).toBe(40);
+            expect(effectsManager.emojiPool.active.length).toBe(0);
+        });
     });
 
     describe('Emoji Lifecycle', () => {
@@ -70,7 +88,7 @@ describe('VisualEffectsManager', () => {
 
             // Assert
             expect(effectsManager.emojiPool.active.length).toBe(0);
-            expect(effectsManager.emojiPool.pool.length).toBe(2);
+            expect(effectsManager.emojiPool.pool.length).toBe(40);
             expect(scene.remove).toHaveBeenCalledTimes(2);
 
             // Act: Show another emoji, should reuse from pool
@@ -78,7 +96,7 @@ describe('VisualEffectsManager', () => {
 
             // Assert
             expect(effectsManager.emojiPool.active.length).toBe(1);
-            expect(effectsManager.emojiPool.pool.length).toBe(1);
+            expect(effectsManager.emojiPool.pool.length).toBe(39);
         });
 
         it('should strictly limit the number of active emojis to maxEmojis (boundary condition)', () => {

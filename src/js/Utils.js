@@ -137,9 +137,22 @@ export class Utils {
         'B',
     ];
 
+    static _noteNameCache = new Array(128);
+
+    static {
+        for (let i = 0; i < 128; i++) {
+            const octave = Math.floor(i / 12) - 1;
+            const name = this.NOTE_NAMES[i % 12];
+            this._noteNameCache[i] = `${name}${octave}`;
+        }
+    }
+
     static midiNoteToName(midiNote) {
+        if (midiNote >= 0 && midiNote < 128) {
+            return this._noteNameCache[midiNote];
+        }
         const octave = Math.floor(midiNote / 12) - 1;
-        const name = this.NOTE_NAMES[midiNote % 12];
+        const name = this.NOTE_NAMES[((midiNote % 12) + 12) % 12];
         return `${name}${octave}`;
     }
 

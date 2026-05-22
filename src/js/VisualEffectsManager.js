@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ObjectPool } from './ObjectPool.js';
+import { Utils } from './Utils.js';
 
 /**
  * Manages visual feedback like highlights and floating emojis.
@@ -32,6 +33,18 @@ export class VisualEffectsManager {
         this.terminatorGroup.visible = false;
         this.scene.add(this.terminatorGroup);
         this._initTerminatorBackground();
+
+        if (typeof document !== 'undefined' || global.document) {
+            const uniqueEmojis = new Set(
+                Object.values(Utils.INSTRUMENT_EMOJIS),
+            );
+            for (const emoji of uniqueEmojis) {
+                this._getEmojiTexture(emoji);
+            }
+            for (let i = 0; i < 40; i++) {
+                this.emojiPool.pool.push(this._createEmojiSprite('🎹'));
+            }
+        }
     }
 
     _initTerminatorBackground() {

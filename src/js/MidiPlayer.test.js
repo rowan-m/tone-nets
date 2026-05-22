@@ -215,7 +215,7 @@ describe('MidiPlayer', () => {
             synthEvents['noteOn']({ midiNote: 64, channel: 0 });
 
             expect(player.lastNotePerChannel.get(0)).toBe('E4');
-            const noteKeyE = '0-64';
+            const noteKeyE = (0 << 8) | 64;
             expect(player.activeNotes.get(noteKeyE)).toEqual(['C4']);
         });
 
@@ -238,12 +238,60 @@ describe('MidiPlayer', () => {
                 context.rawContext.destination,
             );
         });
+
+        it('should return the same promise for concurrent calls to initialize', async () => {
+            player.sf2Buffer = new ArrayBuffer(8);
+            const p1 = player.initialize();
+            const p2 = player.initialize();
+            expect(p1).toBe(p2);
+            await p1;
+        });
+
+        it('should keep the promise cached on successful initialization', async () => {
+            player.sf2Buffer = new ArrayBuffer(8);
+            const p1 = player.initialize();
+            await p1;
+            const p2 = player.initialize();
+            expect(p1).toBe(p2);
+            await p2;
+        });
+
+        it('should clear the promise cache on failed initialization and allow retry', async () => {
+            player.sf2Buffer = null;
+            vi.spyOn(player, 'loadSoundfont').mockRejectedValueOnce(
+                new Error('Load Fail'),
+            );
+
+            await expect(player.initialize()).rejects.toThrow('Load Fail');
+            expect(player._initPromise).toBeNull();
+
+            // Next call should succeed if loadSoundfont succeeds
+            vi.spyOn(player, 'loadSoundfont').mockResolvedValueOnce();
+            await player.initialize();
+            expect(player._initPromise).not.toBeNull();
+            expect(player.synth).toBeDefined();
+        });
+
+        it('should warm up synthesizer JIT compilation during initialization', async () => {
+            player.sf2Buffer = new ArrayBuffer(8);
+            await player.initialize();
+
+            // Check that noteOn and noteOff were called on channels 0, 1, 2, 9 during warm-up
+            const warmUpChannels = [0, 1, 2, 9];
+            for (const ch of warmUpChannels) {
+                expect(player.synth.noteOn).toHaveBeenCalledWith(ch, 60, 1);
+                expect(player.synth.noteOff).toHaveBeenCalledWith(ch, 60);
+            }
+        });
     });
 
     describe('Playback Control', () => {
         beforeEach(async () => {
             player.sf2Buffer = new ArrayBuffer(8);
             await player.initialize();
+            if (player._delay) {
+                vi.spyOn(player, '_delay').mockResolvedValue(undefined);
+            }
         });
 
         it('should start playback and update state when autoplay is true', async () => {
@@ -251,6 +299,29 @@ describe('MidiPlayer', () => {
             expect(player.isPlaying).toBe(true);
             expect(player.sequencer.play).toHaveBeenCalled();
             expect(mockAudioInstance.play).toHaveBeenCalled();
+        });
+
+        it('should perform hard reset and stabilization delay on every play', async () => {
+            const resetSpy = vi.spyOn(player, '_hardResetSynth');
+            const delaySpy = vi.spyOn(player, '_delay');
+
+            // First play
+            await player.play(new ArrayBuffer(8), true);
+
+            // resetSpy is called twice: once in stop() (when synth is null) and once in the play() body
+            expect(resetSpy).toHaveBeenCalledTimes(2);
+            expect(delaySpy).toHaveBeenCalledWith(1000);
+
+            // Reset spy counts
+            resetSpy.mockClear();
+            delaySpy.mockClear();
+
+            // Second play
+            await player.play(new ArrayBuffer(8), true);
+
+            // resetSpy is called twice: once in stop() to clean up the previous playback, and once in play() body
+            expect(resetSpy).toHaveBeenCalledTimes(2);
+            expect(delaySpy).toHaveBeenCalledWith(1000);
         });
 
         it('should NOT start playback but load MIDI when autoplay is false', async () => {

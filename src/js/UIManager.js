@@ -199,10 +199,21 @@ export class UIManager {
     _setupDragDropListeners() {
         this.els.canvasContainer.addEventListener('dragover', (e) => {
             e.preventDefault();
-            if (
-                !this.els.uploadInput.disabled &&
-                e.dataTransfer.types.includes('Files')
-            ) {
+
+            if (this.els.uploadInput.disabled) return;
+
+            let hasFiles = false;
+            if (e.dataTransfer && e.dataTransfer.types) {
+                const types = e.dataTransfer.types;
+                for (let i = 0; i < types.length; i++) {
+                    if (types[i] === 'Files') {
+                        hasFiles = true;
+                        break;
+                    }
+                }
+            }
+
+            if (hasFiles) {
                 this.els.canvasContainer.classList.add('drag-active');
             }
         });

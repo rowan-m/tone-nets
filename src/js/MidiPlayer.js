@@ -59,27 +59,38 @@ export class MidiPlayer {
                         await rawCtx.resume();
                     }
 
-                    // Register the AudioWorklet processor BEFORE creating the synthesizer
+                    // Register the AudioWorklet processor
                     await rawCtx.audioWorklet.addModule(processorUrl);
 
                     // Create master gain for muting/pausing
                     this.masterGain = rawCtx.createGain();
+                    this.masterGain.gain.setValueAtTime(0, rawCtx.currentTime);
+
+                    // Wait for the clock to actually start moving and stabilize.
+                    // This is crucial in Chromium-based browsers under high load or throttling,
+                    // as the clock can remain at 0 or jitter significantly during initial resumption.
+                    const startCtxTime = rawCtx.currentTime;
+                    const startTime = performance.now();
+                    while (
+                        rawCtx.currentTime === startCtxTime &&
+                        performance.now() - startTime < 2000
+                    ) {
+                        await new Promise((resolve) => setTimeout(resolve, 50));
+                    }
+
+                    // Additional stabilization delay to allow hardware sample rate to settle
+                    await new Promise((resolve) => setTimeout(resolve, 500));
 
                     // Initialize SpessaSynth
                     this.synth = new WorkletSynthesizer(rawCtx);
 
                     // Limit voice count on mobile/low-end to prevent stuttering/corruption
-                    // Complex MIDI files can easily exceed 200+ voices which is heavy for SF2 synthesis
                     const isMobile = Utils.isMobile();
                     const voiceCap = isMobile ? 64 : 128;
                     this.synth.setSystemParameter('voiceCap', voiceCap);
-
-                    // Dynamic allocation causes garbage collection pauses (audio crackling/corruption)
-                    // in the AudioWorklet thread, so we disable it for both mobile and desktop.
                     this.synth.setSystemParameter('autoAllocateVoices', false);
 
                     if (isMobile) {
-                        // Use linear interpolation (0) instead of higher quality ones to save CPU
                         this.synth.setSystemParameter('interpolationType', 0);
                     }
 
@@ -103,19 +114,23 @@ export class MidiPlayer {
                     // Setup Synth Events for visualization
                     this._setupSynthEvents();
 
-                    // Warm up synthesizer JIT compilation
-                    const currentGain = this.masterGain.gain.value;
-                    this.masterGain.gain.setValueAtTime(0, rawCtx.currentTime);
+                    // Final stabilization delay after heavy resource loading (SF2 parsing/upload)
+                    await new Promise((resolve) => setTimeout(resolve, 300));
+
+                    // Warm up synthesizer JIT compilation silently
+                    const ctx = this.masterGain.context;
+                    this.masterGain.gain.cancelScheduledValues(ctx.currentTime);
+                    this.masterGain.gain.setValueAtTime(0, ctx.currentTime);
+
                     const warmUpChannels = [0, 1, 2, 9];
                     for (const ch of warmUpChannels) {
                         this.synth.noteOn(ch, 60, 1);
                         this.synth.noteOff(ch, 60);
                     }
-                    await new Promise((resolve) => setTimeout(resolve, 50));
-                    this.masterGain.gain.setValueAtTime(
-                        currentGain,
-                        rawCtx.currentTime,
-                    );
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+
+                    // Ensure gain is still 0 at the end of initialization
+                    this.masterGain.gain.setValueAtTime(0, ctx.currentTime);
                 }
             } catch (error) {
                 this._initPromise = null;
@@ -263,16 +278,15 @@ export class MidiPlayer {
 
     _setMasterGainTarget(targetValue) {
         if (this.masterGain) {
-            this.masterGain.gain.cancelScheduledValues(
-                Tone.context.currentTime,
-            );
+            const ctx = this.masterGain.context;
+            this.masterGain.gain.cancelScheduledValues(ctx.currentTime);
             this.masterGain.gain.setValueAtTime(
                 this.masterGain.gain.value,
-                Tone.context.currentTime,
+                ctx.currentTime,
             );
             this.masterGain.gain.setTargetAtTime(
                 targetValue,
-                Tone.context.currentTime,
+                ctx.currentTime,
                 0.01,
             );
         }
@@ -317,13 +331,6 @@ export class MidiPlayer {
 
         if (this._currentPlayToken !== playToken) return;
 
-        if (autoplay) {
-            // Stabilize AudioContext clock and sample rate before loading and starting sequencer.
-            // This ensures the AudioContext clock is locked and stable with the hardware sample rate.
-            await this._delay(1000);
-            if (this._currentPlayToken !== playToken) return;
-        }
-
         this._hardResetSynth();
 
         // Reset tracking
@@ -352,6 +359,19 @@ export class MidiPlayer {
         ]);
 
         await loadPromise;
+
+        if (this._currentPlayToken !== playToken) return;
+
+        // Force time to 0 and playback rate to 1 to prevent "catch-up" speed artifacts
+        // that can occur if the clock drifted during the loadPromise wait.
+        if (this.sequencer) {
+            this.sequencer.currentTime = 0;
+            this.sequencer.playbackRate = 1;
+        }
+
+        // Small propagation delay to ensure sequencer state resets are processed
+        // before playback starts, especially under high CPU load.
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
         if (this._currentPlayToken !== playToken) return;
 

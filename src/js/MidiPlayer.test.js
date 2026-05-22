@@ -124,6 +124,8 @@ vi.mock('tone', () => {
         }),
     };
 
+    mockGainNode.context = mockRawContext;
+
     return {
         context: {
             state: 'suspended',
@@ -312,27 +314,27 @@ describe('MidiPlayer', () => {
             expect(mockAudioInstance.play).toHaveBeenCalled();
         });
 
-        it('should perform hard reset and stabilization delay on every play', async () => {
+        it('should perform hard reset on every play and ensure exact start time', async () => {
             const resetSpy = vi.spyOn(player, '_hardResetSynth');
-            const delaySpy = vi.spyOn(player, '_delay');
 
             // First play
             await player.play(new ArrayBuffer(8), true);
 
-            // resetSpy is called twice: once in stop() (when synth is null) and once in the play() body
+            // resetSpy is called twice: once in stop() (at the start of play()) and once in play() itself
             expect(resetSpy).toHaveBeenCalledTimes(2);
-            expect(delaySpy).toHaveBeenCalledWith(1000);
+            expect(player.sequencer.currentTime).toBe(0);
+            expect(player.sequencer.playbackRate).toBe(1);
 
             // Reset spy counts
             resetSpy.mockClear();
-            delaySpy.mockClear();
 
             // Second play
             await player.play(new ArrayBuffer(8), true);
 
-            // resetSpy is called twice: once in stop() to clean up the previous playback, and once in play() body
+            // resetSpy is called twice again
             expect(resetSpy).toHaveBeenCalledTimes(2);
-            expect(delaySpy).toHaveBeenCalledWith(1000);
+            expect(player.sequencer.currentTime).toBe(0);
+            expect(player.sequencer.playbackRate).toBe(1);
         });
 
         it('should NOT start playback but load MIDI when autoplay is false', async () => {

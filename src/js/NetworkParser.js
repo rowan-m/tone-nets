@@ -95,17 +95,36 @@ export class NetworkParser {
     static _buildTransitionsForTimeStep(graph, sourceNotes, targetNotes) {
         let edgesAdded = 0;
 
-        this.ensureNodesExist(graph, sourceNotes);
-        this.ensureNodesExist(graph, targetNotes);
+        const sourceCounts = new Map();
+        for (let i = 0; i < sourceNotes.length; i++) {
+            const note = sourceNotes[i];
+            sourceCounts.set(note, (sourceCounts.get(note) || 0) + 1);
+        }
 
-        for (let s = 0; s < sourceNotes.length; s++) {
-            const source = sourceNotes[s];
+        const targetCounts = new Map();
+        for (let i = 0; i < targetNotes.length; i++) {
+            const note = targetNotes[i];
+            targetCounts.set(note, (targetCounts.get(note) || 0) + 1);
+        }
 
-            for (let tr = 0; tr < targetNotes.length; tr++) {
-                const target = targetNotes[tr];
+        const uniqueSources = Array.from(sourceCounts.keys());
+        const uniqueTargets = Array.from(targetCounts.keys());
+
+        this.ensureNodesExist(graph, uniqueSources);
+        this.ensureNodesExist(graph, uniqueTargets);
+
+        for (let s = 0; s < uniqueSources.length; s++) {
+            const source = uniqueSources[s];
+            const sourceCount = sourceCounts.get(source);
+
+            for (let tr = 0; tr < uniqueTargets.length; tr++) {
+                const target = uniqueTargets[tr];
                 if (source === target) continue;
 
-                if (this.updateOrCreateLink(graph, source, target)) {
+                const targetCount = targetCounts.get(target);
+                const weightInc = sourceCount * targetCount;
+
+                if (this.updateOrCreateLink(graph, source, target, weightInc)) {
                     edgesAdded++;
                 }
             }
@@ -137,16 +156,16 @@ export class NetworkParser {
         }
     }
 
-    static updateOrCreateLink(graph, source, target) {
+    static updateOrCreateLink(graph, source, target, weightInc = 1) {
         const existingLink = graph.getLink(source, target);
 
         if (existingLink) {
-            existingLink.data.weight += 1;
+            existingLink.data.weight += weightInc;
             return false;
         }
 
         graph.addLink(source, target, {
-            weight: 1,
+            weight: weightInc,
             id: `${source}->${target}`,
         });
         return true;

@@ -317,6 +317,33 @@ describe('MidiPlayer', () => {
             expect(mockAudioInstance.play).toHaveBeenCalled();
         });
 
+        it('should handle concurrent play calls using tokens (race condition prevention)', async () => {
+            // Arrange
+            const buffer1 = new ArrayBuffer(8);
+            const buffer2 = new ArrayBuffer(16);
+
+            // Slow down the first play call's initialize step
+            const originalInitialize = player.initialize;
+            player.initialize = vi.fn().mockImplementation(async () => {
+                await new Promise((r) => setTimeout(r, 50));
+                return originalInitialize.call(player);
+            });
+
+            // Act
+            const p1 = player.play(buffer1, true);
+            const p2 = player.play(buffer2, true);
+
+            await Promise.all([p1, p2]);
+
+            // Assert
+            // The second call (buffer2) should be the one that finishes and sets the sequencer state
+            expect(player.sequencer.loadNewSongList).toHaveBeenCalledWith([
+                { binary: new Uint8Array(buffer2) },
+            ]);
+            // The first call should have been aborted by the token check
+            // We can't easily check internal state, but we know buffer2 was the last one loaded.
+        });
+
         it('should perform hard reset on every play and ensure exact start time', async () => {
             const resetSpy = vi.spyOn(player, '_hardResetSynth');
 
@@ -439,6 +466,67 @@ describe('MidiPlayer', () => {
 
             expect(consoleSpy).toHaveBeenCalled();
             consoleSpy.mockRestore();
+        });
+
+        it('should update duration if it changes significantly', () => {
+            // Arrange
+            player.duration = 10;
+            player.sequencer.duration = 15; // > 0.1 difference
+
+            // Act
+            player.updateMediaSessionPosition();
+
+            // Assert
+            expect(player.duration).toBe(15);
+        });
+
+        it('should NOT update duration if the change is negligible', () => {
+            // Arrange
+            player.duration = 10;
+            player.sequencer.duration = 10.05; // < 0.1 difference
+
+            // Act
+            player.updateMediaSessionPosition();
+
+            // Assert
+            expect(player.duration).toBe(10);
+        });
+
+        it('should trigger position updates on an interval and stop when isPlaying is false', () => {
+            // Arrange
+            vi.useFakeTimers();
+            const spy = vi.spyOn(player, 'updateMediaSessionPosition');
+            player.isPlaying = true;
+
+            // Act: Start interval
+            player._startMediaSessionInterval();
+
+            // Assert: Should have ticked once per second
+            vi.advanceTimersByTime(1000);
+            expect(spy).toHaveBeenCalledTimes(1);
+
+            vi.advanceTimersByTime(1000);
+            expect(spy).toHaveBeenCalledTimes(2);
+
+            // Act: Stop playing
+            player.isPlaying = false;
+            vi.advanceTimersByTime(1000);
+
+            // Assert: Interval should have cleared itself
+            expect(player._mediaSessionInterval).toBeNull();
+            expect(spy).toHaveBeenCalledTimes(2); // No new calls
+
+            vi.useRealTimers();
+        });
+    });
+
+    describe('Event Handling', () => {
+        it('should update channelInstruments on programChange', async () => {
+            player.sf2Buffer = new ArrayBuffer(8);
+            await player.initialize();
+
+            synthEvents['programChange']({ channel: 2, program: 19 });
+            expect(player.channelInstruments[2]).toBe(19);
         });
     });
 

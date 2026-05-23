@@ -295,6 +295,7 @@ export class NetworkVisualizer {
         this.playingNodes.clear();
         this.playingEdges.clear();
         this.pickableObjects = [];
+        this._updateObjectsToIntersect();
         this.graph = null;
         this.incrementalMode = false;
         this.maxDegree = 1;
@@ -608,6 +609,8 @@ export class NetworkVisualizer {
             this.edgeLineSegments.frustumCulled = false;
             this.graphGroup.add(this.edgeLineSegments);
         }
+
+        this._updateObjectsToIntersect();
     }
 
     _updateElementVisuals(id, type) {
@@ -1672,7 +1675,7 @@ export class NetworkVisualizer {
         }
     }
 
-    _populateObjectsToIntersect() {
+    _updateObjectsToIntersect() {
         this._objectsToIntersect.length = 0;
         if (this.nodeInstancedMesh) {
             this._objectsToIntersect.push(this.nodeInstancedMesh);
@@ -1710,7 +1713,6 @@ export class NetworkVisualizer {
 
     _performRaycast() {
         this.raycaster.setFromCamera(this.mouse, this.camera);
-        this._populateObjectsToIntersect();
 
         const intersects = this.raycaster.intersectObjects(
             this._objectsToIntersect,

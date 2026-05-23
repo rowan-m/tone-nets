@@ -1,80 +1,166 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { ThemeManager } from './ThemeManager.js';
 
 describe('ThemeManager', () => {
-    it('should initialize with default properties and no themes', () => {
-        const tm = new ThemeManager();
-        expect(tm.themes.size).toBe(0);
-        expect(tm.currentThemeName).toBeNull();
-        expect(tm.defaultThemeProperties.highlightColor).toBe(0xffe600);
+    let themeManager;
+
+    beforeEach(() => {
+        themeManager = new ThemeManager();
+    });
+
+    describe('Initialization', () => {
+        it('should have no current theme initially', () => {
+            // Act & Assert
+            expect(themeManager.getCurrentTheme()).toBeUndefined();
+        });
+
+        it('should return undefined for non-existent themes', () => {
+            // Act & Assert
+            expect(themeManager.getTheme('any')).toBeUndefined();
+        });
     });
 
     describe('registerTheme', () => {
-        it('should register a valid theme and merge with defaults', () => {
-            const tm = new ThemeManager();
-            const theme = { name: 'test', highlightColor: 0x123456 };
-            tm.registerTheme(theme);
+        it('should register a valid theme and apply default properties', () => {
+            // Arrange
+            const theme = { name: 'minimal-theme' };
 
-            const registered = tm.getTheme('test');
-            expect(registered.name).toBe('test');
-            expect(registered.highlightColor).toBe(0x123456);
-            expect(registered.emoji).toBe('🎨'); // from defaults
-            expect(tm.currentThemeName).toBe('test');
+            // Act
+            themeManager.registerTheme(theme);
+            const registered = themeManager.getTheme('minimal-theme');
+
+            // Assert
+            expect(registered.name).toBe('minimal-theme');
+            expect(registered.highlightColor).toBeDefined();
+            expect(registered.background).toBeDefined();
+            expect(registered.emoji).toBe('🎨');
         });
 
-        it('should throw error if theme has no name', () => {
-            const tm = new ThemeManager();
-            expect(() => tm.registerTheme({})).toThrow(
+        it('should allow overriding default properties', () => {
+            // Arrange
+            const theme = {
+                name: 'custom-theme',
+                highlightColor: 0xff0000,
+                emoji: '🚀',
+            };
+
+            // Act
+            themeManager.registerTheme(theme);
+            const registered = themeManager.getTheme('custom-theme');
+
+            // Assert
+            expect(registered.highlightColor).toBe(0xff0000);
+            expect(registered.emoji).toBe('🚀');
+        });
+
+        it('should deeply merge nodeMaterial with defaults', () => {
+            // Arrange
+            const theme = {
+                name: 'material-theme',
+                nodeMaterial: { roughness: 0.95 },
+            };
+
+            // Act
+            themeManager.registerTheme(theme);
+            const registered = themeManager.getTheme('material-theme');
+
+            // Assert
+            expect(registered.nodeMaterial.roughness).toBe(0.95);
+            expect(registered.nodeMaterial.metalness).toBe(0.2); // Default value
+        });
+
+        it('should set the first registered theme as the current theme', () => {
+            // Arrange
+            const theme1 = { name: 'theme1' };
+            const theme2 = { name: 'theme2' };
+
+            // Act
+            themeManager.registerTheme(theme1);
+            themeManager.registerTheme(theme2);
+
+            // Assert
+            expect(themeManager.getCurrentTheme().name).toBe('theme1');
+        });
+
+        it('should throw an error when registering a theme without a name', () => {
+            // Arrange
+            const invalidTheme = { highlightColor: 0x00ff00 };
+
+            // Act & Assert
+            expect(() => themeManager.registerTheme(invalidTheme)).toThrow(
                 'Theme must have a name',
             );
         });
 
-        it('should deeply merge nodeMaterial', () => {
-            const tm = new ThemeManager();
-            const theme = {
-                name: 'test',
-                nodeMaterial: { roughness: 0.9 },
-            };
-            tm.registerTheme(theme);
+        it('should overwrite an existing theme if registered with the same name', () => {
+            // Arrange
+            themeManager.registerTheme({ name: 'test', emoji: 'A' });
 
-            const registered = tm.getTheme('test');
-            expect(registered.nodeMaterial.roughness).toBe(0.9);
-            expect(registered.nodeMaterial.metalness).toBe(0.2); // from defaults
+            // Act
+            themeManager.registerTheme({ name: 'test', emoji: 'B' });
+            const theme = themeManager.getTheme('test');
+
+            // Assert
+            expect(theme.emoji).toBe('B');
         });
     });
 
-    describe('setTheme and getCurrentTheme', () => {
-        it('should set current theme and retrieve it', () => {
-            const tm = new ThemeManager();
-            tm.registerTheme({ name: 't1' });
-            tm.registerTheme({ name: 't2' });
+    describe('setTheme', () => {
+        it('should change the current theme to a registered theme', () => {
+            // Arrange
+            themeManager.registerTheme({ name: 'theme1' });
+            themeManager.registerTheme({ name: 'theme2' });
 
-            tm.setTheme('t2');
-            expect(tm.currentThemeName).toBe('t2');
-            expect(tm.getCurrentTheme().name).toBe('t2');
+            // Act
+            themeManager.setTheme('theme2');
+
+            // Assert
+            expect(themeManager.getCurrentTheme().name).toBe('theme2');
         });
 
-        it('should throw error if setting non-existent theme', () => {
-            const tm = new ThemeManager();
-            expect(() => tm.setTheme('nope')).toThrow('Theme "nope" not found');
+        it('should throw an error if the theme name does not exist', () => {
+            // Act & Assert
+            expect(() => themeManager.setTheme('ghost-theme')).toThrow(
+                'Theme "ghost-theme" not found',
+            );
         });
     });
 
     describe('cycleTheme', () => {
         it('should return the next theme name in sequence', () => {
-            const tm = new ThemeManager();
-            tm.registerTheme({ name: 't1' });
-            tm.registerTheme({ name: 't2' });
-            tm.registerTheme({ name: 't3' });
+            // Arrange
+            themeManager.registerTheme({ name: 't1' });
+            themeManager.registerTheme({ name: 't2' });
+            themeManager.registerTheme({ name: 't3' });
 
-            tm.setTheme('t1');
-            expect(tm.cycleTheme()).toBe('t2');
+            // Act & Assert
+            themeManager.setTheme('t1');
+            expect(themeManager.cycleTheme()).toBe('t2');
 
-            tm.setTheme('t2');
-            expect(tm.cycleTheme()).toBe('t3');
+            themeManager.setTheme('t2');
+            expect(themeManager.cycleTheme()).toBe('t3');
 
-            tm.setTheme('t3');
-            expect(tm.cycleTheme()).toBe('t1');
+            themeManager.setTheme('t3');
+            expect(themeManager.cycleTheme()).toBe('t1');
+        });
+
+        it('should return the current theme name if only one theme is registered', () => {
+            // Arrange
+            themeManager.registerTheme({ name: 'solo' });
+
+            // Act
+            const next = themeManager.cycleTheme();
+
+            // Assert
+            expect(next).toBe('solo');
+        });
+
+        it('should return undefined if no themes are registered', () => {
+            // Act
+            const next = themeManager.cycleTheme();
+
+            // Assert
+            expect(next).toBeUndefined();
         });
     });
 });

@@ -397,6 +397,44 @@ describe('NetworkVisualizer', () => {
     });
 
     describe('Theme System', () => {
+        it('should use custom getNodeColor from theme if available', () => {
+            // Arrange
+            visualizer._initSharedGeometries();
+            const nodeData = createMockNodeData('C4');
+            visualizer.nodes.set('C4', nodeData);
+            visualizer.nodeList = [nodeData];
+            visualizer.graph = createMockGraph([
+                { id: 'C4', data: { degree: 1 } },
+            ]);
+            visualizer.layout = {
+                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
+            };
+
+            const customTheme = {
+                name: 'custom',
+                getNodeColor: vi.fn(() => ({
+                    hue: 0.1,
+                    saturation: 0.2,
+                    lightness: 0.3,
+                })),
+                nodeMaterial: {},
+            };
+            visualizer.themeManager.registerTheme(customTheme);
+
+            // Act
+            visualizer.setTheme('custom');
+
+            // Assert
+            expect(customTheme.getNodeColor).toHaveBeenCalled();
+            const color = nodeData.baseColor;
+            // Check HSL (simplified check)
+            const hsl = {};
+            color.getHSL(hsl);
+            expect(hsl.h).toBeCloseTo(0.1, 4);
+            expect(hsl.s).toBeCloseTo(0.2, 4);
+            expect(hsl.l).toBeCloseTo(0.3, 4);
+        });
+
         it('should switch themes and trigger activation/deactivation hooks', () => {
             // Arrange
             const themeA = {
@@ -579,6 +617,137 @@ describe('NetworkVisualizer', () => {
         });
     });
 
+    describe('Raycasting and Interaction Internals', () => {
+        it('should resolve node instance from raycast', () => {
+            // Arrange
+            const nodeData = createMockNodeData('Node1', 42);
+            visualizer.nodes.set('Node1', nodeData);
+            visualizer.instanceIdNodeMap.set(42, 'Node1');
+            visualizer.nodeInstancedMesh = { type: 'Mesh' };
+
+            const intersects = [
+                { object: visualizer.nodeInstancedMesh, instanceId: 42 },
+            ];
+
+            // Act
+            const result = visualizer._resolveRaycastTarget(intersects);
+
+            // Assert
+            expect(result).toBe(nodeData.mesh);
+        });
+
+        it('should resolve cone instance from raycast to its parent edge', () => {
+            // Arrange
+            const edgeData = createMockEdgeData('A', 'B', 10);
+            visualizer.edgeMap.set('A->B', edgeData);
+            visualizer.instanceIdEdgeMap.set(10, 'A->B');
+            visualizer.coneInstancedMesh = { type: 'Mesh' };
+
+            const intersects = [
+                { object: visualizer.coneInstancedMesh, instanceId: 10 },
+            ];
+
+            // Act
+            const result = visualizer._resolveRaycastTarget(intersects);
+
+            // Assert
+            expect(result).toBe(edgeData.line);
+        });
+
+        it('should resolve edge line segment from raycast', () => {
+            // Arrange
+            const edgeData = createMockEdgeData('A', 'B', 5);
+            visualizer.edgeMap.set('A->B', edgeData);
+            visualizer.instanceIdEdgeMap.set(5, 'A->B');
+            visualizer.edgeLineSegments = { type: 'LineSegments' };
+            visualizer.maxEdgeSegments = 20;
+
+            // vertexIndex for edge index 5 would be 5 * (20 * 2) = 200
+            const intersects = [
+                { object: visualizer.edgeLineSegments, index: 205 },
+            ];
+
+            // Act
+            const result = visualizer._resolveRaycastTarget(intersects);
+
+            // Assert
+            expect(result).toBe(edgeData.line);
+        });
+
+        it('should return null if raycast resolves to a missing node/edge ID', () => {
+            // Arrange
+            visualizer.nodeInstancedMesh = { type: 'Mesh' };
+            visualizer.instanceIdNodeMap.set(999, 'Missing');
+            const intersects = [
+                { object: visualizer.nodeInstancedMesh, instanceId: 999 },
+            ];
+
+            // Act
+            const result = visualizer._resolveRaycastTarget(intersects);
+
+            // Assert
+            expect(result).toBeNull();
+        });
+    });
+
+    describe('Advanced Fake Link Management', () => {
+        it('should remove existing fake links before adding new ones', () => {
+            // Arrange
+            const fakeLink = { fromId: 'A', toId: 'B', data: { isFake: true } };
+            const mockGraph = createMockGraph(
+                [
+                    { id: 'Hub', data: { degree: 5 } },
+                    { id: 'Isolated', data: { degree: 1 } },
+                ],
+                [fakeLink],
+            );
+            visualizer.graph = mockGraph;
+            visualizer.layout = { step: vi.fn() };
+            visualizer._graphDirtySinceLastFakeLinks = true;
+
+            // Act
+            visualizer._updateFakeLinks();
+
+            // Assert
+            expect(mockGraph.removeLink).toHaveBeenCalledWith(fakeLink);
+            expect(mockGraph.addLink).toHaveBeenCalledWith(
+                'Hub',
+                'Isolated',
+                expect.objectContaining({ isFake: true }),
+            );
+        });
+
+        it('should link multiple isolated components to the main hub', () => {
+            // Arrange
+            const mockGraph = createMockGraph(
+                [
+                    { id: 'Hub', data: { degree: 10 } },
+                    { id: 'Iso1', data: { degree: 1 } },
+                    { id: 'Iso2', data: { degree: 1 } },
+                ],
+                [],
+            );
+            visualizer.graph = mockGraph;
+            visualizer.layout = { step: vi.fn() };
+            visualizer._graphDirtySinceLastFakeLinks = true;
+
+            // Act
+            visualizer._updateFakeLinks();
+
+            // Assert
+            expect(mockGraph.addLink).toHaveBeenCalledWith(
+                'Hub',
+                'Iso1',
+                expect.any(Object),
+            );
+            expect(mockGraph.addLink).toHaveBeenCalledWith(
+                'Hub',
+                'Iso2',
+                expect.any(Object),
+            );
+        });
+    });
+
     describe('Raycasting and Event Handlers', () => {
         it('should perform raycasting and trigger onHover when mouse moves', () => {
             // Arrange
@@ -657,6 +826,39 @@ describe('NetworkVisualizer', () => {
             // Assert
             expect(visualizer.mouse.x).not.toBe(-1000);
             expect(visualizer.mouseMoved).toBe(true);
+        });
+    });
+
+    describe('Auto-Tour Logic', () => {
+        it('should change target velocity when timer expires', () => {
+            // Arrange
+            visualizer.autoTour = true;
+            visualizer.graphCenter = new THREE.Vector3(0, 0, 0);
+            visualizer.tourSpeedChangeTimer = 0.1;
+            const initialVelocity = visualizer.tourTargetVelocity.clone();
+
+            // Act
+            visualizer._updateAutoTour(0.2); // Timer becomes -0.1
+
+            // Assert
+            expect(visualizer.tourSpeedChangeTimer).toBeGreaterThan(0); // It should reset to a random value
+            expect(visualizer.tourTargetVelocity.x).not.toBe(initialVelocity.x);
+        });
+
+        it('should update current velocity smoothly towards target velocity', () => {
+            // Arrange
+            visualizer.autoTour = true;
+            visualizer.graphCenter = new THREE.Vector3(0, 0, 0);
+            visualizer.tourTargetVelocity.set(1, 1, 1);
+            visualizer.tourCurrentVelocity.set(0, 0, 0);
+            visualizer.tourSpeedChangeTimer = 10; // Prevent speed change during test
+
+            // Act
+            visualizer._updateAutoTour(0.1);
+
+            // Assert
+            expect(visualizer.tourCurrentVelocity.x).toBeGreaterThan(0);
+            expect(visualizer.tourCurrentVelocity.x).toBeLessThan(1);
         });
     });
 

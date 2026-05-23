@@ -232,6 +232,22 @@ describe('UIManager', () => {
             expect(mockElements['metric-efficiency'].textContent).toBe(0.5);
         });
 
+        it('should handle mobile screen width by hiding info panel', () => {
+            // Arrange
+            vi.stubGlobal('window', { innerWidth: 500 });
+
+            // Act
+            uiManager.updateMetrics(mockSummary, 'test.mid', false);
+
+            // Assert
+            expect(
+                mockElements['info-panel'].classList.add,
+            ).toHaveBeenCalledWith('hidden');
+            expect(mockElements['stats-toggle'].checked).toBe(false);
+
+            vi.stubGlobal('window', { innerWidth: 1024 });
+        });
+
         it('should truncate the app title if it is too long (over 35 characters)', () => {
             const longSummary = {
                 ...mockSummary,
@@ -307,10 +323,12 @@ describe('UIManager', () => {
     });
 
     describe('Event Listeners', () => {
-        it('should handle incremental toggle change', () => {
+        it('should handle incremental toggle change and enable/disable stats toggle correctly', () => {
             const changeHandler = mockElements[
                 'incremental-toggle'
             ].addEventListener.mock.calls.find((c) => c[0] === 'change')[1];
+
+            // Checked (Incremental mode ON)
             changeHandler({ target: { checked: true } });
             expect(mockCallbacks.onIncrementalToggle).toHaveBeenCalledWith(
                 true,
@@ -318,6 +336,12 @@ describe('UIManager', () => {
             expect(
                 mockElements['info-panel'].classList.add,
             ).toHaveBeenCalledWith('hidden');
+            expect(mockElements['stats-toggle'].disabled).toBe(true);
+
+            // Unchecked (Incremental mode OFF)
+            mockElements['play-btn'].disabled = false;
+            changeHandler({ target: { checked: false } });
+            expect(mockElements['stats-toggle'].disabled).toBe(false);
         });
 
         it('should handle theme cycle click', () => {
@@ -388,7 +412,7 @@ describe('UIManager', () => {
             expect(mockCallbacks.onVisibilityChange).toHaveBeenCalled();
         });
 
-        it('should handle drag and drop', () => {
+        it('should handle drag and drop and prevent flickering', () => {
             const dragOverHandler = mockElements[
                 'canvas-container'
             ].addEventListener.mock.calls.find((c) => c[0] === 'dragover')[1];
@@ -405,23 +429,64 @@ describe('UIManager', () => {
                     types: ['Files'],
                     files: [{ name: 'dropped.mid' }],
                 },
+                relatedTarget: { id: 'some-external-el' },
             };
 
+            // Drag over
             dragOverHandler(mockEvent);
-            expect(mockEvent.preventDefault).toHaveBeenCalled();
             expect(
                 mockElements['canvas-container'].classList.add,
             ).toHaveBeenCalledWith('drag-active');
 
+            // Drag over again when already active (should early return)
+            mockElements['canvas-container'].classList.contains.mockReturnValue(
+                true,
+            );
+            dragOverHandler(mockEvent);
+            expect(
+                mockElements['canvas-container'].classList.add,
+            ).toHaveBeenCalledTimes(1);
+
+            // Drag leave to a child element (should NOT remove class)
+            mockElements['canvas-container'].contains.mockReturnValue(true);
+            dragLeaveHandler({ ...mockEvent, relatedTarget: { id: 'child' } });
+            expect(
+                mockElements['canvas-container'].classList.remove,
+            ).not.toHaveBeenCalled();
+
+            // Drag leave to outside (should remove class)
+            mockElements['canvas-container'].contains.mockReturnValue(false);
             dragLeaveHandler(mockEvent);
             expect(
                 mockElements['canvas-container'].classList.remove,
             ).toHaveBeenCalledWith('drag-active');
 
+            // Drop
             dropHandler(mockEvent);
             expect(mockCallbacks.onFileSelection).toHaveBeenCalledWith(
                 mockEvent.dataTransfer.files[0],
             );
+        });
+
+        it('should ignore dragover if no files are being transferred', () => {
+            const dragOverHandler = mockElements[
+                'canvas-container'
+            ].addEventListener.mock.calls.find((c) => c[0] === 'dragover')[1];
+
+            const mockEvent = {
+                preventDefault: vi.fn(),
+                dataTransfer: {
+                    types: ['text/plain'],
+                },
+            };
+            mockElements['canvas-container'].classList.contains.mockReturnValue(
+                false,
+            );
+
+            dragOverHandler(mockEvent);
+            expect(
+                mockElements['canvas-container'].classList.add,
+            ).not.toHaveBeenCalled();
         });
 
         it('should focus correct button in toggleUi', () => {

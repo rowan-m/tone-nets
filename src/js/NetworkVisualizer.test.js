@@ -72,11 +72,7 @@ vi.mock('three/examples/jsm/controls/TrackballControls.js', () => ({
             update: vi.fn(),
             reset: vi.fn(),
             dispose: vi.fn(),
-            target: {
-                copy: vi.fn(),
-                set: vi.fn(),
-                clone: vi.fn(() => new THREE.Vector3()),
-            },
+            target: new THREE.Vector3(),
             addEventListener: vi.fn(),
         };
     }),
@@ -243,6 +239,13 @@ describe('NetworkVisualizer', () => {
             expect(visualizer.nodes.size).toBe(0);
             expect(visualizer.effects.clear).toHaveBeenCalled();
         });
+
+        it('supports pausing and unpausing', () => {
+            visualizer.setPaused(true);
+            expect(visualizer.isPaused).toBe(true);
+            visualizer.setPaused(false);
+            expect(visualizer.isPaused).toBe(false);
+        });
     });
 
     describe('Graph Visualization', () => {
@@ -257,6 +260,33 @@ describe('NetworkVisualizer', () => {
             expect(visualizer.graph).toBe(mockGraph);
             expect(visualizer.nodes.has('C4')).toBe(true);
             expect(visualizer.edgeMap.has('C4->G4')).toBe(true);
+        });
+
+        it('fits camera to graph bounds', async () => {
+            const mockGraph = createMockGraph(
+                [
+                    { id: 'C4', data: { degree: 1 } },
+                    { id: 'G4', data: { degree: 1 } },
+                ],
+                [],
+            );
+            // Mock positions to create a known radius
+            visualizer.layout = {
+                getNodePosition: vi.fn((id) =>
+                    id === 'C4' ? { x: 0, y: 0, z: 0 } : { x: 10, y: 0, z: 0 },
+                ),
+                runSimulation: vi.fn(() => Promise.resolve()),
+                dispose: vi.fn(),
+            };
+
+            await visualizer.buildVisualization(mockGraph);
+            visualizer.fitCameraToGraph();
+
+            expect(visualizer.graphCenter.x).toBeGreaterThan(0);
+            expect(visualizer.graphRadius).toBeGreaterThan(0);
+            expect(visualizer.controls.target.x).toBeCloseTo(
+                visualizer.graphCenter.x,
+            );
         });
 
         it('handles incremental transition updates', () => {
@@ -353,7 +383,29 @@ describe('NetworkVisualizer', () => {
             expect(visualizer.playingNodes.has(nodeData)).toBe(false);
         });
 
-        it('resets all active highlights', () => {
+        it('manages edge highlights with reference counting', () => {
+            const mockGraph = createMockGraph(
+                [
+                    { id: 'C4', data: { degree: 1 } },
+                    { id: 'G4', data: { degree: 1 } },
+                ],
+                [{ fromId: 'C4', toId: 'G4', data: { weight: 1 } }],
+            );
+            visualizer.initIncremental(mockGraph);
+            visualizer.addTransitionIncremental('C4', 'G4');
+
+            visualizer.highlightPlayingElement('G4', 'C4');
+            const edgeData = visualizer.edgeMap.get('C4->G4');
+
+            expect(edgeData.playCount).toBe(1);
+            expect(visualizer.playingEdges.has(edgeData)).toBe(true);
+
+            visualizer.releasePlayingElement('G4', 'C4');
+            expect(edgeData.playCount).toBe(0);
+            expect(visualizer.playingEdges.has(edgeData)).toBe(false);
+        });
+
+        it('resets all active highlights and updates instance colors', () => {
             const mockGraph = createMockGraph([
                 { id: 'C4', data: { degree: 1 } },
             ]);
@@ -361,10 +413,13 @@ describe('NetworkVisualizer', () => {
             visualizer.addTransitionIncremental(null, 'C4');
             visualizer.highlightPlayingElement('C4');
 
+            const spy = vi.spyOn(visualizer.nodeInstancedMesh, 'setColorAt');
+
             visualizer.resetPlayingHighlights();
 
             expect(visualizer.playingNodes.size).toBe(0);
             expect(visualizer.nodes.get('C4').playCount).toBe(0);
+            expect(spy).toHaveBeenCalled();
         });
 
         it('triggers instrument emojis through the effects manager', () => {
@@ -403,6 +458,41 @@ describe('NetworkVisualizer', () => {
             expect(tourSpy).toHaveBeenCalledWith(false);
         });
 
+        it('handles auto-tour lifecycle and callbacks', () => {
+            const tourSpy = vi.fn();
+            visualizer.onTourChange = tourSpy;
+
+            visualizer.startAutoTour();
+            expect(visualizer.autoTour).toBe(true);
+            expect(tourSpy).toHaveBeenCalledWith(true);
+
+            // Trigger speed change logic
+            visualizer.tourSpeedChangeTimer = 0;
+            visualizer.graphCenter = new THREE.Vector3(0, 0, 0);
+            visualizer._updateAutoTour(0.1);
+            expect(visualizer.tourSpeedChangeTimer).toBeGreaterThan(0);
+
+            visualizer.stopAutoTour();
+            expect(visualizer.autoTour).toBe(false);
+            expect(tourSpy).toHaveBeenCalledWith(false);
+        });
+
+        it('updates mouse position on pointer interaction', () => {
+            const mockEvent = {
+                clientX: 500,
+                clientY: 500,
+            };
+            visualizer._onPointerInteraction(mockEvent);
+
+            expect(visualizer.mouse.x).toBe(0);
+            expect(visualizer.mouse.y).toBe(0);
+            expect(visualizer.mouseMoved).toBe(true);
+
+            visualizer._onPointerLeave();
+            expect(visualizer.mouse.x).toBe(-1000);
+            expect(visualizer.mouseMoved).toBe(true);
+        });
+
         it('performs raycasting on mouse move and triggers hover callback', () => {
             const mockGraph = createMockGraph([
                 { id: 'C4', data: { degree: 1 } },
@@ -422,6 +512,35 @@ describe('NetworkVisualizer', () => {
             expect(visualizer.onHover).toHaveBeenCalledWith(
                 expect.objectContaining({ id: 'C4' }),
             );
+        });
+
+        it('resolves raycast targets for cones and edges', () => {
+            const mockGraph = createMockGraph(
+                [
+                    { id: 'C4', data: { degree: 1 } },
+                    { id: 'G4', data: { degree: 1 } },
+                ],
+                [{ fromId: 'C4', toId: 'G4', data: { weight: 1 } }],
+            );
+            visualizer.initIncremental(mockGraph);
+            visualizer.addTransitionIncremental('C4', 'G4');
+
+            // 1. Test Cone intersection
+            const coneIntersect = [
+                { object: visualizer.coneInstancedMesh, instanceId: 0 },
+            ];
+            visualizer.raycaster.intersectObjects = vi.fn(() => coneIntersect);
+            visualizer._performRaycast();
+            expect(visualizer.hoveredObject.userData.type).toBe('edge');
+            expect(visualizer.hoveredObject.userData.sourceId).toBe('C4');
+
+            // 2. Test Edge intersection
+            const edgeIntersect = [
+                { object: visualizer.edgeLineSegments, index: 0 },
+            ];
+            visualizer.raycaster.intersectObjects = vi.fn(() => edgeIntersect);
+            visualizer._performRaycast();
+            expect(visualizer.hoveredObject.userData.type).toBe('edge');
         });
     });
 

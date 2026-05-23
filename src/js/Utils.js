@@ -112,10 +112,8 @@ export class Utils {
             const pitchClassStr = letter + accidental;
 
             const val = this.PC_MAP[pitchClassStr];
-            if (val !== undefined) {
-                const oct = match[3] ? parseInt(match[3], 10) : 4;
-                result = oct * 12 + val;
-            }
+            const oct = match[3] ? parseInt(match[3], 10) : 4;
+            result = oct * 12 + val;
         }
 
         NOTE_CACHE.set(note, result);

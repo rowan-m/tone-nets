@@ -113,8 +113,12 @@ vi.mock('tone', () => {
         },
     };
 
+    let mockTime = 0;
     const mockRawContext = {
         state: 'running',
+        get currentTime() {
+            return mockTime++;
+        },
         resume: vi.fn().mockResolvedValue(),
         audioWorklet: mockAudioWorklet,
         createGain: vi.fn().mockReturnValue(mockGainNode),
@@ -145,6 +149,8 @@ describe('MidiPlayer', () => {
         for (const key in synthEvents) delete synthEvents[key];
         for (const key in sequencerEvents) delete sequencerEvents[key];
         player = new MidiPlayer();
+        // Speed up tests by bypassing stabilization delays
+        vi.spyOn(player, '_delay').mockResolvedValue(undefined);
     });
 
     describe('Initialization', () => {
@@ -302,9 +308,6 @@ describe('MidiPlayer', () => {
         beforeEach(async () => {
             player.sf2Buffer = new ArrayBuffer(8);
             await player.initialize();
-            if (player._delay) {
-                vi.spyOn(player, '_delay').mockResolvedValue(undefined);
-            }
         });
 
         it('should start playback and update state when autoplay is true', async () => {

@@ -75,11 +75,11 @@ export class MidiPlayer {
                         rawCtx.currentTime === startCtxTime &&
                         performance.now() - startTime < 2000
                     ) {
-                        await new Promise((resolve) => setTimeout(resolve, 50));
+                        await this._delay(50);
                     }
 
                     // Additional stabilization delay to allow hardware sample rate to settle
-                    await new Promise((resolve) => setTimeout(resolve, 500));
+                    await this._delay(500);
 
                     // Initialize SpessaSynth
                     this.synth = new WorkletSynthesizer(rawCtx);
@@ -115,7 +115,7 @@ export class MidiPlayer {
                     this._setupSynthEvents();
 
                     // Final stabilization delay after heavy resource loading (SF2 parsing/upload)
-                    await new Promise((resolve) => setTimeout(resolve, 300));
+                    await this._delay(300);
 
                     // Warm up synthesizer JIT compilation silently
                     const ctx = this.masterGain.context;
@@ -127,7 +127,7 @@ export class MidiPlayer {
                         this.synth.noteOn(ch, 60, 1);
                         this.synth.noteOff(ch, 60);
                     }
-                    await new Promise((resolve) => setTimeout(resolve, 100));
+                    await this._delay(100);
 
                     // Ensure gain is still 0 at the end of initialization
                     this.masterGain.gain.setValueAtTime(0, ctx.currentTime);
@@ -371,7 +371,7 @@ export class MidiPlayer {
 
         // Small propagation delay to ensure sequencer state resets are processed
         // before playback starts, especially under high CPU load.
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await this._delay(50);
 
         if (this._currentPlayToken !== playToken) return;
 

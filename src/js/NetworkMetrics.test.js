@@ -61,6 +61,11 @@ describe('NetworkMetrics', () => {
     });
 
     describe('calculateEntropy', () => {
+        it('should return 0 for an empty graph', () => {
+            const graph = createGraph();
+            expect(NetworkMetrics.calculateEntropy(graph, 0)).toBe('0.0000');
+        });
+
         it('should calculate mean node entropy correctly', () => {
             // Arrange
             const graph = createGraph();
@@ -102,6 +107,12 @@ describe('NetworkMetrics', () => {
 
             // Assert
             expect(entropy).toBe('0.0000');
+        });
+
+        it('should handle zero weight links in entropy calculation (edge case)', () => {
+            const graph = createGraph();
+            graph.addLink('A', 'B', { weight: 0 });
+            expect(NetworkMetrics.calculateEntropy(graph, 2)).toBe('0.0000');
         });
     });
 
@@ -197,6 +208,13 @@ describe('NetworkMetrics', () => {
             expect(embedding.every((v) => v === '0.0000')).toBe(true);
             expect(embedding.length).toBe(12);
         });
+
+        it('should handle zero weight links in embedding (edge case)', () => {
+            const graph = createGraph();
+            graph.addLink('C4', 'D4', { weight: 0 });
+            const embedding = NetworkMetrics.calculateEmbedding(graph);
+            expect(embedding.every((v) => v === '0.0000')).toBe(true);
+        });
     });
 
     describe('Graph Algorithms Internal Helpers', () => {
@@ -234,6 +252,26 @@ describe('NetworkMetrics', () => {
             // Assert
             // alt = d + 1 / weight. d=0, weight defaults to 1. alt = 1.
             expect(distances.get('B')).toBe(1);
+        });
+
+        it('should correctly handle multiple paths and hit the visited branch in Dijkstra', () => {
+            const graph = createGraph();
+            // Path 1: A -> B (weight 0.1) => dist 10
+            // Path 2: A -> C (weight 1) => dist 1
+            // Path 3: C -> B (weight 10) => dist 1.1
+            // PQ will have [B, 10] then [C, 1].
+            // Pop [C, 1], find B with dist 1.1. Push [B, 1.1].
+            // PQ now has [B, 1.1] and [B, 10].
+            // Pop [B, 1.1], mark visited.
+            // Pop [B, 10], hit visited.has(B) -> continue.
+            graph.addLink('A', 'B', { weight: 0.1 });
+            graph.addLink('A', 'C', { weight: 1 });
+            graph.addLink('C', 'B', { weight: 10 });
+
+            const adj = NetworkMetrics._getAdjacencyList(graph);
+            const distances = NetworkMetrics.dijkstraDistances(adj, 'A');
+
+            expect(distances.get('B')).toBeCloseTo(1.1, 5);
         });
     });
 

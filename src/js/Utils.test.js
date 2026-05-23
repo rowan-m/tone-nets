@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Utils } from './Utils.js';
 
 describe('Utils', () => {
@@ -112,6 +112,80 @@ describe('Utils', () => {
             // Assert
             expect(result).toBe(false);
         });
+
+        it('should return true if matchMedia detects a touch pointer', () => {
+            // Arrange
+            Object.defineProperty(global, 'navigator', {
+                value: { userAgent: 'Desktop' },
+                configurable: true,
+                writable: true,
+            });
+            Object.defineProperty(global, 'window', {
+                value: {
+                    innerWidth: 1024,
+                    matchMedia: vi.fn().mockImplementation((query) => ({
+                        matches: query === '(pointer: coarse)',
+                    })),
+                },
+                configurable: true,
+                writable: true,
+            });
+
+            // Act
+            const result = Utils.isMobile();
+
+            // Assert
+            expect(result).toBe(true);
+            expect(window.matchMedia).toHaveBeenCalledWith('(pointer: coarse)');
+        });
+
+        it('should return true if matchMedia detects a small screen', () => {
+            // Arrange
+            Object.defineProperty(global, 'navigator', {
+                value: { userAgent: 'Desktop' },
+                configurable: true,
+                writable: true,
+            });
+            Object.defineProperty(global, 'window', {
+                value: {
+                    innerWidth: 1024,
+                    matchMedia: vi.fn().mockImplementation((query) => ({
+                        matches: query === '(max-width: 768px)',
+                    })),
+                },
+                configurable: true,
+                writable: true,
+            });
+
+            // Act
+            const result = Utils.isMobile();
+
+            // Assert
+            expect(result).toBe(true);
+        });
+
+        it('should fall back to legacy check if matchMedia is present but returns no matches', () => {
+            // Arrange
+            Object.defineProperty(global, 'navigator', {
+                value: { userAgent: 'Android' },
+                configurable: true,
+                writable: true,
+            });
+            Object.defineProperty(global, 'window', {
+                value: {
+                    innerWidth: 1024,
+                    matchMedia: vi.fn().mockReturnValue({ matches: false }),
+                },
+                configurable: true,
+                writable: true,
+            });
+
+            // Act
+            const result = Utils.isMobile();
+
+            // Assert
+            expect(result).toBe(true); // Matches via userAgent legacy check
+        });
     });
 
     describe('noteToSemitone', () => {
@@ -194,13 +268,29 @@ describe('Utils', () => {
     });
 
     describe('midiNoteToName', () => {
-        it('should correctly convert midi notes to string names', () => {
+        it('should correctly convert midi notes in the standard range (0-127)', () => {
             // Arrange & Act & Assert
             expect(Utils.midiNoteToName(60)).toBe('C4');
             expect(Utils.midiNoteToName(61)).toBe('C#4');
             expect(Utils.midiNoteToName(69)).toBe('A4');
             expect(Utils.midiNoteToName(12)).toBe('C0');
             expect(Utils.midiNoteToName(0)).toBe('C-1');
+            expect(Utils.midiNoteToName(127)).toBe('G9');
+        });
+
+        it('should correctly convert midi notes outside the standard range (boundary conditions)', () => {
+            // Arrange & Act & Assert
+            // 128 -> C10 (128 / 12 = 10.66 -> 10, 10 - 1 = 9? No, floor(128/12)-1 = 10-1 = 9. 128%12 = 8. G#9)
+            // Wait, 128 / 12 = 10.66. floor(10.66) = 10. 10 - 1 = 9.
+            // 128 % 12 = 8. Index 8 in NOTE_NAMES is 'G#'.
+            // So 128 -> G#9.
+            expect(Utils.midiNoteToName(128)).toBe('G#9');
+
+            // -1 -> 11 semitones below C0?
+            // floor(-1/12) = -1. -1 - 1 = -2.
+            // ((-1 % 12) + 12) % 12 = (-1 + 12) % 12 = 11. Index 11 is 'B'.
+            // So -1 -> B-2.
+            expect(Utils.midiNoteToName(-1)).toBe('B-2');
         });
     });
 

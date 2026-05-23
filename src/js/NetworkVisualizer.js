@@ -170,9 +170,66 @@ export class NetworkVisualizer {
 
         this.initThree();
         this.initPostProcessing();
+
+        // Bind event handlers
         this.animate = this.animate.bind(this);
+        this._onWindowResize = this._onWindowResize.bind(this);
+        this._onPointerInteraction = this._onPointerInteraction.bind(this);
+        this._onPointerLeave = this._onPointerLeave.bind(this);
+        this._onDocumentClick = this._onDocumentClick.bind(this);
+
         this._isAnimating = false;
         this._animationFrameId = null;
+
+        this._setupEventListeners();
+    }
+
+    _setupEventListeners() {
+        window.addEventListener('resize', this._onWindowResize);
+        this.container.addEventListener(
+            'pointermove',
+            this._onPointerInteraction,
+        );
+        this.container.addEventListener(
+            'pointerdown',
+            this._onPointerInteraction,
+        );
+        this.container.addEventListener('pointerleave', this._onPointerLeave);
+        document.addEventListener('click', this._onDocumentClick);
+    }
+
+    _onWindowResize() {
+        const aspect = this.container.clientWidth / this.container.clientHeight;
+        const d = this.baseFrustumSize / 2;
+        this.camera.left = -d * aspect;
+        this.camera.right = d * aspect;
+        this.camera.top = d;
+        this.camera.bottom = -d;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(
+            this.container.clientWidth,
+            this.container.clientHeight,
+        );
+        this.composer.setSize(
+            this.container.clientWidth,
+            this.container.clientHeight,
+        );
+    }
+
+    _onPointerInteraction(e) {
+        const rect = this.container.getBoundingClientRect();
+        this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        this.mouseMoved = true;
+    }
+
+    _onPointerLeave() {
+        this.mouse.set(-1000, -1000);
+        this.mouseMoved = true;
+    }
+
+    _onDocumentClick() {
+        this.stopAutoTour();
     }
 
     startAnimationLoop() {
@@ -224,44 +281,6 @@ export class NetworkVisualizer {
         const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
         directionalLight.position.set(1, 1, 2);
         this.scene.add(directionalLight);
-
-        window.addEventListener('resize', () => {
-            const aspect =
-                this.container.clientWidth / this.container.clientHeight;
-            const d = this.baseFrustumSize / 2;
-            this.camera.left = -d * aspect;
-            this.camera.right = d * aspect;
-            this.camera.top = d;
-            this.camera.bottom = -d;
-            this.camera.updateProjectionMatrix();
-            this.renderer.setSize(
-                this.container.clientWidth,
-                this.container.clientHeight,
-            );
-            this.composer.setSize(
-                this.container.clientWidth,
-                this.container.clientHeight,
-            );
-        });
-
-        this.container.addEventListener('pointermove', (e) => {
-            const rect = this.container.getBoundingClientRect();
-            this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-            this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-            this.mouseMoved = true;
-        });
-
-        this.container.addEventListener('pointerdown', (e) => {
-            const rect = this.container.getBoundingClientRect();
-            this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-            this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-            this.mouseMoved = true;
-        });
-
-        this.container.addEventListener('pointerleave', () => {
-            this.mouse.set(-1000, -1000);
-            this.mouseMoved = true;
-        });
     }
 
     initPostProcessing() {
@@ -2142,8 +2161,18 @@ export class NetworkVisualizer {
         this.clear();
 
         window.removeEventListener('resize', this._onWindowResize);
-        document.removeEventListener('mousemove', this._onMouseMove);
-        document.removeEventListener('touchstart', this._onTouchStart);
-        document.removeEventListener('click', this._onClick);
+        this.container.removeEventListener(
+            'pointermove',
+            this._onPointerInteraction,
+        );
+        this.container.removeEventListener(
+            'pointerdown',
+            this._onPointerInteraction,
+        );
+        this.container.removeEventListener(
+            'pointerleave',
+            this._onPointerLeave,
+        );
+        document.removeEventListener('click', this._onDocumentClick);
     }
 }

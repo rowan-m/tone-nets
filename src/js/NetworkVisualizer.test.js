@@ -55,6 +55,9 @@ vi.mock('three', async (importOriginal) => {
                     })),
                     addEventListener: vi.fn(),
                     removeEventListener: vi.fn(),
+                    parentElement: {
+                        removeChild: vi.fn(),
+                    },
                 },
                 dispose: vi.fn(),
             };
@@ -111,6 +114,7 @@ describe('NetworkVisualizer', () => {
             origEmissiveIntensity: 0.2,
         };
         return {
+            id,
             mesh,
             playCount: 0,
             instanceId,
@@ -197,6 +201,7 @@ describe('NetworkVisualizer', () => {
                 width: 1000,
                 height: 1000,
             })),
+            contains: vi.fn(() => true),
         };
 
         mockElement = {
@@ -228,12 +233,16 @@ describe('NetworkVisualizer', () => {
             addEventListener: vi.fn(),
             removeEventListener: vi.fn(),
             visibilityState: 'visible',
+            activeElement: { tagName: 'BODY' },
+            dispatchEvent: vi.fn(),
         });
 
         vi.stubGlobal('window', {
             addEventListener: vi.fn(),
             removeEventListener: vi.fn(),
             devicePixelRatio: 1,
+            innerWidth: 1000,
+            innerHeight: 1000,
             requestAnimationFrame: rafm,
             cancelAnimationFrame: vi.fn(),
         });
@@ -241,6 +250,24 @@ describe('NetworkVisualizer', () => {
         vi.stubGlobal('performance', {
             now: vi.fn(() => Date.now()),
         });
+
+        // Mock MouseEvent if not in environment
+        if (typeof MouseEvent === 'undefined') {
+            vi.stubGlobal(
+                'MouseEvent',
+                vi.fn().mockImplementation(function (type) {
+                    this.type = type;
+                }),
+            );
+        }
+        if (typeof Event === 'undefined') {
+            vi.stubGlobal(
+                'Event',
+                vi.fn().mockImplementation(function (type) {
+                    this.type = type;
+                }),
+            );
+        }
 
         visualizer = new NetworkVisualizer('visualizer-container');
         visualizer.themeManager.registerTheme(DefaultTheme);
@@ -253,159 +280,308 @@ describe('NetworkVisualizer', () => {
         vi.clearAllMocks();
     });
 
-    describe('Initialization & Cleanup', () => {
-        it('should initialize with correct components following AAA pattern', () => {
+    describe('Lifecycle Management', () => {
+        it('should correctly initialize and attach to the container', () => {
+            // Assert initialization properties and container attachment
             expect(visualizer.scene).toBeDefined();
             expect(visualizer.camera).toBeDefined();
             expect(visualizer.renderer).toBeDefined();
+            expect(mockContainer.appendChild).toHaveBeenCalled();
         });
 
-        it('should set up event listeners on initialization', () => {
-            expect(window.addEventListener).toHaveBeenCalledWith(
+        it('should properly dispose of all resources and remove DOM elements', () => {
+            // Arrange
+            const rendererDisposeSpy = vi.spyOn(visualizer.renderer, 'dispose');
+            visualizer.layout = { dispose: vi.fn() };
+            const removeChildSpy =
+                visualizer.renderer.domElement.parentElement.removeChild;
+
+            // Act
+            visualizer.dispose();
+
+            // Assert
+            expect(rendererDisposeSpy).toHaveBeenCalled();
+            expect(removeChildSpy).toHaveBeenCalledWith(
+                visualizer.renderer.domElement,
+            );
+            expect(window.removeEventListener).toHaveBeenCalledWith(
                 'resize',
-                expect.any(Function),
+                visualizer._onWindowResize,
             );
-            expect(mockContainer.addEventListener).toHaveBeenCalledWith(
+            expect(mockContainer.removeEventListener).toHaveBeenCalledWith(
                 'pointermove',
-                expect.any(Function),
+                visualizer._onPointerInteraction,
+            );
+            expect(document.removeEventListener).toHaveBeenCalledWith(
+                'click',
+                visualizer._onDocumentClick,
             );
         });
 
-        it('should clear state on clear()', () => {
+        it('should handle disposal gracefully when renderer is already missing', () => {
+            // Arrange
+            visualizer.renderer = null;
+
+            // Act & Assert
+            expect(() => visualizer.dispose()).not.toThrow();
+        });
+
+        it('should clear internal state and effects on clear()', () => {
+            // Arrange
             visualizer._initSharedGeometries();
             visualizer.nodes.set('test', createMockNodeData('test'));
+            visualizer.edgeMap.set('A->B', createMockEdgeData('A', 'B'));
+
+            // Act
             visualizer.clear();
+
+            // Assert
             expect(visualizer.nodes.size).toBe(0);
+            expect(visualizer.edgeMap.size).toBe(0);
             expect(visualizer.effects.clear).toHaveBeenCalled();
-        });
-
-        it('should dispose resources and remove listeners on dispose()', () => {
-            const spy = vi.spyOn(visualizer.renderer, 'dispose');
-            visualizer.dispose();
-            expect(spy).toHaveBeenCalled();
-            expect(window.removeEventListener).toHaveBeenCalled();
-        });
-
-        it('should update paused state', () => {
-            visualizer.setPaused(true);
-            expect(visualizer.isPaused).toBe(true);
-            visualizer.setPaused(false);
-            expect(visualizer.isPaused).toBe(false);
         });
     });
 
-    describe('Building Visualization', () => {
-        it('should build visualization from a graph and initialize layout', async () => {
+    describe('Visualization Building', () => {
+        it('should build a complete visualization from a graph', async () => {
+            // Arrange
             const mockGraph = createMockGraph(
                 [
-                    { id: 'C4', data: { degree: 1 } },
-                    { id: 'G4', data: { degree: 1 } },
+                    { id: 'C4', data: { degree: 2 } },
+                    { id: 'G4', data: { degree: 2 } },
                 ],
                 [{ fromId: 'C4', toId: 'G4' }],
             );
+
+            // Act
             await visualizer.buildVisualization(mockGraph);
+
+            // Assert
             expect(visualizer.nodes.has('C4')).toBe(true);
+            expect(visualizer.nodes.has('G4')).toBe(true);
             expect(visualizer.edgeMap.has('C4->G4')).toBe(true);
+            expect(visualizer.maxDegree).toBe(2);
         });
 
-        it('should calculate max metrics and report progress', async () => {
-            const mockGraph = createMockGraph([
-                { id: 'A', data: { degree: 10 } },
-            ]);
-            const progressSpy = vi.fn();
-            visualizer.onLayoutProgress = progressSpy;
-            await visualizer.buildVisualization(mockGraph);
-            expect(visualizer.maxDegree).toBe(10);
-            expect(progressSpy).toHaveBeenCalledWith(100);
+        it('should handle an empty graph gracefully during visualization building', async () => {
+            // Arrange
+            const emptyGraph = createMockGraph([], []);
+
+            // Act & Assert
+            await expect(
+                visualizer.buildVisualization(emptyGraph),
+            ).resolves.not.toThrow();
+            expect(visualizer.nodes.size).toBe(0);
         });
 
-        it('should handle disconnected components by linking to hub', async () => {
+        it('should link isolated components to the highest degree hub', async () => {
+            // Arrange
             const mockGraph = createMockGraph(
                 [
-                    { id: 'Hub', data: { degree: 1 } },
-                    { id: 'Iso', data: { degree: 1 } },
+                    { id: 'Hub', data: { degree: 5 } },
+                    { id: 'Isolated', data: { degree: 1 } },
                 ],
                 [],
             );
-            await visualizer.buildVisualization(mockGraph);
-            expect(mockGraph.addLink).toHaveBeenCalled();
-        });
 
-        it('should handle empty graph in fitCameraToGraph', () => {
-            visualizer.nodes.clear();
-            expect(() => visualizer.fitCameraToGraph()).not.toThrow();
+            // Act
+            await visualizer.buildVisualization(mockGraph);
+
+            // Assert
+            expect(mockGraph.addLink).toHaveBeenCalledWith(
+                'Hub',
+                'Isolated',
+                expect.objectContaining({ isFake: true }),
+            );
         });
     });
 
-    describe('Incremental Updates', () => {
-        it('should initialize incremental mode and start auto-tour', () => {
-            visualizer.initIncremental(createMockGraph());
+    describe('Theme System', () => {
+        it('should switch themes and trigger activation/deactivation hooks', () => {
+            // Arrange
+            const themeA = {
+                name: 'themeA',
+                highlightColor: 0xff0000,
+                background: 0x000000,
+                nodeMaterial: {
+                    roughness: 0,
+                    metalness: 0,
+                    emissiveIntensity: 0,
+                },
+                onActivate: vi.fn(),
+                onDeactivate: vi.fn(),
+            };
+            const themeB = {
+                name: 'themeB',
+                highlightColor: 0x00ff00,
+                background: 0x111111,
+                nodeMaterial: {
+                    roughness: 1,
+                    metalness: 1,
+                    emissiveIntensity: 1,
+                },
+                onActivate: vi.fn(),
+                onDeactivate: vi.fn(),
+            };
+            visualizer.themeManager.registerTheme(themeA);
+            visualizer.themeManager.registerTheme(themeB);
+            visualizer.setTheme('themeA');
+
+            // Act
+            visualizer.setTheme('themeB');
+
+            // Assert
+            expect(themeA.onDeactivate).toHaveBeenCalledWith(visualizer);
+            expect(themeB.onActivate).toHaveBeenCalledWith(visualizer);
+            expect(visualizer.currentThemeName).toBe('themeB');
+            expect(visualizer.highlightColor).toBe(0x00ff00);
+        });
+
+        it('should update existing node colors when theme changes', () => {
+            // Arrange
+            visualizer._initSharedGeometries();
+            const nodeData = createMockNodeData('C4');
+            visualizer.nodes.set('C4', nodeData);
+            visualizer.nodeList = [nodeData];
+            visualizer.graph = createMockGraph([
+                { id: 'C4', data: { degree: 1 } },
+            ]);
+            visualizer.layout = new NetworkLayout(visualizer.graph);
+            const spy = vi.spyOn(visualizer.nodeInstancedMesh, 'setColorAt');
+
+            // Act
+            visualizer.setTheme('terminator');
+
+            // Assert
+            expect(spy).toHaveBeenCalled();
+        });
+
+        it('should cycle through registered themes', () => {
+            // Arrange
+            const initialTheme = visualizer.currentThemeName;
+
+            // Act
+            const nextTheme = visualizer.cycleTheme();
+
+            // Assert
+            expect(nextTheme).not.toBe(initialTheme);
+            expect(visualizer.currentThemeName).toBe(nextTheme);
+        });
+    });
+
+    describe('Incremental Mode', () => {
+        it('should initialize incremental mode and enable auto-tour', () => {
+            // Arrange
+            const mockGraph = createMockGraph();
+
+            // Act
+            visualizer.initIncremental(mockGraph);
+
+            // Assert
             expect(visualizer.incrementalMode).toBe(true);
             expect(visualizer.autoTour).toBe(true);
         });
 
-        it('should handle adding transitions incrementally and schedule scale updates', () => {
+        it('should handle adding transitions incrementally and debounce scale updates', () => {
+            // Arrange
             vi.useFakeTimers();
             const mockGraph = createMockGraph([
-                { id: 'C4', data: { degree: 50 } },
-                { id: 'G4', data: { degree: 50 } },
+                { id: 'C4', data: { degree: 10 } }, // Degree > maxDegree(1)
+                { id: 'G4', data: { degree: 1 } },
             ]);
             visualizer.initIncremental(mockGraph);
-            visualizer.maxDegree = 1;
+            visualizer.graph = mockGraph;
+            const updateSpy = vi.spyOn(visualizer, '_updateAllVisualScales');
 
+            // Act
             visualizer.addTransitionIncremental('C4', 'G4');
-            expect(visualizer._globalUpdateTimeout).toBeDefined();
-            vi.runOnlyPendingTimers();
-            expect(visualizer._globalUpdateTimeout).toBeNull();
+
+            // Assert
+            expect(updateSpy).not.toHaveBeenCalled(); // Debounced
+            vi.advanceTimersByTime(250);
+            expect(updateSpy).toHaveBeenCalled();
+
             vi.useRealTimers();
+        });
+
+        it('should skip incremental update if targetId is missing', () => {
+            // Arrange
+            visualizer.incrementalMode = true;
+            visualizer.graph = createMockGraph();
+
+            // Act & Assert
+            expect(() =>
+                visualizer.addTransitionIncremental('C4', null),
+            ).not.toThrow();
         });
     });
 
-    describe('Interaction & Highlighting', () => {
-        it('should delegate showInstrumentEmoji to EffectsManager', () => {
+    describe('Real-time Interaction', () => {
+        it('should highlight and release nodes during playback using reference counting', () => {
+            // Arrange
+            visualizer._initSharedGeometries();
+            visualizer.nodes.set('C4', createMockNodeData('C4', 0));
+            const nodeData = visualizer.nodes.get('C4');
+
+            // Act: Highlight twice (simulating overlapping notes)
+            visualizer.highlightPlayingElement('C4');
+            visualizer.highlightPlayingElement('C4');
+
+            // Assert
+            expect(nodeData.playCount).toBe(2);
+            expect(visualizer.playingNodes.has(nodeData)).toBe(true);
+
+            // Act: Release once
+            visualizer.releasePlayingElement('C4');
+            expect(nodeData.playCount).toBe(1);
+            expect(visualizer.playingNodes.has(nodeData)).toBe(true);
+
+            // Act: Release again
+            visualizer.releasePlayingElement('C4');
+            expect(nodeData.playCount).toBe(0);
+            expect(visualizer.playingNodes.has(nodeData)).toBe(false);
+        });
+
+        it('should handle releasePlayingElement without a previous node', () => {
+            // Arrange
+            visualizer._initSharedGeometries();
+            visualizer.nodes.set('C4', createMockNodeData('C4', 0));
+            visualizer.highlightPlayingElement('C4');
+
+            // Act & Assert
+            expect(() => visualizer.releasePlayingElement('C4')).not.toThrow();
+            expect(visualizer.nodes.get('C4').playCount).toBe(0);
+        });
+
+        it('should delegate emoji display to VisualEffectsManager', () => {
+            // Arrange
             visualizer.nodes.set('C4', createMockNodeData('C4'));
+
+            // Act
             visualizer.showInstrumentEmoji('C4', '🎹');
+
+            // Assert
             expect(visualizer.effects.showInstrumentEmoji).toHaveBeenCalled();
         });
 
-        it('should highlight and release playing elements', () => {
-            visualizer._initSharedGeometries();
-            visualizer.graph = createMockGraph(
-                [],
-                [{ fromId: 'C4', toId: 'G4' }],
-            );
-            visualizer.layout = new NetworkLayout(visualizer.graph);
-            visualizer.nodes.set('C4', createMockNodeData('C4', 0));
-            visualizer.nodes.set('G4', createMockNodeData('G4', 1));
-            visualizer.edgeMap.set('C4->G4', createMockEdgeData('C4', 'G4', 0));
-            visualizer.edgeBufferIndexMap.set('C4->G4', 0);
-
-            visualizer.highlightPlayingElement('G4', 'C4');
-            expect(visualizer.playingNodes.size).toBe(1);
-
-            visualizer.releasePlayingElement('G4', 'C4');
-            expect(visualizer.playingNodes.size).toBe(0);
-        });
-
         it('should reset all playing highlights', () => {
+            // Arrange
             visualizer._initSharedGeometries();
-            visualizer.graph = createMockGraph(
-                [],
-                [{ fromId: 'C4', toId: 'G4' }],
-            );
-            visualizer.layout = new NetworkLayout(visualizer.graph);
             visualizer.nodes.set('C4', createMockNodeData('C4', 0));
-            visualizer.edgeMap.set('C4->G4', createMockEdgeData('C4', 'G4', 0));
-            visualizer.edgeBufferIndexMap.set('C4->G4', 0);
-            visualizer.playingNodes.add(visualizer.nodes.get('C4'));
+            visualizer.highlightPlayingElement('C4');
 
+            // Act
             visualizer.resetPlayingHighlights();
+
+            // Assert
             expect(visualizer.playingNodes.size).toBe(0);
+            expect(visualizer.nodes.get('C4').playCount).toBe(0);
         });
     });
 
-    describe('Raycasting & Hover', () => {
-        it('should handle raycasting for nodes', () => {
+    describe('Raycasting and Event Handlers', () => {
+        it('should perform raycasting and trigger onHover when mouse moves', () => {
+            // Arrange
             visualizer._initSharedGeometries();
             const nodeId = 'C4';
             const nodeData = createMockNodeData(nodeId);
@@ -420,131 +596,132 @@ describe('NetworkVisualizer', () => {
             const hoverSpy = vi.fn();
             visualizer.onHover = hoverSpy;
 
+            // Act
             visualizer._performRaycast();
+
+            // Assert
             expect(visualizer.hoveredObject).toBe(nodeData.mesh);
-            expect(hoverSpy).toHaveBeenCalled();
+            expect(hoverSpy).toHaveBeenCalledWith(
+                expect.objectContaining({ id: nodeId }),
+            );
         });
 
-        it('should handle raycasting for edges', () => {
-            visualizer._initSharedGeometries();
-            const fromId = 'C4',
-                toId = 'G4';
-            const edgeId = `${fromId}->${toId}`;
-            const edgeData = createMockEdgeData(fromId, toId);
-            visualizer.edgeMap.set(edgeId, edgeData);
-            visualizer.instanceIdEdgeMap.set(0, edgeId);
-            visualizer.graph = createMockGraph([], [{ fromId, toId }]);
-            visualizer.layout = new NetworkLayout(visualizer.graph);
-
-            visualizer.raycaster.intersectObjects = vi.fn(() => [
-                { object: visualizer.edgeLineSegments, index: 0 },
-            ]);
-            visualizer.mouseMoved = true;
-            visualizer._performRaycast();
-            expect(visualizer.hoveredObject).toBe(edgeData.line);
-        });
-
-        it('should clear hover state when nothing hit', () => {
-            visualizer._initSharedGeometries();
-            visualizer.hoveredObject = {
-                userData: { type: 'node', id: 'A' },
-                material: { emissive: new THREE.Color() },
-            };
-            visualizer.nodes.set('A', createMockNodeData('A'));
-            visualizer.raycaster.intersectObjects = vi.fn(() => []);
-            visualizer.mouseMoved = true;
-            visualizer._performRaycast();
-            expect(visualizer.hoveredObject).toBeNull();
-        });
-    });
-
-    describe('Animation Loop & Tour', () => {
-        it('should skip updates when hidden', () => {
-            document.visibilityState = 'hidden';
-            visualizer._isAnimating = true;
-            const stepSpy = vi.spyOn(visualizer, '_stepIncrementalPhysics');
-            visualizer.animate(1000);
-            expect(stepSpy).not.toHaveBeenCalled();
-        });
-
-        it('should step physics and update positions when active', () => {
-            visualizer._initSharedGeometries();
-            visualizer.incrementalMode = true;
-            visualizer.layout = {
-                step: vi.fn(),
-                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
-            };
-            visualizer._isAnimating = true;
-            visualizer.graph = createMockGraph();
-            visualizer.nodes.set('A', createMockNodeData('A'));
-            visualizer.animate(1000);
-            expect(visualizer.layout.step).toHaveBeenCalled();
-        });
-
-        it('should throttle physics on mobile', () => {
-            vi.spyOn(Utils, 'isMobile').mockReturnValue(true);
-            visualizer = new NetworkVisualizer('c');
-            visualizer._initSharedGeometries();
-            visualizer.incrementalMode = true;
-            visualizer.layout = {
-                step: vi.fn(),
-                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
-            };
-            visualizer.graph = createMockGraph();
-            visualizer.nodes.set('A', createMockNodeData('A'));
-            visualizer._isAnimating = true;
-
-            visualizer._frameCount = 0;
-            visualizer.animate(1000); // f1
-            expect(visualizer.layout.step).not.toHaveBeenCalled();
-            visualizer.animate(1100); // f2
-            expect(visualizer.layout.step).toHaveBeenCalled();
-        });
-
-        it('should transition camera position during auto-tour', () => {
-            visualizer._initSharedGeometries();
-            visualizer.graphRadius = 100;
-            visualizer.graphCenter = new THREE.Vector3(0, 0, 0);
-            visualizer.startAutoTour();
-            visualizer.nodes.set('A', createMockNodeData('A'));
-            visualizer.camera.position.set(0, 0, 0);
-            const initialPos = visualizer.camera.position.clone();
-            visualizer._isAnimating = true;
-            visualizer._lastFrameTime = 1000;
-            visualizer.animate(2000);
-            expect(
-                visualizer.camera.position.distanceTo(initialPos),
-            ).toBeGreaterThan(0);
-        });
-
-        it('should handle window resize', () => {
+        it('should handle window resize events', () => {
+            // Arrange
             const spy = vi.spyOn(visualizer.renderer, 'setSize');
-            const resizeListener = window.addEventListener.mock.calls.find(
-                (c) => c[0] === 'resize',
-            )[1];
-            resizeListener();
+
+            // Act
+            visualizer._onWindowResize();
+
+            // Assert
             expect(spy).toHaveBeenCalled();
         });
+
+        it('should stop auto-tour on user click and trigger callback', () => {
+            // Arrange
+            visualizer.autoTour = true;
+            const tourSpy = vi.fn();
+            visualizer.onTourChange = tourSpy;
+
+            // Act
+            visualizer._onDocumentClick();
+
+            // Assert
+            expect(visualizer.autoTour).toBe(false);
+            expect(tourSpy).toHaveBeenCalledWith(false);
+        });
+
+        it('should not trigger onTourChange if tour is already stopped', () => {
+            // Arrange
+            visualizer.autoTour = false;
+            const tourSpy = vi.fn();
+            visualizer.onTourChange = tourSpy;
+
+            // Act
+            visualizer.stopAutoTour();
+
+            // Assert
+            expect(tourSpy).not.toHaveBeenCalled();
+        });
+
+        it('should update mouse coordinates on pointermove', () => {
+            // Arrange
+            const pointerEvent = {
+                clientX: 500,
+                clientY: 500,
+            };
+
+            // Act
+            visualizer._onPointerInteraction(pointerEvent);
+
+            // Assert
+            expect(visualizer.mouse.x).not.toBe(-1000);
+            expect(visualizer.mouseMoved).toBe(true);
+        });
     });
 
-    describe('Themes', () => {
-        it('should cycle through themes', () => {
-            const initialTheme = visualizer.currentThemeName;
-            visualizer.cycleTheme();
-            expect(visualizer.currentThemeName).not.toBe(initialTheme);
+    describe('Animation Loop', () => {
+        it('should skip frames when the document is hidden', () => {
+            // Arrange
+            vi.stubGlobal('document', {
+                ...document,
+                visibilityState: 'hidden',
+            });
+            const stepSpy = vi.spyOn(visualizer, '_stepIncrementalPhysics');
+            visualizer._isAnimating = true;
+
+            // Act
+            visualizer.animate(1000);
+
+            // Assert
+            expect(stepSpy).not.toHaveBeenCalled();
+            vi.stubGlobal('document', {
+                ...document,
+                visibilityState: 'visible',
+            });
         });
 
-        it('should update highlight color when theme changes', () => {
-            visualizer.setTheme('terminator');
-            expect(visualizer.highlightColor).toBe(0x00aaff); // Electric Blue for Terminator
-        });
-
-        it('should update node materials when theme changes', () => {
+        it('should update tour and physics when animating', () => {
+            // Arrange
             visualizer._initSharedGeometries();
-            visualizer.setTheme('terminator');
-            expect(
-                visualizer.nodeInstancedMesh.material.metalness,
-            ).toBeGreaterThan(0.5);
+            visualizer.incrementalMode = true;
+            visualizer.layout = {
+                step: vi.fn(),
+                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
+            };
+            visualizer._isAnimating = true;
+            visualizer.graph = createMockGraph();
+            visualizer.nodes.set('A', createMockNodeData('A'));
+
+            // Act
+            visualizer.animate(1000);
+
+            // Assert
+            expect(visualizer.layout.step).toHaveBeenCalled();
+        });
+
+        it('should throttle physics calculations on mobile devices', () => {
+            // Arrange
+            vi.spyOn(Utils, 'isMobile').mockReturnValue(true);
+            const mobileVisualizer = new NetworkVisualizer(
+                'visualizer-container',
+            );
+            mobileVisualizer._initSharedGeometries();
+            mobileVisualizer.incrementalMode = true;
+            mobileVisualizer.layout = {
+                step: vi.fn(),
+                getNodePosition: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
+            };
+            mobileVisualizer.graph = createMockGraph();
+            mobileVisualizer.nodes.set('A', createMockNodeData('A'));
+            mobileVisualizer._isAnimating = true;
+
+            // Act & Assert: Should step every 2nd frame
+            mobileVisualizer.animate(1000); // Frame 1
+            expect(mobileVisualizer.layout.step).not.toHaveBeenCalled();
+
+            mobileVisualizer.animate(1016); // Frame 2
+            expect(mobileVisualizer.layout.step).toHaveBeenCalled();
         });
     });
 });

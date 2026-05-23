@@ -40,6 +40,8 @@ export class NetworkParser {
 
     static processTransitions(midi, graph) {
         let edgeCount = 0;
+        const edgeMap = new Map();
+        const nodesSet = new Set();
 
         // We process each track separately to avoid creating transitions
         // between notes played on different instruments/channels.
@@ -48,15 +50,24 @@ export class NetworkParser {
             // Filter out drum/percussion channel (MIDI channel 10 is index 9)
             if (track.channel === 9) continue;
 
-            edgeCount += this._processTrackTransitions(graph, track);
+            this._processTrackTransitions(track, edgeMap, nodesSet);
+        }
+
+        this.ensureNodesExist(graph, Array.from(nodesSet));
+
+        for (const [source, targets] of edgeMap) {
+            for (const [target, weight] of targets) {
+                if (this.updateOrCreateLink(graph, source, target, weight)) {
+                    edgeCount++;
+                }
+            }
         }
 
         return edgeCount;
     }
 
-    static _processTrackTransitions(graph, track) {
-        let trackEdgeCount = 0;
-        const notesByTime = this._groupNotesByTime(track.notes);
+    static _processTrackTransitions(track, edgeMap, nodesSet) {
+        const notesByTime = this._groupNotesByTime(track.notes, nodesSet);
         const sortedTimes = Array.from(notesByTime.keys()).sort(
             (a, b) => a - b,
         );
@@ -66,21 +77,22 @@ export class NetworkParser {
             const sourceNotes = notesByTime.get(sortedTimes[i - 1]);
             const targetNotes = notesByTime.get(sortedTimes[i]);
 
-            trackEdgeCount += this._buildTransitionsForTimeStep(
-                graph,
+            this._buildTransitionsForTimeStep(
                 sourceNotes,
                 targetNotes,
+                edgeMap,
             );
         }
-        return trackEdgeCount;
     }
 
-    static _groupNotesByTime(trackNotes) {
+    static _groupNotesByTime(trackNotes, nodesSet) {
         const notesByTime = new Map();
         for (let n = 0; n < trackNotes.length; n++) {
             const note = trackNotes[n];
             const timeKey = note.ticks;
             const name = note.name;
+
+            nodesSet.add(name);
 
             let group = notesByTime.get(timeKey);
             if (!group) {
@@ -92,9 +104,7 @@ export class NetworkParser {
         return notesByTime;
     }
 
-    static _buildTransitionsForTimeStep(graph, sourceNotes, targetNotes) {
-        let edgesAdded = 0;
-
+    static _buildTransitionsForTimeStep(sourceNotes, targetNotes, edgeMap) {
         const sourceCounts = new Map();
         for (let i = 0; i < sourceNotes.length; i++) {
             const note = sourceNotes[i];
@@ -110,12 +120,15 @@ export class NetworkParser {
         const uniqueSources = Array.from(sourceCounts.keys());
         const uniqueTargets = Array.from(targetCounts.keys());
 
-        this.ensureNodesExist(graph, uniqueSources);
-        this.ensureNodesExist(graph, uniqueTargets);
-
         for (let s = 0; s < uniqueSources.length; s++) {
             const source = uniqueSources[s];
             const sourceCount = sourceCounts.get(source);
+
+            let targetMap = edgeMap.get(source);
+            if (!targetMap) {
+                targetMap = new Map();
+                edgeMap.set(source, targetMap);
+            }
 
             for (let tr = 0; tr < uniqueTargets.length; tr++) {
                 const target = uniqueTargets[tr];
@@ -124,12 +137,9 @@ export class NetworkParser {
                 const targetCount = targetCounts.get(target);
                 const weightInc = sourceCount * targetCount;
 
-                if (this.updateOrCreateLink(graph, source, target, weightInc)) {
-                    edgesAdded++;
-                }
+                targetMap.set(target, (targetMap.get(target) || 0) + weightInc);
             }
         }
-        return edgesAdded;
     }
 
     static addTransition(graph, source, target) {

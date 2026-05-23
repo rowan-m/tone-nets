@@ -200,11 +200,10 @@ export class UIManager {
         this.els.canvasContainer.addEventListener('dragover', (e) => {
             e.preventDefault();
 
+            if (this.els.uploadInput.disabled) return;
             if (this.els.canvasContainer.classList.contains('drag-active')) {
                 return;
             }
-
-            if (this.els.uploadInput.disabled) return;
 
             let hasFiles = false;
             if (e.dataTransfer && e.dataTransfer.types) {
@@ -224,13 +223,20 @@ export class UIManager {
 
         this.els.canvasContainer.addEventListener('dragleave', (e) => {
             e.preventDefault();
-            this.els.canvasContainer.classList.remove('drag-active');
+            // Only remove drag-active if the relatedTarget is not a child of the container.
+            // This prevents flickering when dragging over child elements.
+            if (!this.els.canvasContainer.contains(e.relatedTarget)) {
+                this.els.canvasContainer.classList.remove('drag-active');
+            }
         });
 
         this.els.canvasContainer.addEventListener('drop', (e) => {
             e.preventDefault();
             this.els.canvasContainer.classList.remove('drag-active');
-            if (!this.els.uploadInput.disabled) {
+            if (
+                !this.els.uploadInput.disabled &&
+                e.dataTransfer.files.length > 0
+            ) {
                 this.callbacks.onFileSelection(e.dataTransfer.files[0]);
             }
         });

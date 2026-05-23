@@ -16,6 +16,7 @@ describe('UIManager', () => {
             toggle: vi.fn(),
             contains: vi.fn(),
         },
+        contains: vi.fn(),
         showModal: vi.fn(),
         close: vi.fn(),
         focus: vi.fn(),

@@ -10,7 +10,7 @@ function createPhysicsSettings(graph, options) {
         nodeMass: (nodeId) => {
             const node = graph.getNode(nodeId);
             if (!node) return 1;
-            const degree = (node.data && node.data.degree) || 1;
+            const degree = node.data?.degree || 0;
             return 1 + Math.log2(degree + 1) * 5;
         },
         springTransform: (link, spring) => {

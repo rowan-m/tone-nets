@@ -29,8 +29,12 @@ describe('NetworkLayout', () => {
         // Arrange
         mockGraph = {
             getNode: vi.fn((id) => {
-                if (id === 'high-degree') return { id, data: { degree: 15 } };
-                if (id === 'low-degree') return { id, data: { degree: 1 } };
+                if (id === 'hub-node') return { id, data: { degree: 15 } };
+                if (id === 'leaf-node') return { id, data: { degree: 1 } };
+                if (id === 'no-data-node') return { id };
+                if (id === 'zero-degree-node')
+                    return { id, data: { degree: 0 } };
+                if (id === 'missing-degree-node') return { id, data: {} };
                 return null;
             }),
         };
@@ -38,163 +42,228 @@ describe('NetworkLayout', () => {
     });
 
     describe('Initialization', () => {
-        it('should initialize ngraph.forcelayout with 3 dimensions and specific physics settings', () => {
+        it('should initialize the force-directed layout in 3D mode', () => {
             // Act
             const layout = new NetworkLayout(mockGraph);
 
             // Assert
+            expect(layout).toBeDefined();
             expect(createLayout).toHaveBeenCalledWith(
                 mockGraph,
                 expect.objectContaining({
                     dimensions: 3,
-                    physicsSettings: expect.objectContaining({
-                        springLength: 40,
-                        springCoefficient: 0.02,
-                        gravity: -200,
-                        theta: 0.8,
-                        dragCoefficient: 0.6,
-                        nodeMass: expect.any(Function),
-                        springTransform: expect.any(Function),
-                    }),
                 }),
             );
-            expect(layout).toBeDefined();
         });
 
-        it('should allow overriding default options', () => {
+        it('should apply specific physics settings for music network visualization', () => {
+            // Act
+            const layout = new NetworkLayout(mockGraph);
+
+            // Assert
+            expect(layout).toBeDefined();
+            const callArgs = vi.mocked(createLayout).mock.calls[0];
+            const physics = callArgs[1].physicsSettings;
+
+            expect(physics).toMatchObject({
+                springLength: 40,
+                springCoefficient: 0.02,
+                gravity: -200,
+                theta: 0.8,
+                dragCoefficient: 0.6,
+            });
+        });
+
+        it('should allow user-provided physics settings to override defaults', () => {
             // Arrange
-            const customOptions = {
+            const customSettings = {
                 physicsSettings: {
                     springLength: 100,
+                    gravity: -500,
                 },
             };
 
             // Act
-            const layout = new NetworkLayout(mockGraph, customOptions);
+            const layout = new NetworkLayout(mockGraph, customSettings);
 
             // Assert
-            expect(createLayout).toHaveBeenCalledWith(
-                mockGraph,
-                expect.objectContaining({
-                    physicsSettings: expect.objectContaining({
-                        springLength: 100, // Overridden
-                        gravity: -200, // Default preserved
-                    }),
-                }),
-            );
             expect(layout).toBeDefined();
+            const callArgs = vi.mocked(createLayout).mock.calls[0];
+            const physics = callArgs[1].physicsSettings;
+
+            expect(physics.springLength).toBe(100);
+            expect(physics.gravity).toBe(-500);
+            expect(physics.theta).toBe(0.8); // Default preserved
         });
     });
 
-    describe('Physics Settings: Node Mass', () => {
-        it('should assign exponentially higher mass to nodes with higher degrees', () => {
-            // Arrange
+    describe('Node Mass Calculation', () => {
+        let nodeMassFn;
+
+        beforeEach(() => {
             const layout = new NetworkLayout(mockGraph);
+            expect(layout).toBeDefined();
             const callArgs = vi.mocked(createLayout).mock.calls[0];
-            const nodeMassFn = callArgs[1].physicsSettings.nodeMass;
+            nodeMassFn = callArgs[1].physicsSettings.nodeMass;
+        });
+
+        it('should assign higher mass to hub nodes to dominate the spatial layout', () => {
+            // Act
+            const massHub = nodeMassFn('hub-node'); // degree 15
+            const massLeaf = nodeMassFn('leaf-node'); // degree 1
+
+            // Assert
+            expect(massHub).toBeGreaterThan(massLeaf);
+            expect(massLeaf).toBeGreaterThan(1);
+        });
+
+        it('should return a default mass of 1 for unknown or missing nodes', () => {
+            // Act
+            const massMissing = nodeMassFn('unknown');
+            const massNoData = nodeMassFn('no-data-node');
+            const massZeroDegree = nodeMassFn('zero-degree-node');
+            const massMissingDegree = nodeMassFn('missing-degree-node');
+
+            // Assert
+            expect(massMissing).toBe(1);
+            expect(massNoData).toBe(1);
+            expect(massZeroDegree).toBe(1);
+            expect(massMissingDegree).toBe(1);
+        });
+    });
+
+    describe('Spring Transformation', () => {
+        let springTransformFn;
+
+        beforeEach(() => {
+            const layout = new NetworkLayout(mockGraph);
+            expect(layout).toBeDefined();
+            const callArgs = vi.mocked(createLayout).mock.calls[0];
+            springTransformFn = callArgs[1].physicsSettings.springTransform;
+        });
+
+        it('should compress fake links to zero length and fixed weight to pull components together', () => {
+            // Arrange
+            const fakeLink = { data: { isFake: true } };
+            const spring = { length: 40, weight: 1 };
 
             // Act
-            const massHigh = nodeMassFn('high-degree'); // degree 15
-            const massLow = nodeMassFn('low-degree'); // degree 1
-            const massMissing = nodeMassFn('missing'); // undefined node
+            springTransformFn(fakeLink, spring);
 
             // Assert
-            expect(massHigh).toBeGreaterThan(massLow);
-            expect(massLow).toBeGreaterThan(massMissing);
-            expect(massMissing).toBe(1); // Default mass for unknown nodes
-            expect(layout).toBeDefined();
+            expect(spring.length).toBe(0);
+            expect(spring.weight).toBe(5);
         });
-    });
 
-    describe('Physics Settings: Spring Transform', () => {
-        it('should transform springs correctly based on link data', () => {
+        it('should apply edge weights to real links to reflect transition frequency', () => {
             // Arrange
-            const layout = new NetworkLayout(mockGraph);
-            const callArgs = vi.mocked(createLayout).mock.calls[0];
-            const springTransformFn =
-                callArgs[1].physicsSettings.springTransform;
-
-            const fakeLink = { data: { isFake: true } };
-            const fakeSpring = { length: 10, weight: 1 };
-
             const realLink = { data: { weight: 10 } };
-            const realSpring = { length: 10, weight: 1 };
+            const spring = { length: 0, weight: 1 };
 
-            const defaultLink = { data: {} };
-            const defaultSpring = { length: 10, weight: 1 };
+            // Act
+            springTransformFn(realLink, spring);
 
-            // Act & Assert for Fake Links (Isolated Components)
-            springTransformFn(fakeLink, fakeSpring);
-            expect(fakeSpring.length).toBe(0);
-            expect(fakeSpring.weight).toBe(5);
+            // Assert
+            expect(spring.length).toBe(40);
+            expect(spring.weight).toBe(10);
+        });
 
-            // Act & Assert for Real Links
-            springTransformFn(realLink, realSpring);
-            expect(realSpring.length).toBe(40);
-            expect(realSpring.weight).toBe(10);
+        it('should use default values for links without data', () => {
+            // Arrange
+            const plainLink = {};
+            const spring = { length: 0, weight: 0 };
 
-            // Act & Assert for Default Links
-            springTransformFn(defaultLink, defaultSpring);
-            expect(defaultSpring.length).toBe(40);
-            expect(defaultSpring.weight).toBe(1);
-            expect(layout).toBeDefined();
+            // Act
+            springTransformFn(plainLink, spring);
+
+            // Assert
+            expect(spring.length).toBe(40);
+            expect(spring.weight).toBe(1);
         });
     });
 
-    describe('Layout Operations', () => {
-        it('should delegate step, getNodePosition, setNodePosition, and dispose to ngraph.forcelayout', () => {
+    describe('Layout Proxy Methods', () => {
+        it('should correctly delegate operations to the underlying layout engine', () => {
             // Arrange
             const networkLayout = new NetworkLayout(mockGraph);
 
-            // Act
+            // Act & Assert for step
             networkLayout.step();
-            const pos = networkLayout.getNodePosition('n1');
-            networkLayout.setNodePosition('n1', 10, 20, 30);
-            networkLayout.dispose();
-
-            // Assert
             expect(networkLayout.layout.step).toHaveBeenCalled();
-            expect(networkLayout.layout.getNodePosition).toHaveBeenCalledWith(
-                'n1',
-            );
+
+            // Act & Assert for position getters/setters
+            const pos = networkLayout.getNodePosition('node-1');
             expect(pos).toEqual({ x: 1, y: 2, z: 3 });
+
+            networkLayout.setNodePosition('node-1', 10, 20, 30);
             expect(networkLayout.layout.setNodePosition).toHaveBeenCalledWith(
-                'n1',
+                'node-1',
                 10,
                 20,
                 30,
             );
+        });
+
+        it('should safely dispose of the layout engine if it exists', () => {
+            // Arrange
+            const networkLayout = new NetworkLayout(mockGraph);
+
+            // Act
+            networkLayout.dispose();
+
+            // Assert
             expect(networkLayout.layout.dispose).toHaveBeenCalled();
+        });
+
+        it('should handle dispose safely if the layout engine does not have a dispose method', () => {
+            // Arrange
+            vi.mocked(createLayout).mockReturnValueOnce({ step: vi.fn() });
+            const networkLayout = new NetworkLayout(mockGraph);
+
+            // Act & Assert (should not throw)
+            expect(() => networkLayout.dispose()).not.toThrow();
         });
     });
 
-    describe('Simulation Runner', () => {
-        it('should run simulation and report progress', async () => {
+    describe('Simulation Execution', () => {
+        it('should execute the requested number of simulation steps', async () => {
             // Arrange
             const networkLayout = new NetworkLayout(mockGraph);
-            const progressCallback = vi.fn();
 
             // Act
-            // Run a small number of steps to avoid long test times
-            await networkLayout.runSimulation(200, progressCallback);
+            await networkLayout.runSimulation(150, null);
 
             // Assert
-            expect(networkLayout.layout.step).toHaveBeenCalledTimes(200);
-            // batchSize is 100, so it reports at 0%, 50%, and finally 100%
-            expect(progressCallback).toHaveBeenCalledWith(0);
-            expect(progressCallback).toHaveBeenCalledWith(50);
-            expect(progressCallback).toHaveBeenCalledWith(100);
+            expect(networkLayout.layout.step).toHaveBeenCalledTimes(150);
         });
 
-        it('should run simulation without error if no progress callback is provided', async () => {
+        it('should report incremental progress during long simulations', async () => {
             // Arrange
             const networkLayout = new NetworkLayout(mockGraph);
+            const onProgress = vi.fn();
 
             // Act
-            await networkLayout.runSimulation(100, null);
+            // batchSize is 100, so 250 steps should report at 0, 100, 200, and final 100%
+            await networkLayout.runSimulation(250, onProgress);
 
             // Assert
-            expect(networkLayout.layout.step).toHaveBeenCalledTimes(100);
+            expect(onProgress).toHaveBeenCalledWith(0);
+            expect(onProgress).toHaveBeenCalledWith(40); // 100/250 = 40%
+            expect(onProgress).toHaveBeenCalledWith(80); // 200/250 = 80%
+            expect(onProgress).toHaveBeenCalledWith(100); // Final
+        });
+
+        it('should complete and report 100% even for very small simulations', async () => {
+            // Arrange
+            const networkLayout = new NetworkLayout(mockGraph);
+            const onProgress = vi.fn();
+
+            // Act
+            await networkLayout.runSimulation(10, onProgress);
+
+            // Assert
+            expect(onProgress).toHaveBeenCalledWith(0);
+            expect(onProgress).toHaveBeenCalledWith(100);
         });
     });
 });

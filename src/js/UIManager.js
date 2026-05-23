@@ -200,6 +200,10 @@ export class UIManager {
         this.els.canvasContainer.addEventListener('dragover', (e) => {
             e.preventDefault();
 
+            if (this.els.canvasContainer.classList.contains('drag-active')) {
+                return;
+            }
+
             if (this.els.uploadInput.disabled) return;
 
             let hasFiles = false;

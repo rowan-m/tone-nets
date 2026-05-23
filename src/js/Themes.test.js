@@ -3,48 +3,93 @@ import { DefaultTheme, TerminatorTheme } from './Themes.js';
 
 describe('Themes', () => {
     describe('DefaultTheme', () => {
-        it('should have correct basic properties', () => {
+        it('should define the default aesthetic properties', () => {
+            // Arrange & Act (Accessing static theme object)
+
+            // Assert
             expect(DefaultTheme.name).toBe('default');
             expect(DefaultTheme.emoji).toBe('🎨');
             expect(DefaultTheme.background).toBe(0x000000);
+            expect(DefaultTheme.highlightColor).toBe(0xffe600);
+            expect(DefaultTheme.nodeMaterial).toEqual({
+                roughness: 0.3,
+                metalness: 0.2,
+                emissiveIntensity: 0.15,
+                envMapIntensity: 0.0,
+            });
         });
     });
 
     describe('TerminatorTheme', () => {
-        it('should have correct basic properties', () => {
+        it('should define the terminator aesthetic properties', () => {
+            // Assert
             expect(TerminatorTheme.name).toBe('terminator');
             expect(TerminatorTheme.emoji).toBe('💀');
             expect(TerminatorTheme.background).toBe(0x110000);
+            expect(TerminatorTheme.highlightColor).toBe(0x00aaff);
+            expect(TerminatorTheme.nodeMaterial).toEqual({
+                roughness: 0.05,
+                metalness: 1.0,
+                emissiveIntensity: 0.25,
+                envMapIntensity: 1.5,
+            });
         });
 
-        it('should calculate node color correctly', () => {
-            const pc = 0; // C
-            const color = TerminatorTheme.getNodeColor(pc);
-            expect(color.hue).toBe(0);
-            expect(color.saturation).toBe(0.1);
-            expect(color.lightness).toBe(0.8);
+        describe('getNodeColor', () => {
+            it('should calculate desaturated colors for various pitch classes', () => {
+                // Arrange
+                const testCases = [
+                    { pc: 0, expectedHue: 0 },
+                    { pc: 6, expectedHue: 0.5 },
+                    { pc: 12, expectedHue: 1 }, // Boundary/Extreme case (though usually 0-11)
+                ];
 
-            const pc6 = 6; // F#
-            const color6 = TerminatorTheme.getNodeColor(pc6);
-            expect(color6.hue).toBe(0.5);
+                testCases.forEach(({ pc, expectedHue }) => {
+                    // Act
+                    const color = TerminatorTheme.getNodeColor(pc);
+
+                    // Assert
+                    expect(color.hue).toBe(expectedHue);
+                    expect(color.saturation).toBe(0.1);
+                    expect(color.lightness).toBe(0.8);
+                });
+            });
         });
 
-        it('should handle activation and deactivation', () => {
-            const mockVisualizer = {
-                effects: {
-                    enableTerminatorBackground: vi.fn(),
-                },
-            };
+        describe('Lifecycle Hooks', () => {
+            it('should enable terminator background on activation', () => {
+                // Arrange
+                const mockVisualizer = {
+                    effects: {
+                        enableTerminatorBackground: vi.fn(),
+                    },
+                };
 
-            TerminatorTheme.onActivate(mockVisualizer);
-            expect(
-                mockVisualizer.effects.enableTerminatorBackground,
-            ).toHaveBeenCalledWith(true);
+                // Act
+                TerminatorTheme.onActivate(mockVisualizer);
 
-            TerminatorTheme.onDeactivate(mockVisualizer);
-            expect(
-                mockVisualizer.effects.enableTerminatorBackground,
-            ).toHaveBeenCalledWith(false);
+                // Assert
+                expect(
+                    mockVisualizer.effects.enableTerminatorBackground,
+                ).toHaveBeenCalledWith(true);
+            });
+
+            it('should disable terminator background on deactivation', () => {
+                // Arrange
+                const mockVisualizer = {
+                    effects: {
+                        enableTerminatorBackground: vi.fn(),
+                    },
+                };
+
+                // Act
+                TerminatorTheme.onDeactivate(mockVisualizer);
+
+                // Assert
+                expect(
+                    mockVisualizer.effects.enableTerminatorBackground,
+                ).toHaveBeenCalledWith(false);
+            });
         });
     });
 });

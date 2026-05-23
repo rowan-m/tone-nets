@@ -214,6 +214,9 @@ export class NetworkVisualizer {
         this.controls.rotateSpeed = 2.0;
         this.controls.dynamicDampingFactor = 0.1;
         this.controls.addEventListener('start', () => this.stopAutoTour());
+        this.controls.addEventListener('change', () => {
+            this.mouseMoved = true;
+        });
 
         // Lighting
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -242,6 +245,13 @@ export class NetworkVisualizer {
         });
 
         this.container.addEventListener('pointermove', (e) => {
+            const rect = this.container.getBoundingClientRect();
+            this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            this.mouseMoved = true;
+        });
+
+        this.container.addEventListener('pointerdown', (e) => {
             const rect = this.container.getBoundingClientRect();
             this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -514,6 +524,10 @@ export class NetworkVisualizer {
             }
             this.nodeInstancedMesh.userData.type = 'node-batch';
             this.nodeInstancedMesh.frustumCulled = false;
+            this.nodeInstancedMesh.geometry.boundingSphere = new THREE.Sphere(
+                new THREE.Vector3(),
+                100000,
+            );
             this.graphGroup.add(this.nodeInstancedMesh);
 
             this.outlineInstancedMesh = new THREE.InstancedMesh(
@@ -525,6 +539,8 @@ export class NetworkVisualizer {
                 THREE.DynamicDrawUsage,
             );
             this.outlineInstancedMesh.frustumCulled = false;
+            this.outlineInstancedMesh.geometry.boundingSphere =
+                new THREE.Sphere(new THREE.Vector3(), 100000);
             this.graphGroup.add(this.outlineInstancedMesh);
 
             const coneMat = new THREE.MeshStandardMaterial({
@@ -560,6 +576,10 @@ export class NetworkVisualizer {
             }
             this.coneInstancedMesh.userData.type = 'cone-batch';
             this.coneInstancedMesh.frustumCulled = false;
+            this.coneInstancedMesh.geometry.boundingSphere = new THREE.Sphere(
+                new THREE.Vector3(),
+                100000,
+            );
             this.graphGroup.add(this.coneInstancedMesh);
 
             const edgeGeo = new THREE.BufferGeometry();
@@ -574,6 +594,10 @@ export class NetworkVisualizer {
             edgeGeo.setAttribute(
                 'alpha',
                 new THREE.BufferAttribute(this.edgeAlphas, 1),
+            );
+            edgeGeo.boundingSphere = new THREE.Sphere(
+                new THREE.Vector3(),
+                100000,
             );
 
             const edgeMat = new THREE.ShaderMaterial({
@@ -1646,8 +1670,19 @@ export class NetworkVisualizer {
 
         this._stepIncrementalPhysics();
 
+        if (this.controls) {
+            this.controls.update();
+        }
+
+        // Raycast if mouse moved, or if camera/layout is active (to keep hover accurate as things move)
+        const isInteracting =
+            this.mouseMoved ||
+            (this.mouse.x !== -1000 &&
+                (this.autoTour ||
+                    (this.incrementalMode && this.layout && !this.isPaused)));
+
         if (
-            this.mouseMoved &&
+            isInteracting &&
             time - this._lastRaycastTime > this._raycastThrottleMs
         ) {
             this._performRaycast();
@@ -1680,6 +1715,9 @@ export class NetworkVisualizer {
         if (this.nodeInstancedMesh) {
             this._objectsToIntersect.push(this.nodeInstancedMesh);
         }
+        if (this.coneInstancedMesh) {
+            this._objectsToIntersect.push(this.coneInstancedMesh);
+        }
         if (this.edgeLineSegments) {
             this._objectsToIntersect.push(this.edgeLineSegments);
         }
@@ -1699,6 +1737,11 @@ export class NetworkVisualizer {
             const nodeId = this.instanceIdNodeMap.get(instanceId);
             const nodeData = this.nodes.get(nodeId);
             return nodeData ? nodeData.mesh : null;
+        } else if (intersect.object === this.coneInstancedMesh) {
+            const instanceId = intersect.instanceId;
+            const edgeId = this.instanceIdEdgeMap.get(instanceId);
+            const edgeData = this.edgeMap.get(edgeId);
+            return edgeData ? edgeData.line : null;
         } else if (intersect.object === this.edgeLineSegments) {
             const vertexIndex = intersect.index;
             const edgeIndex = Math.floor(
@@ -1712,6 +1755,7 @@ export class NetworkVisualizer {
     }
 
     _performRaycast() {
+        this.camera.updateMatrixWorld();
         this.raycaster.setFromCamera(this.mouse, this.camera);
 
         const intersects = this.raycaster.intersectObjects(

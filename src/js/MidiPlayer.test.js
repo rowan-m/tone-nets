@@ -276,7 +276,7 @@ describe('MidiPlayer', () => {
             player.onStop = onStop;
             player.isPlaying = true;
             player.isLooping = true;
-            
+
             sequencerEvents['songEnded']();
 
             expect(player.sequencer.currentTime).toBe(0);
@@ -298,7 +298,7 @@ describe('MidiPlayer', () => {
         it('should pause and resume playback correctly, cleaning up voices after a short delay', () => {
             vi.useFakeTimers();
             player.isPlaying = true;
-            
+
             player.pause();
             expect(player.isPlaying).toBe(false);
             expect(player.sequencer.pause).toHaveBeenCalled();
@@ -320,27 +320,36 @@ describe('MidiPlayer', () => {
 
             // Note On C4
             synthEvents['noteOn']({ midiNote: 60, channel: 0 });
-            expect(onNotePlay).toHaveBeenLastCalledWith('C4', undefined, 0, false);
+            expect(onNotePlay).toHaveBeenLastCalledWith(
+                'C4',
+                undefined,
+                0,
+                false,
+            );
 
             // Note On E4 (while C4 is still "active" in terms of transition tracking)
             synthEvents['noteOn']({ midiNote: 64, channel: 0 });
             expect(onNotePlay).toHaveBeenLastCalledWith('E4', 'C4', 0, false);
-            
+
             // The system should track that C4 was the predecessor for E4 even if they started closely
         });
 
         it('should handle dummy audio play failure gracefully', async () => {
-            const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-            mockAudioInstance.play.mockRejectedValueOnce(new Error('Audio Blocked'));
+            const consoleSpy = vi
+                .spyOn(console, 'warn')
+                .mockImplementation(() => {});
+            mockAudioInstance.play.mockRejectedValueOnce(
+                new Error('Audio Blocked'),
+            );
 
             await player.play(new ArrayBuffer(8), true);
-            
+
             // Wait for microtask queue to process the catch block
-            await new Promise(r => setTimeout(r, 0));
+            await new Promise((r) => setTimeout(r, 0));
 
             expect(consoleSpy).toHaveBeenCalledWith(
                 'Dummy audio play failed:',
-                expect.any(Error)
+                expect.any(Error),
             );
             consoleSpy.mockRestore();
         });
@@ -368,9 +377,9 @@ describe('MidiPlayer', () => {
             const onStop = vi.fn();
             player.onStop = onStop;
             player.sequencer.currentTime = 10;
-            
+
             player.restart();
-            
+
             expect(player.sequencer.currentTime).toBe(0);
             expect(onStop).toHaveBeenCalled();
         });
@@ -396,8 +405,13 @@ describe('MidiPlayer', () => {
         });
 
         it('should log warning if MediaSession setPositionState throws', () => {
-            const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-            vi.spyOn(navigator.mediaSession, 'setPositionState').mockImplementationOnce(() => {
+            const consoleSpy = vi
+                .spyOn(console, 'warn')
+                .mockImplementation(() => {});
+            vi.spyOn(
+                navigator.mediaSession,
+                'setPositionState',
+            ).mockImplementationOnce(() => {
                 throw new Error('Unsupported');
             });
 
@@ -406,7 +420,7 @@ describe('MidiPlayer', () => {
 
             expect(consoleSpy).toHaveBeenCalledWith(
                 'Failed to set MediaSession position state:',
-                expect.any(Error)
+                expect.any(Error),
             );
             consoleSpy.mockRestore();
         });
@@ -416,13 +430,13 @@ describe('MidiPlayer', () => {
             player.isPlaying = true;
 
             player._startMediaSessionInterval();
-            
+
             vi.advanceTimersByTime(1000);
             expect(navigator.mediaSession.setPositionState).toHaveBeenCalled();
 
             player.isPlaying = false;
             vi.advanceTimersByTime(1000);
-            
+
             // Should have stopped ticking after isPlaying became false
             expect(player._mediaSessionInterval).toBeNull();
             vi.useRealTimers();
@@ -432,9 +446,9 @@ describe('MidiPlayer', () => {
             const originalMediaSession = navigator.mediaSession;
             // @ts-ignore
             delete navigator.mediaSession;
-            
+
             expect(() => player.updateMediaSessionPosition()).not.toThrow();
-            
+
             // Restore for other tests
             Object.defineProperty(global.navigator, 'mediaSession', {
                 value: originalMediaSession,

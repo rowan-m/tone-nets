@@ -104,7 +104,6 @@ const init = async () => {
 
     visualizer.onTourChange = (enabled) => {
         ui.els.tourToggle.checked = enabled;
-        ui.els.tourToggle.setAttribute('aria-expanded', enabled);
     };
     player.isLooping = ui.els.loopToggle.checked;
 

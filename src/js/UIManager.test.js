@@ -518,9 +518,6 @@ describe('UIManager', () => {
 
             // Assert
             expect(mockCallbacks.onTourToggle).toHaveBeenCalledWith(true);
-            expect(
-                mockElements['tour-toggle'].getAttribute('aria-expanded'),
-            ).toBe(true);
         });
 
         it('should handle theme button click', () => {

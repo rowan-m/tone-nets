@@ -497,12 +497,19 @@ describe('NetworkVisualizer', () => {
             expect(composerSpy).toHaveBeenCalled();
         });
 
-        it('stops auto-tour on user interaction', () => {
-            visualizer.autoTour = true;
+        it('stops auto-tour on control interaction', () => {
             const tourSpy = vi.fn();
             visualizer.onTourChange = tourSpy;
+            visualizer.autoTour = true;
 
-            visualizer._onDocumentClick();
+            // Get the 'start' listener registered on controls
+            const startListener =
+                visualizer.controls.addEventListener.mock.calls.find(
+                    (call) => call[0] === 'start',
+                )[1];
+
+            // Trigger the listener
+            startListener();
 
             expect(visualizer.autoTour).toBe(false);
             expect(tourSpy).toHaveBeenCalledWith(false);

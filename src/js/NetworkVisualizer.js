@@ -238,7 +238,6 @@ export class NetworkVisualizer {
         this._onWindowResize = this._onWindowResize.bind(this);
         this._onPointerInteraction = this._onPointerInteraction.bind(this);
         this._onPointerLeave = this._onPointerLeave.bind(this);
-        this._onDocumentClick = this._onDocumentClick.bind(this);
 
         this._isAnimating = false;
         this._animationFrameId = null;
@@ -257,7 +256,6 @@ export class NetworkVisualizer {
             this._onPointerInteraction,
         );
         this.container.addEventListener('pointerleave', this._onPointerLeave);
-        document.addEventListener('click', this._onDocumentClick);
     }
 
     _onWindowResize() {
@@ -333,10 +331,6 @@ export class NetworkVisualizer {
     _onPointerLeave() {
         this.mouse.set(-1000, -1000);
         this.mouseMoved = true;
-    }
-
-    _onDocumentClick() {
-        this.stopAutoTour();
     }
 
     startAnimationLoop() {
@@ -2360,6 +2354,5 @@ export class NetworkVisualizer {
             'pointerleave',
             this._onPointerLeave,
         );
-        document.removeEventListener('click', this._onDocumentClick);
     }
 }

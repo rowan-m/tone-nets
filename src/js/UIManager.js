@@ -106,7 +106,6 @@ export class UIManager {
 
         this.els.tourToggle.addEventListener('change', (e) => {
             this.callbacks.onTourToggle(e.target.checked);
-            this.els.tourToggle.setAttribute('aria-expanded', e.target.checked);
         });
 
         this.els.hideUiBtn.addEventListener('click', () => this.toggleUi());

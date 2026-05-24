@@ -2,30 +2,14 @@
 
 This project ports the original R-based visualisations from the paper ["Decoding the evolution of melodic and harmonic structure of Western music through the lens of network science"](https://www.nature.com/articles/s41598-026-42872-7) to a client-side web app. It visualizes MIDI note transitions as a 3D topological web and calculates complexity metrics defined in the linked paper.
 
-## Run the development environment
+## 🚀 Quick Start for Agents
 
-```bash
-npm ci
-npm run dev
-```
+1.  **Understand the Ethos**: Strict TDD. Write a failing test first.
+2.  **Environment**: `npm ci` followed by `npm run dev`.
+3.  **Validation**: `npm run check` is the "Source of Truth" for quality. It runs linting, formatting, tests (with coverage), and build.
+4.  **Entry Point**: `src/js/main.js` is the central orchestrator.
 
-## Contribute
-
-This project follows a strict **Test-Driven Development (TDD)** ethos. All contributing agents MUST follow the **Red/Green/Refactor** approach:
-
-1.  **Red**: Before implementing a feature or fix, write a test that fails. Use this to empirically reproduce bugs or define new behavior.
-2.  **Green**: Write the minimal code necessary to make the test pass. Do not over-engineer at this stage.
-3.  **Refactor**: Optimize and clean the code while ensuring the tests remain green. Adhere to the established architectural patterns.
-
-Before committing or sending a pull request, you MUST run the combined check script to ensure all linting, formatting, tests, and builds pass:
-
-```bash
-npm run check
-```
-
-DO NOT SUBMIT CHANGES UNLESS `npm run check` PASSES. Fix any issues identified by the scripts.
-
-## Architecture Overview
+## 🏗️ Architecture Overview
 
 The application is built with Vanilla JS (ES Modules) and Vite, structured into three primary subsystems:
 
@@ -36,66 +20,74 @@ The application is built with Vanilla JS (ES Modules) and Vite, structured into 
         - Groups notes by exact **MIDI ticks** to handle chords/simultaneous events.
         - Skips self-loops ($w_{xx} = 0$) as per paper specifications.
         - Filters out MIDI Channel 10 (drums) from transition analysis.
-    - **Metrics**: Calculates academic complexity metrics:
-        - **Efficiency**: Global (unweighted) and Weighted (via Dijkstra).
-        - **Reciprocity**: Binary, Weighted, and Normalized ($\rho$).
-        - **Entropy**: Mean Node Entropy.
-        - **Scale-interval Embedding**: 12D interval signature (directed pitch class intervals).
-    - **Scaling**: Parsing and metrics calculation (which involve $O(V \cdot E)$ operations like BFS/Dijkstra) are performed in a **Web Worker**. Since `ngraph.graph` objects cannot be transferred directly, data is passed as a serialized `{ nodes, links }` structure and reconstructed via `NetworkParser.rebuildGraph()`.
+    - **Metrics**: Calculates academic complexity metrics (Efficiency, Reciprocity, Entropy, Scale-interval Embedding).
+    - **Scaling**: Parsing and metrics calculation are offloaded to a **Web Worker**.
 
 2.  **3D Visualizer (`src/js/NetworkVisualizer.js`)**:
-    - **Engine**: Uses `Three.js` with `TrackballControls` for interactive 3D rendering.
-    - **Layout Strategy**: Uses `ngraph.forcelayout` in **3D mode** (`dimensions: 3`). Assigns physical **mass** to nodes in the simulator based on their degree ($1 + \log_2(\text{degree} + 1) \cdot 5$) to ensure hubs maintain spatial dominance. Connects isolated graph components to the highest-degree node in the main component using temporary "fake links" (`isFake: true`, spring length 0, weight 5) to prevent them from drifting to infinity in the layout simulator.
-    - **Performance**: Layout calculation is throttled on mobile to every other frame (30fps) to maintain framerates. For static files, layout is calculated **incrementally (async)** over 3000 steps with real-time progress reporting.
+    - **Engine**: Uses `Three.js` with `TrackballControls`.
+    - **Layout Strategy**: Uses `ngraph.forcelayout` in **3D mode**. Assigns mass to nodes based on degree ($1 + \log_2(\text{degree} + 1) \cdot 5$).
     - **Visuals**: Quadratic Bezier edges with directional cones, pitch-class based node coloring (HSL), and post-processing bloom.
-    - **Interactivity**:
-        - `THREE.Raycaster` for hover-based highlighting and metadata display.
-        - Real-time highlighting of nodes and edges during playback using a **reference-counting `playCount` system**.
-        - Floating instrument emojis above active nodes using `THREE.Sprite`.
+    - **Interactivity**: `THREE.Raycaster` for hover; reference-counting `playCount` for playback highlights.
 
 3.  **Audio Player (`src/js/MidiPlayer.js`)**:
-    - **Synthesis**: Uses `Tone.js` for `AudioContext` management and `spessasynth_lib` for high-quality SoundFont synthesis and MIDI sequencing.
-    - **Resources**: Uses a 7.5MB General MIDI SoundFont (`.sf2`) stored in `public/`.
-    - **Scheduling**: Uses `spessasynth_lib`'s built-in `Sequencer` and `eventHandler` to sync visual highlights with audio. Uses `requestAnimationFrame` in `main.js` to decouple UI updates from the strict audio loop.
-    - **Constraints**: Calls `Tone.start()` on first user interaction (file selection or example click) to unlock the AudioContext.
+    - **Synthesis**: Uses `Tone.js` for `AudioContext` and `spessasynth_lib` for SoundFont synthesis.
+    - **Scheduling**: Syncs visual highlights with audio via `spessasynth_lib`'s `Sequencer` events.
 
-## Operational Modes
+## ⚖️ Hard Constraints (Scientific Parity)
 
-The application supports two primary operational modes:
+These rules are derived from the original Nature paper. Any modification to these must be scientifically justified:
 
-- **Incremental (Live) Mode** (Default): The network and layout are built dynamically on-the-fly during playback. As notes play, transitions are added to the graph on the main thread, physics steps are calculated incrementally, and visual nodes/edges are updated. To prevent UI lag, academic complexity metrics (reciprocity, efficiency, entropy, scale-interval embedding) are not computed during live play.
-- **Static (Worker) Mode**: Disabled by default. Parses the entire MIDI file upfront. To maintain UI responsiveness, parsing and complexity metric calculations (which involve $O(V \cdot E)$ BFS/Dijkstra operations) are offloaded to a Web Worker (`src/js/parser.worker.js`). The main thread rebuilds the graph from serialized data, runs a full 3,000-step force-directed layout simulation asynchronously (with real-time progress callbacks), and displays static metrics.
+- **Transition Definition**: A transition exists between note $i$ and note $j$ if $i$ starts at time $T$ and $j$ starts at time $T+1$.
+- **Chord Handling**: Simultaneous notes (same **MIDI ticks**) are grouped. Transitions are calculated from *all* notes in group $T$ to *all* notes in group $T+1$.
+- **Self-Loops**: Self-loops ($w_{xx}$) are explicitly skipped. A transition from 'C4' to 'C4' is not recorded.
+- **Drum Filtering**: MIDI Channel 10 (index 9) MUST be excluded from network analysis.
+- **Metric Logic**:
+    - **Efficiency**: Global (unweighted) and Weighted (via Dijkstra). Weighted uses $d = 1/w$ as distance.
+    - **Reciprocity**: Binary, Weighted, and Normalized ($\rho$).
+    - **Entropy**: Mean Node Entropy.
+    - **Scale-interval Embedding**: 12D interval signature (directed pitch class intervals).
 
-## Technical Implementation Details
+## 🏗️ Architectural Patterns
 
-- **UI Stack**: The project uses **Vanilla CSS** and direct **DOM manipulation** (no UI framework). The entry point `main.js` acts as a controller, coordinating subsystems via callback hooks (e.g., `player.onNotePlay`).
-- **Metric Logic**: **Weighted Efficiency** is calculated using Dijkstra's algorithm where the distance between nodes is the inverse of their transition weight ($d = 1/w$).
-- **Reference Counting**: Visual highlights for nodes and edges use a `playCount` counter. This ensures that overlapping notes or chords correctly maintain highlights until the final instance is released.
-- **Performance Patterns**: High-frequency lookups and caches (like `Utils.noteToSemitone`) utilize native **`Map`** objects instead of plain objects for better V8 performance.
-- **Theme System**: Managed by `ThemeManager.js` and `Themes.js`. Supports dynamic visual themes (e.g. `default`, `terminator`). The `terminator` theme utilizes high-reflectivity metallic chrome materials, deep-red backgrounds, and triggers custom GPU shaders inside `VisualEffectsManager.js` (a fullscreen procedural fire/plasma background and additively blended floating plasma particles wrapping infinitely around the camera view).
-- **Security Patterns**: MIDI uploads are restricted to **5MB** and verified via a **Magic Number check** (`0x4d546864`) in `main.js` before processing.
+- **Orchestrator Model**: `main.js` manages the lifecycle. Subsystems should not talk to each other directly.
+- **Reference-Counting Highlights**: Visual highlights use a `playCount` property. Increment on `noteOn`, decrement on `noteOff`.
+- **Object Pooling**: High-frequency objects (like floating emojis) use the `ObjectPool` class.
+- **Throttling**: 3D Layout calculations are throttled on mobile and backgrounded when the tab is hidden.
 
-## Mobile & Background Constraints
+## 🛠️ Common Tasks
 
-To maintain stable audio on low-power mobile devices and prevent the OS from suspending the audio context when the app is backgrounded, the following strict patterns are enforced:
+### Adding a New Theme
+1.  Define the theme object in `src/js/Themes.js`.
+2.  Register it in `src/js/main.js` inside `init()` via `visualizer.themeManager.registerTheme()`.
+3.  Add any custom shaders to `VisualEffectsManager.js`.
 
-- **Audio Routing**: On mobile, audio is routed exclusively to a `MediaStreamDestination` and attached to an _unmuted_ `<audio playsinline>` element appended to the DOM. This forces the OS to recognize the tab as actively playing media.
-- **Desktop Keep-Alive**: Background audio suspension on desktop is prevented using a looping silent audio track (`background.mp3`) managed alongside `MediaStream` routing.
-- **Memory Allocation**: Dynamic voice allocation (`autoAllocateVoices`) in SpessaSynth is disabled on mobile, and the voice cap is reduced to 64 (vs 128 on desktop). This prevents garbage collection pauses in the `AudioWorklet` thread which cause severe audio corruption. Interpolation is also dropped to linear.
-- **Main Thread Offloading**: When `document.visibilityState === 'hidden'`, all 3D `requestAnimationFrame` render loops and DOM updates are instantly short-circuited to conserve 100% of CPU for the background `AudioWorklet`.
+### Adding a New Complexity Metric
+1.  Implement logic in `src/js/NetworkMetrics.js`.
+2.  Add unit test in `src/js/NetworkMetrics.test.js`.
+3.  Update `src/js/NetworkParser.js` summary.
+4.  Update `UIManager.js` for display.
 
-## Key Dependencies & Rationale
+## 🧪 Testing Guide
 
-- **Three.js**: Industry standard for hardware-accelerated 3D visuals.
-- **Tone.js**: Robust Web Audio `Context` management and start-up unlocking.
-- **spessasynth_lib**: High-fidelity SoundFont (SF2) rendering and MIDI sequencing via AudioWorklets.
-- **ngraph.graph / ngraph.forcelayout**: High-performance, lightweight graph data structures and physics engines.
-- **Vitest**: Modern testing framework; chosen for speed and Vite compatibility.
-- **postprocessing**: High-performance bloom and shader effects.
+- **Location**: Tests are co-located with their source files (e.g., `Utils.test.js`).
+- **Framework**: Vitest.
+- **Commands**:
+    - `npm test`: Run all tests.
+    - `npm run test:watch`: Interactive TDD mode.
+    - `npm run test:coverage`: Ensure you haven't dropped coverage.
 
-## Coding Conventions
+## 📱 Mobile & Background Constraints
 
-- **Linting**: Strict security and quality rules via `eslint-plugin-security`, `sonarjs`, `no-unsanitized`, and `@eslint/css`.
-- **Formatting**: Prettier with 4-space tabs and single quotes.
-- **Testing**: Mandated TDD workflow. Unit tests are required for all utility functions (`src/js/Utils.js`), network construction logic, and UI-independent business logic. Tests must be written before implementation (Red phase).
-- **Media Support**: Implements `MediaSession` API for lock-screen controls, current playback position tracking, and metadata.
+- **Audio Routing**: On mobile, audio is routed to a `MediaStreamDestination` and attached to an _unmuted_ `<audio playsinline>` element to prevent OS suspension.
+- **Desktop Keep-Alive**: Background suspension on desktop is prevented using a looping silent audio track (`background.mp3`).
+- **Memory Allocation**: Dynamic voice allocation in SpessaSynth is disabled on mobile; voice cap reduced to 64.
+
+## 📂 File Map
+
+- `src/js/NetworkParser.js`: MIDI -> Graph logic.
+- `src/js/NetworkVisualizer.js`: Three.js rendering engine.
+- `src/js/NetworkMetrics.js`: Mathematical analysis.
+- `src/js/VisualEffectsManager.js`: Shaders, highlights, emojis.
+- `src/js/MidiPlayer.js`: Audio synthesis and scheduling.
+- `src/js/UIManager.js`: DOM interaction and event handling.
+- `src/js/Utils.js`: MIDI/Math utilities.

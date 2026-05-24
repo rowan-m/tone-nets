@@ -6,7 +6,7 @@ import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
 import createGraph from 'ngraph.graph';
 import { Utils } from './Utils.js';
-import { DefaultTheme, TerminatorTheme } from './Themes.js';
+import { DefaultTheme, TerminatorTheme, RetroTheme } from './Themes.js';
 
 console.log('Tone Nets Initialized');
 
@@ -25,6 +25,7 @@ const init = async () => {
     // Register themes
     visualizer.themeManager.registerTheme(DefaultTheme);
     visualizer.themeManager.registerTheme(TerminatorTheme);
+    visualizer.themeManager.registerTheme(RetroTheme);
     visualizer.setTheme('default');
 
     // Warm-up visualizer and shaders to prevent JIT/shader compilation lag on first play

@@ -36,3 +36,32 @@ export const TerminatorTheme = {
         visualizer.effects.enableTerminatorBackground(false);
     },
 };
+
+export const RetroTheme = {
+    name: 'retro',
+    highlightColor: 0x00ff44, // Terminal Green
+    nodeMaterial: {
+        roughness: 1.0,
+        metalness: 0.0,
+        emissiveIntensity: 0.5,
+        wireframe: true,
+    },
+    background: 0x000500, // Very dark green
+    emoji: '📟',
+    showOutlines: false,
+    maxResolution: { width: 640, height: 480 },
+    geometrySegments: 6,
+    getNodeColor: (pitchClass) => {
+        // Retro theme: shades of green
+        const hue = 120 / 360; // Green
+        const saturation = 0.8;
+        const lightness = 0.3 + (pitchClass / 12) * 0.4;
+        return { hue, saturation, lightness };
+    },
+    onActivate: (visualizer) => {
+        visualizer.enableRetroEffects(true);
+    },
+    onDeactivate: (visualizer) => {
+        visualizer.enableRetroEffects(false);
+    },
+};

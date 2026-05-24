@@ -5,11 +5,72 @@ import {
     RenderPass,
     EffectPass,
     BloomEffect,
+    Effect,
 } from 'postprocessing';
 import { Utils } from './Utils.js';
 import { NetworkLayout } from './NetworkLayout.js';
 import { VisualEffectsManager } from './VisualEffectsManager.js';
 import { ThemeManager } from './ThemeManager.js';
+
+/**
+ * Custom post-processing effect for a retro CRT look.
+ * Includes barrel distortion, RGB shift, scanlines, and noise.
+ */
+const retroCRTFragmentShader = `
+uniform float uTime;
+uniform float uDistortion;
+
+void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
+    // Barrel Distortion
+    vec2 centeredUv = uv - 0.5;
+    float dist = dot(centeredUv, centeredUv);
+    vec2 distortedUv = uv + centeredUv * dist * uDistortion;
+    
+    // Check bounds
+    if (distortedUv.x < 0.0 || distortedUv.x > 1.0 || distortedUv.y < 0.0 || distortedUv.y > 1.0) {
+        outputColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+    
+    // Chromatic Aberration (RGB Shift)
+    // Shift is stronger at the edges of the screen
+    float shift = 0.0015 * (1.0 + dist * 2.0);
+    vec4 col;
+    col.r = texture2D(inputBuffer, distortedUv + vec2(shift, 0.0)).r;
+    col.g = texture2D(inputBuffer, distortedUv).g;
+    col.b = texture2D(inputBuffer, distortedUv - vec2(shift, 0.0)).b;
+    col.a = 1.0;
+    
+    // Subtle Scanlines
+    float scanline = sin(distortedUv.y * 800.0) * 0.005;
+    col.rgb -= scanline;
+    
+    // Static Noise
+    float noise = (fract(sin(dot(distortedUv + uTime * 0.01, vec2(12.9898,78.233))) * 43758.5453) - 0.5) * 0.015;
+    col.rgb += noise;
+    
+    // Vignette
+    float vignette = 1.0 - dist * 0.6;
+    col.rgb *= vignette;
+    
+    outputColor = col;
+}
+`;
+
+class RetroCRTEffect extends Effect {
+    constructor() {
+        super('RetroCRTEffect', retroCRTFragmentShader, {
+            uniforms: new Map([
+                ['uTime', new THREE.Uniform(0)],
+                ['uDistortion', new THREE.Uniform(0.12)],
+            ]),
+        });
+    }
+
+    update(renderer, inputBuffer, deltaTime) {
+        this.uniforms.get('uTime').value += deltaTime;
+    }
+}
 
 export class NetworkVisualizer {
     constructor(containerId) {
@@ -167,6 +228,7 @@ export class NetworkVisualizer {
         this._graphDirtySinceLastFakeLinks = true;
 
         this._scratchMatrix = new THREE.Matrix4();
+        this._currentGeometrySegments = 32;
 
         this.initThree();
         this.initPostProcessing();
@@ -199,21 +261,66 @@ export class NetworkVisualizer {
     }
 
     _onWindowResize() {
-        const aspect = this.container.clientWidth / this.container.clientHeight;
+        this._updateResolution();
+        const aspect =
+            this.renderer.domElement.width / this.renderer.domElement.height;
         const d = this.baseFrustumSize / 2;
         this.camera.left = -d * aspect;
         this.camera.right = d * aspect;
         this.camera.top = d;
         this.camera.bottom = -d;
         this.camera.updateProjectionMatrix();
-        this.renderer.setSize(
-            this.container.clientWidth,
-            this.container.clientHeight,
-        );
-        this.composer.setSize(
-            this.container.clientWidth,
-            this.container.clientHeight,
-        );
+    }
+
+    _updateResolution() {
+        const theme = this.themeManager.getCurrentTheme();
+        let width = this.container.clientWidth;
+        let height = this.container.clientHeight;
+
+        if (theme && theme.maxResolution) {
+            const aspect = width / height;
+            if (
+                width > theme.maxResolution.width ||
+                height > theme.maxResolution.height
+            ) {
+                if (
+                    theme.maxResolution.width / theme.maxResolution.height >
+                    aspect
+                ) {
+                    height = theme.maxResolution.height;
+                    width = height * aspect;
+                } else {
+                    width = theme.maxResolution.width;
+                    height = width / aspect;
+                }
+            }
+        }
+
+        // We set the renderer size but keep the canvas style at 100% to let the browser scale it
+        this.renderer.setSize(width, height, false);
+        this.composer.setSize(width, height);
+
+        const canvas = this.renderer.domElement;
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.imageRendering =
+            theme && theme.maxResolution ? 'pixelated' : 'auto';
+    }
+
+    enableRetroEffects(enabled) {
+        if (this.effects) {
+            this.effects.setRetroMode(enabled);
+        }
+
+        if (enabled) {
+            if (!this.retroCRTPass) {
+                const effect = new RetroCRTEffect();
+                this.retroCRTPass = new EffectPass(this.camera, effect);
+            }
+            this.composer.addPass(this.retroCRTPass);
+        } else if (this.retroCRTPass) {
+            this.composer.removePass(this.retroCRTPass);
+        }
     }
 
     _onPointerInteraction(e) {
@@ -417,9 +524,11 @@ export class NetworkVisualizer {
         this.startAnimationLoop();
     }
 
-    _initSharedGeometries() {
+    _initSharedGeometries(segments) {
+        const sphereSegments = segments || this._currentGeometrySegments || 32;
+
         if (!this.sphereGeo) {
-            const sphereSegments = 32;
+            this._currentGeometrySegments = sphereSegments;
             this.sphereGeo = new THREE.SphereGeometry(
                 1,
                 sphereSegments,
@@ -654,6 +763,57 @@ export class NetworkVisualizer {
         }
 
         this._updateObjectsToIntersect();
+    }
+
+    _reinitGeometries(segments) {
+        const disposeMesh = (mesh) => {
+            if (!mesh) return;
+            this.graphGroup.remove(mesh);
+            if (mesh.geometry) mesh.geometry.dispose();
+            if (mesh.material) {
+                if (Array.isArray(mesh.material)) {
+                    mesh.material.forEach((m) => m.dispose());
+                } else {
+                    mesh.material.dispose();
+                }
+            }
+        };
+
+        disposeMesh(this.nodeInstancedMesh);
+        this.nodeInstancedMesh = null;
+        disposeMesh(this.outlineInstancedMesh);
+        this.outlineInstancedMesh = null;
+        disposeMesh(this.coneInstancedMesh);
+        this.coneInstancedMesh = null;
+        disposeMesh(this.edgeLineSegments);
+        this.edgeLineSegments = null;
+
+        if (this.sphereGeo) this.sphereGeo.dispose();
+        if (this.outlineGeo) this.outlineGeo.dispose();
+        if (this.coneGeo) this.coneGeo.dispose();
+
+        this.sphereGeo = null;
+        this.outlineGeo = null;
+        this.coneGeo = null;
+
+        this._initSharedGeometries(segments);
+
+        // Re-upload data if a graph exists
+        if (this.graph) {
+            // Restore instance counts on new meshes
+            if (this.nodeInstancedMesh) {
+                this.nodeInstancedMesh.count = this.nodeList.length;
+            }
+            if (this.outlineInstancedMesh) {
+                this.outlineInstancedMesh.count = this.nodeList.length;
+            }
+            if (this.coneInstancedMesh) {
+                this.coneInstancedMesh.count = this.edges.length;
+            }
+
+            this._updatePositionsFromLayout();
+            this._updateThemeNodeColors(this.currentThemeName);
+        }
     }
 
     _updateElementVisuals(id, type) {
@@ -2091,11 +2251,26 @@ export class NetworkVisualizer {
         this.currentThemeName = themeName;
         const theme = this.themeManager.getCurrentTheme();
 
+        // Update CSS theme attribute
+        if (typeof document !== 'undefined') {
+            document.documentElement.setAttribute('data-theme', themeName);
+        }
+
         this.highlightColor = theme.highlightColor;
         this.highlightEdgeMaterial.color.setHex(this.highlightColor);
         this.highlightConeMaterial.color.setHex(this.highlightColor);
 
+        this._updateResolution();
         this._updateThemeNodeColors(themeName);
+
+        const targetSegments = theme.geometrySegments || 32;
+        if (targetSegments !== this._currentGeometrySegments) {
+            this._reinitGeometries(targetSegments);
+        }
+
+        if (this.outlineInstancedMesh) {
+            this.outlineInstancedMesh.visible = theme.showOutlines !== false;
+        }
 
         if (this.nodeInstancedMesh) {
             this.nodeInstancedMesh.material.roughness =
@@ -2104,13 +2279,25 @@ export class NetworkVisualizer {
                 theme.nodeMaterial.metalness;
             this.nodeInstancedMesh.material.emissiveIntensity =
                 theme.nodeMaterial.emissiveIntensity;
+            this.nodeInstancedMesh.material.wireframe =
+                !!theme.nodeMaterial.wireframe;
             this.nodeInstancedMesh.material.needsUpdate = true;
         }
 
         if (this.coneInstancedMesh) {
             this.coneInstancedMesh.material.emissiveIntensity =
                 theme.nodeMaterial.emissiveIntensity + 0.05;
+            this.coneInstancedMesh.material.wireframe =
+                !!theme.nodeMaterial.wireframe;
             this.coneInstancedMesh.material.needsUpdate = true;
+        }
+
+        if (this.edgeLineSegments) {
+            this.edgeLineSegments.material.transparent = true;
+            this.edgeLineSegments.material.opacity = theme.nodeMaterial
+                .wireframe
+                ? 0.4
+                : 1.0;
         }
 
         this.renderer.setClearColor(theme.background);

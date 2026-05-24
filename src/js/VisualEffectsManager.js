@@ -13,11 +13,15 @@ export class VisualEffectsManager {
 
         this.maxEmojis = 100;
         this.emojiTextureCache = new Map();
+        this.retroMode = false;
 
         this.emojiPool = new ObjectPool(
             (emoji) => this._createEmojiSprite(emoji),
             (item, emoji) => {
-                item.sprite.material.map = this._getEmojiTexture(emoji);
+                item.sprite.material.map = this._getEmojiTexture(
+                    emoji,
+                    this.retroMode,
+                );
                 item.sprite.material.opacity = 1.0;
                 item.life = 1.0;
             },
@@ -218,6 +222,10 @@ export class VisualEffectsManager {
         this.terminatorGroup.visible = enabled;
     }
 
+    setRetroMode(enabled) {
+        this.retroMode = enabled;
+    }
+
     update(delta) {
         this._updateEmojis(delta);
         if (this.terminatorGroup.visible) {
@@ -268,32 +276,52 @@ export class VisualEffectsManager {
         this.scene.add(item.sprite);
     }
 
-    _getEmojiTexture(emoji) {
-        let texture = this.emojiTextureCache.get(emoji);
+    _getEmojiTexture(emoji, isRetro = false) {
+        const cacheKey = isRetro ? `${emoji}_retro` : emoji;
+        let texture = this.emojiTextureCache.get(cacheKey);
 
         if (!texture) {
             const canvas = document.createElement('canvas');
             canvas.width = 64;
             canvas.height = 64;
             const ctx = canvas.getContext('2d');
+
             ctx.font = '48px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(emoji, 32, 32);
+
+            if (isRetro) {
+                // Draw the emoji grayscaled to preserve internal luminosity details
+                ctx.filter = 'grayscale(100%) contrast(120%)';
+                ctx.fillText(emoji, 32, 32);
+
+                // Tint using 'color' mode: preserves luminosity (details) while applying hue/sat
+                ctx.filter = 'none';
+                ctx.globalCompositeOperation = 'color';
+                ctx.fillStyle = '#00ff44';
+                ctx.fillRect(0, 0, 64, 64);
+
+                // Final pass: ensure background transparency is maintained (as 'color' fills the rect)
+                ctx.globalCompositeOperation = 'destination-in';
+                ctx.fillText(emoji, 32, 32);
+            } else {
+                ctx.fillText(emoji, 32, 32);
+            }
 
             texture = new THREE.CanvasTexture(canvas);
-            this.emojiTextureCache.set(emoji, texture);
+            this.emojiTextureCache.set(cacheKey, texture);
         }
         return texture;
     }
 
     _createEmojiSprite(emoji) {
-        const texture = this._getEmojiTexture(emoji);
+        const texture = this._getEmojiTexture(emoji, this.retroMode);
 
         const material = new THREE.SpriteMaterial({
             map: texture,
             transparent: true,
             depthTest: false,
+            color: 0xffffff,
         });
         const sprite = new THREE.Sprite(material);
         sprite.scale.set(40, 40, 1);

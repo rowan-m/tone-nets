@@ -17,6 +17,10 @@ describe('VisualEffectsManager', () => {
                         getContext: vi.fn(() => ({
                             fillText: vi.fn(),
                             measureText: vi.fn(() => ({ width: 10 })),
+                            fillRect: vi.fn(),
+                            globalCompositeOperation: '',
+                            fillStyle: '',
+                            filter: '',
                         })),
                         width: 0,
                         height: 0,
@@ -201,6 +205,18 @@ describe('VisualEffectsManager', () => {
                 '#include <begin_vertex>',
             );
             expect(mockShader.fragmentShader).toContain('radialAlpha');
+        });
+
+        it('should support retro mode for emoji textures', () => {
+            effectsManager.setRetroMode(true);
+            expect(effectsManager.retroMode).toBe(true);
+
+            effectsManager.showInstrumentEmoji(new THREE.Vector3(), '🎹');
+            // Check if a retro version was cached
+            expect(effectsManager.emojiTextureCache.has('🎹_retro')).toBe(true);
+
+            effectsManager.setRetroMode(false);
+            expect(effectsManager.retroMode).toBe(false);
         });
     });
 

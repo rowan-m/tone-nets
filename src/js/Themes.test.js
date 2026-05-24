@@ -92,4 +92,48 @@ describe('Themes', () => {
             });
         });
     });
+
+    describe('RetroTheme', () => {
+        it('should define the retro aesthetic properties', () => {
+            const { RetroTheme } = require('./Themes.js');
+            expect(RetroTheme.name).toBe('retro');
+            expect(RetroTheme.emoji).toBe('📟');
+            expect(RetroTheme.background).toBe(0x000500);
+            expect(RetroTheme.highlightColor).toBe(0x00ff44);
+            expect(RetroTheme.showOutlines).toBe(false);
+            expect(RetroTheme.maxResolution).toEqual({
+                width: 640,
+                height: 480,
+            });
+            expect(RetroTheme.nodeMaterial.wireframe).toBe(true);
+        });
+
+        describe('Lifecycle Hooks', () => {
+            it('should enable retro effects on activation', () => {
+                const { RetroTheme } = require('./Themes.js');
+                const mockVisualizer = {
+                    enableRetroEffects: vi.fn(),
+                };
+
+                RetroTheme.onActivate(mockVisualizer);
+
+                expect(mockVisualizer.enableRetroEffects).toHaveBeenCalledWith(
+                    true,
+                );
+            });
+
+            it('should disable retro effects on deactivation', () => {
+                const { RetroTheme } = require('./Themes.js');
+                const mockVisualizer = {
+                    enableRetroEffects: vi.fn(),
+                };
+
+                RetroTheme.onDeactivate(mockVisualizer);
+
+                expect(mockVisualizer.enableRetroEffects).toHaveBeenCalledWith(
+                    false,
+                );
+            });
+        });
+    });
 });

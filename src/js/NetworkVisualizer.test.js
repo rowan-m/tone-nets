@@ -30,6 +30,7 @@ vi.mock('./VisualEffectsManager.js', () => ({
         this.showInstrumentEmoji = vi.fn();
         this.enableTerminatorBackground = vi.fn();
         this.clear = vi.fn();
+        this.setRetroMode = vi.fn();
     }),
 }));
 
@@ -57,6 +58,7 @@ vi.mock('three', async (importOriginal) => {
                     parentElement: {
                         removeChild: vi.fn(),
                     },
+                    style: {},
                 },
                 dispose: vi.fn(),
             };
@@ -82,6 +84,7 @@ vi.mock('postprocessing', () => ({
     EffectComposer: vi.fn().mockImplementation(function () {
         return {
             addPass: vi.fn(),
+            removePass: vi.fn(),
             setSize: vi.fn(),
             render: vi.fn(),
             dispose: vi.fn(),
@@ -90,6 +93,11 @@ vi.mock('postprocessing', () => ({
     RenderPass: vi.fn(),
     EffectPass: vi.fn(),
     BloomEffect: vi.fn(),
+    Effect: class {
+        constructor() {
+            this.uniforms = new Map();
+        }
+    },
 }));
 
 describe('NetworkVisualizer', () => {
@@ -160,6 +168,11 @@ describe('NetworkVisualizer', () => {
                 getContext: vi.fn(() => ({})),
                 style: {},
             })),
+            documentElement: {
+                setAttribute: vi.fn(),
+                getAttribute: vi.fn(),
+                style: {},
+            },
             body: {
                 appendChild: vi.fn(),
                 removeChild: vi.fn(),
@@ -357,6 +370,43 @@ describe('NetworkVisualizer', () => {
 
             expect(nextTheme).not.toBe(initialTheme);
             expect(visualizer.currentThemeName).toBe(nextTheme);
+        });
+
+        it('enables and disables retro effects', () => {
+            visualizer.enableRetroEffects(true);
+            expect(visualizer.composer.addPass).toHaveBeenCalled();
+            expect(visualizer.retroCRTPass).toBeDefined();
+
+            visualizer.enableRetroEffects(false);
+            expect(visualizer.composer.removePass).toHaveBeenCalled();
+        });
+
+        it('re-initializes geometries with different LOD', () => {
+            const spy = vi.spyOn(visualizer, '_initSharedGeometries');
+            visualizer._reinitGeometries(8);
+            expect(spy).toHaveBeenCalledWith(8);
+            expect(visualizer._currentGeometrySegments).toBe(8);
+        });
+
+        it('updates resolution based on theme constraints', () => {
+            const rendererSpy = vi.spyOn(visualizer.renderer, 'setSize');
+            const theme = {
+                maxResolution: { width: 640, height: 480 },
+            };
+            visualizer.themeManager.registerTheme({
+                name: 'res-test',
+                ...theme,
+            });
+            visualizer.setTheme('res-test');
+
+            expect(rendererSpy).toHaveBeenCalledWith(
+                expect.any(Number),
+                expect.any(Number),
+                false,
+            );
+            expect(visualizer.renderer.domElement.style.imageRendering).toBe(
+                'pixelated',
+            );
         });
     });
 

@@ -39,6 +39,17 @@
     --panel-border: rgba(255, 100, 100, 0.15);
 }
 
+[data-theme='retro'] {
+    --bg-color: #000500;
+    --text-color: #00ff44;
+    --text-muted: #008822;
+    --accent-color: #00ff44;
+    --accent-glow: rgba(0, 255, 68, 0.3);
+    --accent-secondary: #008822;
+    --panel-bg: rgba(0, 10, 0, 0.85);
+    --panel-border: rgba(0, 255, 68, 0.2);
+}
+
 body,
 html {
     margin: 0;

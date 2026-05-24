@@ -18,10 +18,28 @@ jobs:
                   node-version: 22
                   cache: 'npm'
             - run: npm ci
-            - run: npm run check
+            - name: Lint
+              run: npm run eslint
+            - name: Prettier
+              run: npm run prettier:check
+            - name: Test & Coverage
+              run: npm run test:coverage
+            - name: Build
+              run: npm run build
+            - name: 'Test Report'
+              uses: mikepenz/action-junit-report@v5
+              if: always()
+              with:
+                  report_paths: './junit.xml'
             - name: 'Report Coverage'
               if: always()
               uses: davelosert/vitest-coverage-report-action@v2
+            - name: 'Upload Coverage Artifact'
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: coverage-report
+                  path: coverage/
             - uses: FirebaseExtended/action-hosting-deploy@v0
               with:
                   repoToken: ${{ secrets.GITHUB_TOKEN }}

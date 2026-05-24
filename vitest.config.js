@@ -4,8 +4,11 @@ export default defineConfig({
     test: {
         globals: true,
         reporters: process.env.GITHUB_ACTIONS
-            ? ['default', 'github-actions']
+            ? ['default', 'github-actions', 'junit']
             : ['default'],
+        outputFile: {
+            junit: './junit.xml',
+        },
         coverage: {
             enabled: true,
             provider: 'v8',

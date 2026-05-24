@@ -17,6 +17,12 @@ export default defineConfig({
             reportOnFailure: true,
             include: ['src/js/**/*.js'],
             exclude: ['src/js/**/*.test.js'],
+            thresholds: {
+                statements: 80,
+                branches: 65,
+                functions: 80,
+                lines: 80,
+            },
         },
         include: ['src/js/**/*.test.js'],
     },

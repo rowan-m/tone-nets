@@ -38,6 +38,11 @@ export class VisualEffectsManager {
         this.scene.add(this.terminatorGroup);
         this._initTerminatorBackground();
 
+        this.retroGroup = new THREE.Group();
+        this.retroGroup.visible = false;
+        this.scene.add(this.retroGroup);
+        this._initRetroBackground();
+
         if (typeof document !== 'undefined' || global.document) {
             const uniqueEmojis = new Set(
                 Object.values(Utils.INSTRUMENT_EMOJIS),
@@ -222,29 +227,92 @@ export class VisualEffectsManager {
         this.terminatorGroup.visible = enabled;
     }
 
+    enableRetroBackground(enabled) {
+        this.retroGroup.visible = enabled;
+    }
+
     setRetroMode(enabled) {
         this.retroMode = enabled;
     }
 
-    update(delta) {
+    update(delta, frequencyData = null) {
         this._updateEmojis(delta);
-        if (this.terminatorGroup.visible) {
-            this.terminatorSphere.material.uniforms.uTime.value += delta;
+        this._updateTerminatorBackground(delta);
+        this._updateRetroBackground(frequencyData);
+    }
 
-            if (this.particleShader) {
-                this.particleShader.uniforms.uTime.value += delta;
+    _updateTerminatorBackground(delta) {
+        if (!this.terminatorGroup.visible) return;
 
-                // Calculate the visible spread based on orthographic frustum height/width.
-                // We multiply by 2.0 to ensure the wrapping box safely covers the screen corners
-                // even when the camera is panned or the window is extremely wide/tall.
-                const viewHeight =
-                    (this.camera.top - this.camera.bottom) / this.camera.zoom;
-                const viewWidth =
-                    (this.camera.right - this.camera.left) / this.camera.zoom;
-                this.particleShader.uniforms.uSpread.value =
-                    Math.max(viewWidth, viewHeight) * 2.0;
+        this.terminatorSphere.material.uniforms.uTime.value += delta;
+
+        if (this.particleShader) {
+            this.particleShader.uniforms.uTime.value += delta;
+
+            // Calculate the visible spread based on orthographic frustum height/width.
+            const viewHeight =
+                (this.camera.top - this.camera.bottom) / this.camera.zoom;
+            const viewWidth =
+                (this.camera.right - this.camera.left) / this.camera.zoom;
+            this.particleShader.uniforms.uSpread.value =
+                Math.max(viewWidth, viewHeight) * 2.0;
+        }
+    }
+
+    _updateRetroBackground(frequencyData) {
+        if (!this.retroGroup.visible || !frequencyData) return;
+
+        const binCount = frequencyData.length;
+        const barCount = 32;
+        // Increase minFreq from 20Hz to ~120Hz to skip the sub-bass range
+        // where bins are too close together to create distinct bars.
+        const minFreq = 120;
+        const maxFreq = 16000;
+        const sampleRate = 44100;
+
+        // Helper to convert frequency to FFT bin index
+        const freqToBin = (freq) =>
+            Math.floor((freq * binCount * 2) / sampleRate);
+
+        for (let i = 0; i < barCount; i++) {
+            // Calculate frequency range for this bar using logarithmic spacing
+            const fStart = minFreq * Math.pow(maxFreq / minFreq, i / barCount);
+            const fEnd =
+                minFreq * Math.pow(maxFreq / minFreq, (i + 1) / barCount);
+
+            // Ensure we cover a continuous range of bins with no gaps
+            const binStart = freqToBin(fStart);
+            const binEnd = Math.max(binStart + 1, freqToBin(fEnd)); // Guarantee at least 1 bin
+
+            let maxVal = 0;
+            // Use peak detection (max) instead of average for more responsive bars in small ranges
+            for (let j = binStart; j < binEnd; j++) {
+                if (j < binCount) {
+                    maxVal = Math.max(maxVal, frequencyData[j]);
+                }
+            }
+
+            // Music energy naturally falls off at higher frequencies (approx -3dB per octave).
+            // We apply a "Slope Compensation" (Tilt) to flatten this visually for a more
+            // balanced "Full" look across the screen.
+            const tiltFactor = 1.0 + (i / (barCount - 1)) * 2.5; // Reduced from 4.0
+
+            // Subtract a small noise floor and apply tilt
+            const adjustedVal = Math.max(0, maxVal - 5) * tiltFactor;
+            const targetValue = Math.min(255, adjustedVal * 0.6); // Reduced from 0.8
+
+            const currentVal = this.retroFreqData[i];
+
+            // Smooth decay/rise with "liquid" ballistics to reduce flicker
+            if (targetValue > currentVal) {
+                // Slower "attack" for a more fluid, less jumpy rise (was 0.8)
+                this.retroFreqData[i] = targetValue * 0.4 + currentVal * 0.6;
+            } else {
+                // Slower "decay" for a graceful, high-quality fall (was 0.88)
+                this.retroFreqData[i] = currentVal * 0.94;
             }
         }
+        this.retroFreqTexture.needsUpdate = true;
     }
 
     _updateEmojis(delta) {
@@ -274,6 +342,78 @@ export class VisualEffectsManager {
         const item = this.emojiPool.acquire(emoji);
         item.sprite.position.copy(position);
         this.scene.add(item.sprite);
+    }
+
+    _initRetroBackground() {
+        const geo = new THREE.PlaneGeometry(2, 2);
+        this.retroFreqData = new Uint8Array(32);
+        this.retroFreqTexture = new THREE.DataTexture(
+            this.retroFreqData,
+            32,
+            1,
+            THREE.RedFormat,
+        );
+        this.retroFreqTexture.minFilter = THREE.NearestFilter;
+        this.retroFreqTexture.magFilter = THREE.NearestFilter;
+
+        const mat = new THREE.ShaderMaterial({
+            depthWrite: false,
+            depthTest: false,
+            transparent: true,
+            uniforms: {
+                uFreqTexture: { value: this.retroFreqTexture },
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position.xy, 1.0, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D uFreqTexture;
+                varying vec2 vUv;
+
+                void main() {
+                    float barCount = 32.0;
+                    float x = vUv.x * barCount;
+                    float barIdx = floor(x);
+                    float xInBar = fract(x);
+                    
+                    // Small gap between bars
+                    float barMask = step(0.1, xInBar) * step(xInBar, 0.9);
+                    
+                    // Fetch frequency for this bar
+                    float freq = texture2D(uFreqTexture, vec2((barIdx + 0.5) / barCount, 0.5)).r;
+                    
+                    // Centered vertically
+                    float distFromCenter = abs(vUv.y - 0.5);
+                    
+                    // Height mask (max half-height is 0.25 to make total height 0.5)
+                    float heightMask = step(distFromCenter, freq * 0.25);
+                    
+                    // Subtle scanline effect on the bars
+                    float scanline = sin(vUv.y * 200.0) * 0.1 + 0.9;
+                    
+                    // Vertical gradient: More pronounced, darker base
+                    // Use power function to make the transition sharper/more pronounced
+                    float gradient = pow(smoothstep(0.0, freq * 0.25, distFromCenter), 1.5);
+                    vec3 baseColor = vec3(0.0, 0.2, 0.05); // Much darker muted green
+                    vec3 tipColor = vec3(0.0, 0.8, 0.2); // Slightly darker terminal green
+                    vec3 color = mix(baseColor, tipColor, gradient);
+                    
+                    // Slightly lower overall alpha for a more "glowy" but subtle look
+                    float alpha = barMask * heightMask * 0.12 * scanline;
+                    
+                    gl_FragColor = vec4(color, alpha);
+                }
+            `,
+        });
+
+        this.retroEqualizer = new THREE.Mesh(geo, mat);
+        this.retroEqualizer.frustumCulled = false;
+        this.retroEqualizer.renderOrder = -1000;
+        this.retroGroup.add(this.retroEqualizer);
     }
 
     _getEmojiTexture(emoji, isRetro = false) {

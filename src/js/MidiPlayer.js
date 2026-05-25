@@ -24,6 +24,7 @@ export class MidiPlayer {
         this.onNoteRelease = null;
         this.onStop = null;
         this._initPromise = null;
+        this.analyser = null;
     }
 
     async loadSoundfont(url = '/creative-emu10k1-8mbgmsfx.sf2') {
@@ -65,6 +66,11 @@ export class MidiPlayer {
                     // Create master gain for muting/pausing
                     this.masterGain = rawCtx.createGain();
                     this.masterGain.gain.setValueAtTime(0, rawCtx.currentTime);
+
+                    // Create Analyser for visualization
+                    this.analyser = rawCtx.createAnalyser();
+                    this.analyser.fftSize = 2048; // 1024 bins, much better resolution for log mapping
+                    this.masterGain.connect(this.analyser);
 
                     // Wait for the clock to actually start moving and stabilize.
                     // This is crucial in Chromium-based browsers under high load or throttling,
@@ -521,5 +527,12 @@ export class MidiPlayer {
 
     _delay(ms) {
         return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    getFrequencyData() {
+        if (!this.analyser) return null;
+        const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+        this.analyser.getByteFrequencyData(dataArray);
+        return dataArray;
     }
 }

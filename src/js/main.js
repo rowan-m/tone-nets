@@ -46,6 +46,7 @@ const init = async () => {
     visualizer.clear();
 
     const player = new MidiPlayer();
+    visualizer.audioSource = player;
 
     const callbacks = {
         onIncrementalToggle: (checked) => {

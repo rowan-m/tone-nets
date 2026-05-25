@@ -113,6 +113,15 @@ vi.mock('tone', () => {
         },
     };
 
+    const mockAnalyserNode = {
+        connect: vi.fn(),
+        getByteFrequencyData: vi.fn((array) => {
+            for (let i = 0; i < array.length; i++) array[i] = 128;
+        }),
+        frequencyBinCount: 128,
+        fftSize: 256,
+    };
+
     let mockTime = 0;
     const mockRawContext = {
         state: 'running',
@@ -122,6 +131,7 @@ vi.mock('tone', () => {
         resume: vi.fn().mockResolvedValue(),
         audioWorklet: mockAudioWorklet,
         createGain: vi.fn().mockReturnValue(mockGainNode),
+        createAnalyser: vi.fn().mockReturnValue(mockAnalyserNode),
         destination: mockDestination,
         createMediaStreamDestination: vi.fn().mockReturnValue({
             stream: {},
@@ -461,8 +471,16 @@ describe('MidiPlayer', () => {
     describe('Synthesis Events', () => {
         it('should update instrument tracking on programChange events', async () => {
             await player.initialize();
-            synthEvents['programChange']({ channel: 5, program: 12 });
-            expect(player.channelInstruments[5]).toBe(12);
+            synthEvents['programChange']({ channel: 1, program: 12 });
+            expect(player.channelInstruments[1]).toBe(12);
+        });
+
+        it('should return frequency data from the analyser', async () => {
+            await player.initialize();
+            const data = player.getFrequencyData();
+            expect(data).toBeInstanceOf(Uint8Array);
+            expect(data.length).toBe(128);
+            expect(data[0]).toBe(128);
         });
     });
 });

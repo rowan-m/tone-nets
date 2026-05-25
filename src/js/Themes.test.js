@@ -113,6 +113,9 @@ describe('Themes', () => {
                 const { RetroTheme } = require('./Themes.js');
                 const mockVisualizer = {
                     enableRetroEffects: vi.fn(),
+                    effects: {
+                        enableRetroBackground: vi.fn(),
+                    },
                 };
 
                 RetroTheme.onActivate(mockVisualizer);
@@ -120,12 +123,18 @@ describe('Themes', () => {
                 expect(mockVisualizer.enableRetroEffects).toHaveBeenCalledWith(
                     true,
                 );
+                expect(
+                    mockVisualizer.effects.enableRetroBackground,
+                ).toHaveBeenCalledWith(true);
             });
 
             it('should disable retro effects on deactivation', () => {
                 const { RetroTheme } = require('./Themes.js');
                 const mockVisualizer = {
                     enableRetroEffects: vi.fn(),
+                    effects: {
+                        enableRetroBackground: vi.fn(),
+                    },
                 };
 
                 RetroTheme.onDeactivate(mockVisualizer);
@@ -133,6 +142,9 @@ describe('Themes', () => {
                 expect(mockVisualizer.enableRetroEffects).toHaveBeenCalledWith(
                     false,
                 );
+                expect(
+                    mockVisualizer.effects.enableRetroBackground,
+                ).toHaveBeenCalledWith(false);
             });
         });
     });

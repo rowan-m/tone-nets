@@ -60,8 +60,10 @@ export const RetroTheme = {
     },
     onActivate: (visualizer) => {
         visualizer.enableRetroEffects(true);
+        visualizer.effects.enableRetroBackground(true);
     },
     onDeactivate: (visualizer) => {
         visualizer.enableRetroEffects(false);
+        visualizer.effects.enableRetroBackground(false);
     },
 };

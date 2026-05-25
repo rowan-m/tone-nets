@@ -1866,7 +1866,10 @@ export class NetworkVisualizer {
             this.nodeShader.uniforms.uTime.value += delta;
         }
 
-        this.effects.update(delta);
+        const frequencyData = this.audioSource
+            ? this.audioSource.getFrequencyData()
+            : null;
+        this.effects.update(delta, frequencyData);
         this._updateAutoTour(delta);
         this.composer.render();
     }

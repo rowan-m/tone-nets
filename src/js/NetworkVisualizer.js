@@ -1472,7 +1472,6 @@ export class NetworkVisualizer {
         let radius = this.graphRadius;
         if (isNaN(radius) || radius <= 0 || !isFinite(radius)) {
             radius = 100; // Safe default for incremental mode starting empty
-            this.graphCenter.set(0, 0, 0);
         }
 
         let frustumSize = radius * 2 * 1.01; // Add 1% padding
@@ -1775,34 +1774,24 @@ export class NetworkVisualizer {
     }
 
     _updateAutoTourBounds() {
-        // Also update bounding box/center for auto-tour
+        // Update bounding box and center for auto-tour
         if (this.nodes.size > 0) {
-            let sumX = 0,
-                sumY = 0,
-                sumZ = 0;
+            this.graphBoundingBox.makeEmpty();
             for (let i = 0; i < this.nodeList.length; i++) {
-                const nodeData = this.nodeList[i];
-                sumX += nodeData.mesh.position.x;
-                sumY += nodeData.mesh.position.y;
-                sumZ += nodeData.mesh.position.z;
-            }
-
-            this.graphCenter.set(
-                sumX / this.nodes.size,
-                sumY / this.nodes.size,
-                sumZ / this.nodes.size,
-            );
-
-            let maxDistSq = 0;
-            for (let i = 0; i < this.nodeList.length; i++) {
-                const nodeData = this.nodeList[i];
-                const distSq = this.graphCenter.distanceToSquared(
-                    nodeData.mesh.position,
+                this.graphBoundingBox.expandByPoint(
+                    this.nodeList[i].mesh.position,
                 );
-                if (distSq > maxDistSq) maxDistSq = distSq;
             }
 
-            let radius = Math.sqrt(maxDistSq);
+            // Use geometric center instead of average to balance the view
+            this.graphBoundingBox.getCenter(this.graphCenter);
+
+            const size = this._scratchVec3_2;
+            this.graphBoundingBox.getSize(size);
+
+            // radius is half of the diagonal, ensures sphere contains the box
+            let radius = size.length() * 0.5;
+
             if (isNaN(radius) || radius <= 0 || !isFinite(radius)) {
                 radius = 100;
             }
@@ -1981,20 +1970,6 @@ export class NetworkVisualizer {
             this.currentTourTarget.lerp(this.graphCenter, delta * 2.0);
             this.controls.target.copy(this.currentTourTarget);
 
-            const aspect =
-                this.container.clientWidth / this.container.clientHeight;
-
-            const requiredFrustumSize =
-                Math.max(
-                    this.graphRadius * 2,
-                    (this.graphRadius * 2) / aspect,
-                ) * 1.01;
-
-            const targetZoom = this.baseFrustumSize / requiredFrustumSize;
-
-            this.camera.zoom += (targetZoom - this.camera.zoom) * delta * 2.0;
-            this.camera.updateProjectionMatrix();
-
             this.camera.position.lerp(this._scratchVec3_1, delta * 1.5);
 
             const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(
@@ -2003,6 +1978,45 @@ export class NetworkVisualizer {
             this.camera.up.copy(upVector);
 
             this.camera.lookAt(this.currentTourTarget);
+            this.camera.updateMatrixWorld();
+
+            // Calculate tightest zoom based on current camera rotation.
+            // We project all nodes into camera space to find the tightest width/height.
+            let minX = Infinity,
+                maxX = -Infinity;
+            let minY = Infinity,
+                maxY = -Infinity;
+
+            const viewMatrix = this.camera.matrixWorldInverse;
+            const tempVec = this._scratchVec3_2;
+
+            for (let i = 0; i < this.nodeList.length; i++) {
+                tempVec
+                    .copy(this.nodeList[i].mesh.position)
+                    .applyMatrix4(viewMatrix);
+                minX = Math.min(minX, tempVec.x);
+                maxX = Math.max(maxX, tempVec.x);
+                minY = Math.min(minY, tempVec.y);
+                maxY = Math.max(maxY, tempVec.y);
+            }
+
+            const width = Math.max(0.1, maxX - minX);
+            const height = Math.max(0.1, maxY - minY);
+
+            // Target zoom to fit this bounding box, with 10% padding for comfort
+            const padding = 1.1;
+            const targetZoomX =
+                (this.camera.right - this.camera.left) / (width * padding);
+            const targetZoomY =
+                (this.camera.top - this.camera.bottom) / (height * padding);
+
+            let targetZoom = Math.min(targetZoomX, targetZoomY);
+
+            // Cap zoom to prevent extreme close-ups on single nodes or empty graphs
+            targetZoom = Math.min(targetZoom, 10.0);
+
+            this.camera.zoom += (targetZoom - this.camera.zoom) * delta * 2.0;
+            this.camera.updateProjectionMatrix();
         } else {
             this.controls.update();
         }

@@ -1,95 +1,74 @@
 # Agent Context: Tone Nets
 
-This project ports the original R-based visualisations from the paper ["Decoding the evolution of melodic and harmonic structure of Western music through the lens of network science"](https://www.nature.com/articles/s41598-026-42872-7) to a client-side web app. It visualizes MIDI note transitions as a 3D topological web and calculates complexity metrics defined in the linked paper.
+This project is a high-performance 3D visualization of musical networks, based on the Nature paper ["Decoding the evolution of melodic and harmonic structure of Western music through the lens of network science"](https://www.nature.com/articles/s41598-026-42872-7).
 
-## 🚀 Quick Start for Agents
+## 🛡️ Mandatory Workflow (Finality Gate)
 
-1.  **Understand the Ethos**: Strict TDD. Write a failing test first.
-2.  **Environment**: `npm ci` followed by `npm run dev`.
-3.  **Validation**: `npm run check` is the "Source of Truth" for quality. It runs linting, formatting, tests (with coverage), and build.
-4.  **Entry Point**: `src/js/main.js` is the central orchestrator.
+Before completing any task, you **MUST** follow this sequence. A task is not complete until all these steps pass:
+
+1.  **Strict TDD**: Write a failing test co-located with the source (e.g., `MyModule.test.js`) before implementation.
+2.  **Implementation**: Write clean, modular Vanilla JS (ES Modules).
+3.  **Local Validation**: Run `npm test src/js/MyModule.test.js` to verify your specific change.
+4.  **Finality Gate**: Run `npm run check`. This is the **Source of Truth**. It executes:
+    - `prettier`: Formatting check.
+    - `eslint`: Linting and security analysis.
+    - `vitest`: Full test suite with coverage enforcement (80% lines/funcs/stmts, 65% branches).
+    - `vite build`: Production build verification.
+
+**Failure to run `npm run check` and resolve all reported issues (including coverage drops) is a breach of the project's engineering standards.**
 
 ## 🏗️ Architecture Overview
 
-The application is built with Vanilla JS (ES Modules) and Vite, structured into three primary subsystems:
+The application is an orchestrator-based system managed by `main.js`. Subsystems are decoupled:
 
-1.  **Network Parser (`src/js/NetworkParser.js` & `src/js/parser.worker.js`)**:
-    - **Parsing**: Uses `@tonejs/midi` for binary MIDI parsing.
-    - **Graph Construction**: Builds a directed, weighted graph using `ngraph.graph`.
+1.  **Network Parser & Metrics (`NetworkParser.js`, `NetworkMetrics.js`)**:
+    - **Logic**: Offloaded to `parser.worker.js` (Web Worker) to keep the UI thread smooth.
     - **Scientific Parity**:
-        - Groups notes by exact **MIDI ticks** to handle chords/simultaneous events.
-        - Skips self-loops ($w_{xx} = 0$) as per paper specifications.
-        - Filters out MIDI Channel 10 (drums) from transition analysis.
-    - **Metrics**: Calculates academic complexity metrics (Efficiency, Reciprocity, Entropy, Scale-interval Embedding).
-    - **Scaling**: Parsing and metrics calculation are offloaded to a **Web Worker**.
+        - Chord-to-chord transitions based on exact MIDI ticks.
+        - Skips self-loops ($w_{xx} = 0$).
+        - Excludes MIDI Channel 10 (drums).
+    - **Metrics**: Efficiency, Reciprocity, Entropy, Scale-interval Embedding.
 
-2.  **3D Visualizer (`src/js/NetworkVisualizer.js`)**:
-    - **Engine**: Uses `Three.js` with `TrackballControls`.
-    - **Layout Strategy**: Uses `ngraph.forcelayout` in **3D mode**. Assigns mass to nodes based on degree ($1 + \log_2(\text{degree} + 1) \cdot 5$).
-    - **Visuals**: Quadratic Bezier edges with directional cones, pitch-class based node coloring (HSL), and post-processing bloom.
-    - **Interactivity**: `THREE.Raycaster` for hover; reference-counting `playCount` for playback highlights.
+2.  **3D Visualizer (`NetworkVisualizer.js`)**:
+    - **Engine**: Three.js (Orthographic Camera).
+    - **Layout**: `ngraph.forcelayout` in 3D.
+    - **Visuals**: Quadratic Bezier edges, pitch-class coloring, instanced rendering for performance.
+    - **Tour Mode**: Uses camera-aligned AABB projections for tight bounding and optimal zoom.
 
-3.  **Audio Player (`src/js/MidiPlayer.js`)**:
-    - **Synthesis**: Uses `Tone.js` for `AudioContext` and `spessasynth_lib` for SoundFont synthesis.
-    - **Scheduling**: Syncs visual highlights with audio via `spessasynth_lib`'s `Sequencer` events.
+3.  **Visual Effects (`VisualEffectsManager.js`)**:
+    - **Shaders**: Manages bloom, CRT effects, and background visualizations.
+    - **Feedback**: Handles real-time spectrum analysis (equalizer) and interactive emojis.
+
+4.  **Audio Engine (`MidiPlayer.js`)**:
+    - **Synthesis**: SpessaSynth (SoundFont) + Tone.js (AudioContext).
+    - **Analysis**: Provides live frequency data via `AnalyserNode`.
 
 ## ⚖️ Hard Constraints (Scientific Parity)
 
-These rules are derived from the original Nature paper. Any modification to these must be scientifically justified:
+These rules from the original paper are **non-negotiable**:
 
-- **Transition Definition**: A transition exists between note $i$ and note $j$ if $i$ starts at time $T$ and $j$ starts at time $T+1$.
-- **Chord Handling**: Simultaneous notes (same **MIDI ticks**) are grouped. Transitions are calculated from _all_ notes in group $T$ to _all_ notes in group $T+1$.
-- **Self-Loops**: Self-loops ($w_{xx}$) are explicitly skipped. A transition from 'C4' to 'C4' is not recorded.
-- **Drum Filtering**: MIDI Channel 10 (index 9) MUST be excluded from network analysis.
-- **Metric Logic**:
-    - **Efficiency**: Global (unweighted) and Weighted (via Dijkstra). Weighted uses $d = 1/w$ as distance.
-    - **Reciprocity**: Binary, Weighted, and Normalized ($\rho$).
-    - **Entropy**: Mean Node Entropy.
-    - **Scale-interval Embedding**: 12D interval signature (directed pitch class intervals).
+- **Transition Definition**: $i \to j$ if $i$ starts at $T$ and $j$ starts at $T+1$.
+- **Chord Handling**: Transitions are calculated from _all_ notes in group $T$ to _all_ notes in group $T+1$.
+- **Self-Loops**: Always skipped ($w_{xx} = 0$).
+- **Drum Filtering**: Channel 10 MUST be excluded.
 
 ## 🏗️ Architectural Patterns
 
-- **Orchestrator Model**: `main.js` manages the lifecycle. Subsystems should not talk to each other directly.
-- **Reference-Counting Highlights**: Visual highlights use a `playCount` property. Increment on `noteOn`, decrement on `noteOff`.
-- **Object Pooling**: High-frequency objects (like floating emojis) use the `ObjectPool` class.
-- **Throttling**: 3D Layout calculations are throttled on mobile and backgrounded when the tab is hidden.
-
-## 🛠️ Common Tasks
-
-### Adding a New Theme
-
-1.  Define the theme object in `src/js/Themes.js`.
-2.  Register it in `src/js/main.js` inside `init()` via `visualizer.themeManager.registerTheme()`.
-3.  Add any custom shaders to `VisualEffectsManager.js`.
-
-### Adding a New Complexity Metric
-
-1.  Implement logic in `src/js/NetworkMetrics.js`.
-2.  Add unit test in `src/js/NetworkMetrics.test.js`.
-3.  Update `src/js/NetworkParser.js` summary.
-4.  Update `UIManager.js` for display.
+- **Decoupling**: Subsystems must not communicate directly. Use `main.js` as the bridge.
+- **Performance**: Use `ObjectPool` for high-frequency objects (emojis). Use InstancedMesh for nodes/cones.
+- **BALLISTICS**: Use smooth interpolation (lerp) for all camera and UI transitions to maintain a "liquid" feel.
 
 ## 🧪 Testing Guide
 
-- **Location**: Tests are co-located with their source files (e.g., `Utils.test.js`).
-- **Framework**: Vitest.
-- **Commands**:
-    - `npm test`: Run all tests.
-    - `npm run test:watch`: Interactive TDD mode.
-    - `npm run test:coverage`: Ensure you haven't dropped coverage.
-
-## 📱 Mobile & Background Constraints
-
-- **Audio Routing**: On mobile, audio is routed to a `MediaStreamDestination` and attached to an _unmuted_ `<audio playsinline>` element to prevent OS suspension.
-- **Desktop Keep-Alive**: Background suspension on desktop is prevented using a looping silent audio track (`background.mp3`).
-- **Memory Allocation**: Dynamic voice allocation in SpessaSynth is disabled on mobile; voice cap reduced to 64.
+- **Co-location**: `Module.js` and `Module.test.js` live in the same folder.
+- **Mocks**: Use Vitest's `vi.mock` for heavy dependencies (Three.js, Tone.js).
+- **Coverage**: Coverage must not drop. If you add logic, add tests.
 
 ## 📂 File Map
 
-- `src/js/NetworkParser.js`: MIDI -> Graph logic.
-- `src/js/NetworkVisualizer.js`: Three.js rendering engine.
-- `src/js/NetworkMetrics.js`: Mathematical analysis.
-- `src/js/VisualEffectsManager.js`: Shaders, highlights, emojis.
-- `src/js/MidiPlayer.js`: Audio synthesis and scheduling.
-- `src/js/UIManager.js`: DOM interaction and event handling.
-- `src/js/Utils.js`: MIDI/Math utilities.
+- `src/js/main.js`: Lifecycle orchestrator.
+- `src/js/NetworkParser.js`: MIDI processing.
+- `src/js/NetworkVisualizer.js`: Rendering engine.
+- `src/js/MidiPlayer.js`: Audio synthesis.
+- `src/js/VisualEffectsManager.js`: Shaders and FX.
+- `src/js/UIManager.js`: DOM and Event handling.

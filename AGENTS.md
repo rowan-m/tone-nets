@@ -38,7 +38,7 @@ The application is built with Vanilla JS (ES Modules) and Vite, structured into 
 These rules are derived from the original Nature paper. Any modification to these must be scientifically justified:
 
 - **Transition Definition**: A transition exists between note $i$ and note $j$ if $i$ starts at time $T$ and $j$ starts at time $T+1$.
-- **Chord Handling**: Simultaneous notes (same **MIDI ticks**) are grouped. Transitions are calculated from *all* notes in group $T$ to *all* notes in group $T+1$.
+- **Chord Handling**: Simultaneous notes (same **MIDI ticks**) are grouped. Transitions are calculated from _all_ notes in group $T$ to _all_ notes in group $T+1$.
 - **Self-Loops**: Self-loops ($w_{xx}$) are explicitly skipped. A transition from 'C4' to 'C4' is not recorded.
 - **Drum Filtering**: MIDI Channel 10 (index 9) MUST be excluded from network analysis.
 - **Metric Logic**:
@@ -57,11 +57,13 @@ These rules are derived from the original Nature paper. Any modification to thes
 ## 🛠️ Common Tasks
 
 ### Adding a New Theme
+
 1.  Define the theme object in `src/js/Themes.js`.
 2.  Register it in `src/js/main.js` inside `init()` via `visualizer.themeManager.registerTheme()`.
 3.  Add any custom shaders to `VisualEffectsManager.js`.
 
 ### Adding a New Complexity Metric
+
 1.  Implement logic in `src/js/NetworkMetrics.js`.
 2.  Add unit test in `src/js/NetworkMetrics.test.js`.
 3.  Update `src/js/NetworkParser.js` summary.

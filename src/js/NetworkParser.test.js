@@ -29,7 +29,7 @@ vi.mock('./NetworkMetrics.js', () => ({
             entropy: '0.0000',
             efficiency: '0.0000',
             weightedEfficiency: '0.0000',
-            embedding: new Array(12).fill('0.0000'),
+            embedding: Array.from({ length: 12 }, () => '0.0000'),
         })),
     },
 }));

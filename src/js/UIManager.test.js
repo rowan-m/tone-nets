@@ -300,7 +300,7 @@ describe('UIManager', () => {
             reciprocity: 0.2,
             reciprocityRho: 0.1,
             density: 0.05,
-            embedding: new Array(12).fill(0.1),
+            embedding: Array.from({ length: 12 }, () => 0.1),
         };
 
         it('should update text content for all metric elements', () => {

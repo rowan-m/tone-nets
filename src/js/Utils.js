@@ -135,7 +135,7 @@ export class Utils {
         'B',
     ];
 
-    static _noteNameCache = new Array(128);
+    static _noteNameCache = Array.from({ length: 128 });
 
     static {
         for (let i = 0; i < 128; i++) {

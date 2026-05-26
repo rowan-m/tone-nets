@@ -87,10 +87,8 @@ export class NetworkMetrics {
 
         const numNodes = nodeToIndex.size;
 
-        const adj = new Array(numNodes);
-        for (let i = 0; i < numNodes; i++) {
-            adj[i] = [];
-        }
+        const adj = Array.from({ length: numNodes }, () => []);
+
         graph.forEachLink((link) => {
             const fromIdx = nodeToIndex.get(link.fromId);
             const toIdx = nodeToIndex.get(link.toId);
@@ -195,7 +193,7 @@ export class NetworkMetrics {
      * Calculates 12D scale-interval embedding (pitch class interval signature).
      */
     static calculateEmbedding(graph) {
-        const intervalVector = new Array(12).fill(0);
+        const intervalVector = Array.from({ length: 12 }, () => 0);
 
         graph.forEachLink((link) => {
             const interval = Utils.getInterval(link.fromId, link.toId);

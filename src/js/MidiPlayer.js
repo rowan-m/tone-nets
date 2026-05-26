@@ -10,7 +10,7 @@ export class MidiPlayer {
         this.sf2Buffer = null;
         this.isPlaying = false;
         this.masterGain = null;
-        this.channelInstruments = new Array(16).fill(0);
+        this.channelInstruments = Array.from({ length: 16 }, () => 0);
         this.lastNotePerChannel = new Map();
         this.activeNotes = new Map();
         this.duration = 0;
@@ -340,7 +340,7 @@ export class MidiPlayer {
         this._hardResetSynth();
 
         // Reset tracking
-        this.channelInstruments = new Array(16).fill(0);
+        this.channelInstruments = Array.from({ length: 16 }, () => 0);
         this.lastNotePerChannel.clear();
         this.activeNotes.clear();
 

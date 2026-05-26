@@ -766,7 +766,9 @@ export class NetworkVisualizer {
             if (mesh.geometry) mesh.geometry.dispose();
             if (mesh.material) {
                 if (Array.isArray(mesh.material)) {
-                    mesh.material.forEach((m) => m.dispose());
+                    for (let i = 0; i < mesh.material.length; i++) {
+                        mesh.material[i].dispose();
+                    }
                 } else {
                     mesh.material.dispose();
                 }

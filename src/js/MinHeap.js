@@ -13,13 +13,11 @@ export class MinHeap {
             let p = (idx - 1) >> 1;
             if (this.priorities[p] <= this.priorities[idx]) break;
 
-            const tempD = this.data[p];
-            this.data[p] = this.data[idx];
-            this.data[idx] = tempD;
-
-            const tempP = this.priorities[p];
-            this.priorities[p] = this.priorities[idx];
-            this.priorities[idx] = tempP;
+            [this.data[p], this.data[idx]] = [this.data[idx], this.data[p]];
+            [this.priorities[p], this.priorities[idx]] = [
+                this.priorities[idx],
+                this.priorities[p],
+            ];
 
             idx = p;
         }
@@ -51,13 +49,11 @@ export class MinHeap {
                 min = right;
             if (min === idx) break;
 
-            const tempD = this.data[idx];
-            this.data[idx] = this.data[min];
-            this.data[min] = tempD;
-
-            const tempP = this.priorities[idx];
-            this.priorities[idx] = this.priorities[min];
-            this.priorities[min] = tempP;
+            [this.data[idx], this.data[min]] = [this.data[min], this.data[idx]];
+            [this.priorities[idx], this.priorities[min]] = [
+                this.priorities[min],
+                this.priorities[idx],
+            ];
 
             idx = min;
         }

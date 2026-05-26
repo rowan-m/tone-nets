@@ -50,8 +50,14 @@ export class VisualEffectsManager {
             for (const emoji of uniqueEmojis) {
                 this._getEmojiTexture(emoji);
             }
+
+            // Pre-allocate pool to avoid jank without breaking encapsulation
+            const initialItems = [];
             for (let i = 0; i < 40; i++) {
-                this.emojiPool.pool.push(this._createEmojiSprite('🎹'));
+                initialItems.push(this.emojiPool.acquire('🎹'));
+            }
+            for (let i = 0; i < 40; i++) {
+                this.emojiPool.release(initialItems[i]);
             }
         }
     }

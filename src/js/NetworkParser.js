@@ -53,7 +53,7 @@ export class NetworkParser {
             this._processTrackTransitions(track, edgeMap, nodesSet);
         }
 
-        this.ensureNodesExist(graph, Array.from(nodesSet));
+        this.ensureNodesExist(graph, [...nodesSet]);
 
         for (const [source, targets] of edgeMap) {
             for (const [target, weight] of targets) {
@@ -68,9 +68,7 @@ export class NetworkParser {
 
     static _processTrackTransitions(track, edgeMap, nodesSet) {
         const notesByTime = this._groupNotesByTime(track.notes, nodesSet);
-        const sortedTimes = Array.from(notesByTime.keys()).sort(
-            (a, b) => a - b,
-        );
+        const sortedTimes = [...notesByTime.keys()].sort((a, b) => a - b);
 
         // Build transitions: from all notes at time T to all notes at time T+1
         for (let i = 1; i < sortedTimes.length; i++) {
@@ -117,8 +115,8 @@ export class NetworkParser {
             targetCounts.set(note, (targetCounts.get(note) || 0) + 1);
         }
 
-        const uniqueSources = Array.from(sourceCounts.keys());
-        const uniqueTargets = Array.from(targetCounts.keys());
+        const uniqueSources = [...sourceCounts.keys()];
+        const uniqueTargets = [...targetCounts.keys()];
 
         for (let s = 0; s < uniqueSources.length; s++) {
             const source = uniqueSources[s];

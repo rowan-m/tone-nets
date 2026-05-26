@@ -76,22 +76,50 @@ export class NetworkMetrics {
      * Calculates Global (unweighted) and Weighted Efficiency.
      */
     static calculateEfficiency(graph, n) {
-        const efficiencySums = { unweighted: 0, weighted: 0 };
-        const nodes = this._getNodeIds(graph);
-        const adj = this._getAdjacencyList(graph);
+        let unweightedSum = 0;
+        let weightedSum = 0;
 
-        for (let i = 0; i < nodes.length; i++) {
-            const startNode = nodes[i];
-            const uDistances = this.bfsDistances(adj, startNode);
-            const wDistances = this.dijkstraDistances(adj, startNode);
+        const nodeToIndex = new Map();
+        let idx = 0;
+        graph.forEachNode((node) => {
+            nodeToIndex.set(node.id, idx++);
+        });
 
-            this._sumEfficiencyForNode(uDistances, wDistances, efficiencySums);
+        const numNodes = nodeToIndex.size;
+
+        const adj = new Array(numNodes);
+        for (let i = 0; i < numNodes; i++) {
+            adj[i] = [];
+        }
+        graph.forEachLink((link) => {
+            const fromIdx = nodeToIndex.get(link.fromId);
+            const toIdx = nodeToIndex.get(link.toId);
+            adj[fromIdx].push({
+                to: toIdx,
+                weight: link.data.weight,
+            });
+        });
+
+        const uDistances = new Float64Array(numNodes);
+        const wDistances = new Float64Array(numNodes);
+        const visited = new Uint8Array(numNodes);
+        const queue = new Int32Array(numNodes);
+        const pq = new MinHeap();
+
+        for (let i = 0; i < numNodes; i++) {
+            unweightedSum += this._bfsEfficiency(i, adj, uDistances, queue);
+            weightedSum += this._dijkstraEfficiency(
+                i,
+                adj,
+                wDistances,
+                visited,
+                pq,
+            );
         }
 
         const norm = n > 1 ? n * (n - 1) : 1;
-        const unweightedEfficiency =
-            n > 1 ? efficiencySums.unweighted / norm : 0;
-        const weightedEfficiency = n > 1 ? efficiencySums.weighted / norm : 0;
+        const unweightedEfficiency = n > 1 ? unweightedSum / norm : 0;
+        const weightedEfficiency = n > 1 ? weightedSum / norm : 0;
 
         return {
             efficiency: unweightedEfficiency.toFixed(4),
@@ -99,34 +127,68 @@ export class NetworkMetrics {
         };
     }
 
-    static _getNodeIds(graph) {
-        const nodes = [];
-        graph.forEachNode((node) => {
-            nodes.push(node.id);
-        });
-        return nodes;
-    }
+    static _bfsEfficiency(startNode, adj, uDistances, queue) {
+        let unweightedSum = 0;
+        uDistances.fill(-1);
+        uDistances[startNode] = 0;
+        queue[0] = startNode;
+        let head = 0;
+        let tail = 1;
 
-    static _getAdjacencyList(graph) {
-        const adj = new Map();
-        graph.forEachLink((link) => {
-            let list = adj.get(link.fromId);
-            if (!list) {
-                list = [];
-                adj.set(link.fromId, list);
+        while (head < tail) {
+            const u = queue[head++];
+            const neighbors = adj[u];
+            const uDist = uDistances[u];
+
+            for (let j = 0; j < neighbors.length; j++) {
+                const v = neighbors[j].to;
+                if (uDistances[v] === -1) {
+                    const newDist = uDist + 1;
+                    uDistances[v] = newDist;
+                    queue[tail++] = v;
+                    unweightedSum += 1 / newDist;
+                }
             }
-            list.push({ to: link.toId, weight: link.data.weight });
-        });
-        return adj;
+        }
+        return unweightedSum;
     }
 
-    static _sumEfficiencyForNode(uDistances, wDistances, efficiencySums) {
-        for (const ud of uDistances.values()) {
-            if (ud > 0) efficiencySums.unweighted += 1 / ud;
+    static _dijkstraEfficiency(startNode, adj, wDistances, visited, pq) {
+        let weightedSum = 0;
+        wDistances.fill(-1);
+        visited.fill(0);
+
+        pq.data.length = 0;
+        pq.priorities.length = 0;
+
+        wDistances[startNode] = 0;
+        pq.push([startNode, 0]);
+
+        while (pq.length > 0) {
+            const [u, d] = pq.pop();
+
+            if (visited[u]) continue;
+            visited[u] = 1;
+
+            if (d > 0) weightedSum += 1 / d;
+
+            const neighbors = adj[u];
+
+            for (let j = 0; j < neighbors.length; j++) {
+                const v = neighbors[j].to;
+                if (visited[v]) continue;
+
+                const weight = neighbors[j].weight || 1;
+                const alt = d + 1 / weight;
+
+                const vDist = wDistances[v];
+                if (vDist === -1 || alt < vDist) {
+                    wDistances[v] = alt;
+                    pq.push([v, alt]);
+                }
+            }
         }
-        for (const wd of wDistances.values()) {
-            if (wd > 0) efficiencySums.weighted += 1 / wd;
-        }
+        return weightedSum;
     }
 
     /**
@@ -177,67 +239,5 @@ export class NetworkMetrics {
             ...efficiencyMetrics,
             embedding,
         };
-    }
-
-    /**
-     * Helper for Breadth-First Search distances (Unweighted)
-     */
-    static bfsDistances(adj, startNodeId) {
-        const distances = new Map();
-        distances.set(startNodeId, 0);
-        const queue = [startNodeId];
-        let head = 0;
-
-        while (head < queue.length) {
-            const u = queue[head++];
-            const neighbors = adj.get(u);
-            if (!neighbors) continue;
-
-            const uDist = distances.get(u);
-
-            for (let i = 0; i < neighbors.length; i++) {
-                const v = neighbors[i].to;
-                if (!distances.has(v)) {
-                    distances.set(v, uDist + 1);
-                    queue.push(v);
-                }
-            }
-        }
-        return distances;
-    }
-
-    /**
-     * Helper for Dijkstra's distances (Weighted)
-     */
-    static dijkstraDistances(adj, startNodeId) {
-        const distances = new Map();
-        const visited = new Set();
-        const pq = new MinHeap();
-
-        distances.set(startNodeId, 0);
-        pq.push([startNodeId, 0]);
-
-        while (pq.length > 0) {
-            const [u, d] = pq.pop();
-
-            if (visited.has(u)) continue;
-            visited.add(u);
-
-            const neighbors = adj.get(u);
-            if (!neighbors) continue;
-
-            for (let i = 0; i < neighbors.length; i++) {
-                const v = neighbors[i].to;
-                const weight = neighbors[i].weight || 1;
-                const alt = d + 1 / weight;
-
-                const vDist = distances.get(v);
-                if (vDist === undefined || alt < vDist) {
-                    distances.set(v, alt);
-                    pq.push([v, alt]);
-                }
-            }
-        }
-        return distances;
     }
 }

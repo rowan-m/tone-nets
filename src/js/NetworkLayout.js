@@ -64,12 +64,13 @@ export class NetworkLayout {
      */
     async runSimulation(totalSteps = 3000, onProgress = null) {
         const batchSize = 100;
+        const yieldEventLoop = (resolve) => setTimeout(resolve, 0);
 
         for (let i = 0; i < totalSteps; i++) {
             this.layout.step();
 
             if (i % batchSize === 0) {
-                await new Promise((resolve) => setTimeout(resolve, 0));
+                await new Promise(yieldEventLoop);
                 if (onProgress) {
                     onProgress(Math.round((i / totalSteps) * 100));
                 }

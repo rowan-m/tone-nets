@@ -982,7 +982,9 @@ export class NetworkVisualizer {
             lightness = 0.5;
         }
 
-        const baseColor = new THREE.Color().setHSL(hue, saturation, lightness);
+        const baseColor = this._scratchColor
+            .setHSL(hue, saturation, lightness)
+            .getHex();
 
         const scale = 3 + normDegree * 15;
         this._scratchMatrix.makeTranslation(
@@ -993,7 +995,7 @@ export class NetworkVisualizer {
         this._scratchMatrix.scale(this._scratchVec3_1.set(scale, scale, scale));
 
         this.nodeInstancedMesh.setMatrixAt(instanceId, this._scratchMatrix);
-        this.nodeInstancedMesh.setColorAt(instanceId, baseColor);
+        this.nodeInstancedMesh.setColorAt(instanceId, this._scratchColor);
         this.nodeInstancedMesh.instanceMatrix.needsUpdate = true;
         if (this.nodeInstancedMesh.instanceColor) {
             this.nodeInstancedMesh.instanceColor.needsUpdate = true;
@@ -1020,11 +1022,11 @@ export class NetworkVisualizer {
                     degree: degree,
                     instanceId: instanceId,
                 },
-                position: new THREE.Vector3(
-                    pos.x * layoutScale,
-                    pos.y * layoutScale,
-                    pos.z * layoutScale,
-                ),
+                position: {
+                    x: pos.x * layoutScale,
+                    y: pos.y * layoutScale,
+                    z: pos.z * layoutScale,
+                },
                 material: {
                     emissive: 0x000000,
                     emissiveIntensity: 0.2,
@@ -1525,12 +1527,13 @@ export class NetworkVisualizer {
             );
         } else {
             // Update dummy mesh for tests
-            obj.material.emissive = nodeData.baseColor.getHex();
+            obj.material.emissive = nodeData.baseColor;
             obj.material.emissiveIntensity = 0.2;
 
+            this._scratchColor.setHex(nodeData.baseColor);
             this.nodeInstancedMesh.setColorAt(
                 nodeData.instanceId,
-                nodeData.baseColor,
+                this._scratchColor,
             );
         }
         if (this.nodeInstancedMesh.instanceColor) {
@@ -1720,11 +1723,9 @@ export class NetworkVisualizer {
             );
 
             // Update dummy mesh position for tests/auto-tour
-            nodeData.mesh.position.set(
-                pos.x * this.layoutScale,
-                pos.y * this.layoutScale,
-                pos.z * this.layoutScale,
-            );
+            nodeData.mesh.position.x = pos.x * this.layoutScale;
+            nodeData.mesh.position.y = pos.y * this.layoutScale;
+            nodeData.mesh.position.z = pos.z * this.layoutScale;
         }
 
         this.nodeInstancedMesh.instanceMatrix.needsUpdate = true;
@@ -2099,12 +2100,12 @@ export class NetworkVisualizer {
                 if (this.hoveredObject !== nodeData.mesh) {
                     // Update dummy mesh for tests
                     nodeData.mesh.material.emissiveIntensity = 0.2;
-                    nodeData.mesh.material.emissive =
-                        nodeData.baseColor.getHex();
+                    nodeData.mesh.material.emissive = nodeData.baseColor;
 
+                    this._scratchColor.setHex(nodeData.baseColor);
                     this.nodeInstancedMesh.setColorAt(
                         nodeData.instanceId,
-                        nodeData.baseColor,
+                        this._scratchColor,
                     );
                     if (this.nodeInstancedMesh.instanceColor) {
                         this.nodeInstancedMesh.instanceColor.needsUpdate = true;
@@ -2150,11 +2151,12 @@ export class NetworkVisualizer {
             if (this.hoveredObject !== nodeData.mesh) {
                 // Update dummy mesh for tests
                 nodeData.mesh.material.emissiveIntensity = 0.2;
-                nodeData.mesh.material.emissive = nodeData.baseColor.getHex();
+                nodeData.mesh.material.emissive = nodeData.baseColor;
 
+                this._scratchColor.setHex(nodeData.baseColor);
                 this.nodeInstancedMesh.setColorAt(
                     nodeData.instanceId,
-                    nodeData.baseColor,
+                    this._scratchColor,
                 );
             }
         }
@@ -2234,7 +2236,9 @@ export class NetworkVisualizer {
                 lightness = 0.5;
             }
 
-            nodeData.baseColor.setHSL(hue, saturation, lightness);
+            nodeData.baseColor = this._scratchColor
+                .setHSL(hue, saturation, lightness)
+                .getHex();
 
             // Only update instance color if the node is not currently highlighted
             if (
@@ -2242,9 +2246,10 @@ export class NetworkVisualizer {
                 this.hoveredObject !== nodeData.mesh
             ) {
                 if (this.nodeInstancedMesh) {
+                    this._scratchColor.setHex(nodeData.baseColor);
                     this.nodeInstancedMesh.setColorAt(
                         nodeData.instanceId,
-                        nodeData.baseColor,
+                        this._scratchColor,
                     );
                 }
             }

@@ -303,7 +303,7 @@ const init = async () => {
                         binaryReciprocity: '-',
                         reciprocity: '-',
                         reciprocityRho: '-',
-                        embedding: new Array(12).fill('0.0000'),
+                        embedding: Array.from({ length: 12 }, () => '0.0000'),
                     },
                     fileName,
                 );

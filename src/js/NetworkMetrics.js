@@ -122,10 +122,12 @@ export class NetworkMetrics {
 
     static _sumEfficiencyForNode(uDistances, wDistances, efficiencySums) {
         for (const ud of uDistances.values()) {
-            if (ud > 0) efficiencySums.unweighted += 1 / ud;
+            if (ud <= 0) continue;
+            efficiencySums.unweighted += 1 / ud;
         }
         for (const wd of wDistances.values()) {
-            if (wd > 0) efficiencySums.weighted += 1 / wd;
+            if (wd <= 0) continue;
+            efficiencySums.weighted += 1 / wd;
         }
     }
 

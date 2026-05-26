@@ -1024,7 +1024,7 @@ export class NetworkVisualizer {
                     pos.z * layoutScale,
                 ),
                 material: {
-                    emissive: new THREE.Color(),
+                    emissive: 0x000000,
                     emissiveIntensity: 0.2,
                 },
             },
@@ -1512,7 +1512,7 @@ export class NetworkVisualizer {
 
         if (isPlaying) {
             // Update dummy mesh for tests
-            obj.material.emissive.setHex(this.highlightColor);
+            obj.material.emissive = this.highlightColor;
             obj.material.emissiveIntensity = 1.0;
 
             this.nodeInstancedMesh.setColorAt(
@@ -1523,7 +1523,7 @@ export class NetworkVisualizer {
             );
         } else {
             // Update dummy mesh for tests
-            obj.material.emissive.copy(nodeData.baseColor);
+            obj.material.emissive = nodeData.baseColor.getHex();
             obj.material.emissiveIntensity = 0.2;
 
             this.nodeInstancedMesh.setColorAt(
@@ -1566,7 +1566,7 @@ export class NetworkVisualizer {
             if (nodeData) {
                 // Update dummy mesh for tests
                 obj.material.emissiveIntensity = 0.8;
-                obj.material.emissive.setHex(0xffffff);
+                obj.material.emissive = 0xffffff;
 
                 this.nodeInstancedMesh.setColorAt(
                     nodeData.instanceId,
@@ -2043,7 +2043,7 @@ export class NetworkVisualizer {
             ) {
                 // Update dummy mesh for tests
                 nodeData.mesh.material.emissiveIntensity = 1.0;
-                nodeData.mesh.material.emissive.setHex(highlightColor);
+                nodeData.mesh.material.emissive = highlightColor;
 
                 this.nodeInstancedMesh.setColorAt(
                     nodeData.instanceId,
@@ -2097,7 +2097,8 @@ export class NetworkVisualizer {
                 if (this.hoveredObject !== nodeData.mesh) {
                     // Update dummy mesh for tests
                     nodeData.mesh.material.emissiveIntensity = 0.2;
-                    nodeData.mesh.material.emissive.copy(nodeData.baseColor);
+                    nodeData.mesh.material.emissive =
+                        nodeData.baseColor.getHex();
 
                     this.nodeInstancedMesh.setColorAt(
                         nodeData.instanceId,
@@ -2147,7 +2148,7 @@ export class NetworkVisualizer {
             if (this.hoveredObject !== nodeData.mesh) {
                 // Update dummy mesh for tests
                 nodeData.mesh.material.emissiveIntensity = 0.2;
-                nodeData.mesh.material.emissive.copy(nodeData.baseColor);
+                nodeData.mesh.material.emissive = nodeData.baseColor.getHex();
 
                 this.nodeInstancedMesh.setColorAt(
                     nodeData.instanceId,

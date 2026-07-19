@@ -685,19 +685,28 @@ export class NetworkVisualizer {
                         vec3 plasmaColor = mix(starColor, vec3(1.0, 1.0, 1.0), plasma * 0.2);
                         vec3 hotCore = mix(plasmaColor, vec3(1.0, 1.0, 1.0), pow(viewAlign, 6.0) * 0.4);
                         
-                        // 5. Dynamic Luminosity (Core emission gets a massive 4x boost when active!)
-                        float emissiveBoost = 0.6 + isHighlighted * 2.4;
+                        // 5. Dynamic Luminosity (Inactive is brighter, active gets a massive boost!)
+                        float emissiveBoost = 0.95 + isHighlighted * 2.05;
                         totalEmissiveRadiance = hotCore * starAlpha * emissiveBoost;
                         
                         // 6. Beautiful Fresnel Corona Outer Edge (Wider and brighter when active!)
                         float rimExponent = mix(3.5, 2.0, isHighlighted);
-                        float rimIntensity = mix(0.4, 3.0, isHighlighted);
+                        float rimIntensity = mix(0.4, 2.2, isHighlighted);
                         float rim = pow(1.0 - viewAlign, rimExponent);
                         vec3 rimColor = starColor * rim * rimIntensity;
                         totalEmissiveRadiance += rimColor;
                         
-                        // Set the final transparency (Ensures center core is 100% opaque, outer halo is semi-transparent)
-                        diffuseColor.a = max(starAlpha, rim * (0.95 + isHighlighted * 0.05));
+                        // 7. Four-Way Lens Flare Diffraction Spikes (Burst forth when active!)
+                        float spikeH = exp(-abs(normal.y) * 45.0) * exp(-abs(normal.x) * 1.5);
+                        float spikeV = exp(-abs(normal.x) * 45.0) * exp(-abs(normal.y) * 1.5);
+                        float spike = (spikeH + spikeV) * viewAlign;
+                        vec3 spikeColor = (starColor + vec3(0.5)) * spike * isHighlighted * 3.5;
+                        totalEmissiveRadiance += spikeColor;
+                        
+                        // Set the final transparency (Corona & Spikes expand when active)
+                        float finalAlpha = max(starAlpha, rim * (0.95 + isHighlighted * 0.05));
+                        finalAlpha = max(finalAlpha, spike * isHighlighted * 0.95);
+                        diffuseColor.a = finalAlpha;
                         diffuseColor.rgb = vec3(0.0);
                     }
                     `,

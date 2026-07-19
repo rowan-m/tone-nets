@@ -546,6 +546,7 @@ export class NetworkVisualizer {
             // Inject instance-based emissive modulation and procedural reflection
             nodeMat.onBeforeCompile = (shader) => {
                 shader.uniforms.uTime = { value: 0 };
+                shader.uniforms.uIsConstellation = { value: 0 };
                 this.nodeShader = shader; // Save reference to update uTime in loop
 
                 shader.fragmentShader = shader.fragmentShader.replace(
@@ -553,6 +554,7 @@ export class NetworkVisualizer {
                     `
                     #include <common>
                     uniform float uTime;
+                    uniform float uIsConstellation;
                     
                     float random_fire(in vec2 st) {
                         return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
@@ -626,6 +628,22 @@ export class NetworkVisualizer {
                             // Force an intense emissive boost when highlighted to guarantee a clean, bright bloom over the dark metal
                             totalEmissiveRadiance += vColor.rgb * isHighlighted * 0.5;
                         #endif
+                    }
+
+                    if (uIsConstellation > 0.5) {
+                        float viewAlign = max(0.0, dot(normal, normalize(vViewPosition)));
+                        float intensity = pow(viewAlign, 3.0);
+                        
+                        vec3 starColor = vec3(1.0, 1.0, 1.0);
+                        #ifdef USE_COLOR
+                            starColor = vColor.rgb;
+                        #endif
+                        
+                        vec3 hotCore = mix(starColor, vec3(1.0, 1.0, 1.0), 0.65);
+                        vec3 finalStarColor = mix(starColor, hotCore, pow(viewAlign, 4.0));
+                        
+                        totalEmissiveRadiance = finalStarColor * intensity * 1.3;
+                        diffuseColor.rgb = vec3(0.0);
                     }
                     `,
                 );
@@ -2313,6 +2331,11 @@ export class NetworkVisualizer {
             this.nodeInstancedMesh.material.wireframe =
                 !!theme.nodeMaterial.wireframe;
             this.nodeInstancedMesh.material.needsUpdate = true;
+        }
+
+        if (this.nodeShader && this.nodeShader.uniforms.uIsConstellation) {
+            this.nodeShader.uniforms.uIsConstellation.value =
+                themeName === 'constellation' ? 1.0 : 0.0;
         }
 
         if (this.coneInstancedMesh) {

@@ -72,9 +72,9 @@ export const ConstellationTheme = {
     name: 'constellation',
     highlightColor: 0xffd700, // Twinkling Gold
     nodeMaterial: {
-        roughness: 1.0,
-        metalness: 0.0,
-        emissiveIntensity: 1.8,
+        roughness: 0.3,
+        metalness: 0.2,
+        emissiveIntensity: 0.2,
     },
     showOutlines: false, // Turn off the black outlines
     background: 0x00020a, // Deep midnight blue

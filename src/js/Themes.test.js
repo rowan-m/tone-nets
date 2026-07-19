@@ -157,9 +157,9 @@ describe('Themes', () => {
             expect(ConstellationTheme.highlightColor).toBe(0xffd700);
             expect(ConstellationTheme.showOutlines).toBe(false);
             expect(ConstellationTheme.nodeMaterial).toEqual({
-                roughness: 1.0,
-                metalness: 0.0,
-                emissiveIntensity: 1.8,
+                roughness: 0.3,
+                metalness: 0.2,
+                emissiveIntensity: 0.2,
             });
         });
 

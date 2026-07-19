@@ -466,10 +466,11 @@ export class VisualEffectsManager {
     }
 
     _initConstellationBackground() {
-        const geo = new THREE.PlaneGeometry(120000, 120000);
+        const geo = new THREE.SphereGeometry(10000, 32, 32);
         const mat = new THREE.ShaderMaterial({
             depthWrite: false,
             depthTest: false,
+            side: THREE.BackSide,
             uniforms: {
                 uTime: { value: 0 },
             },
@@ -491,13 +492,14 @@ export class VisualEffectsManager {
                 }
 
                 void main() {
-                    float distFromCenter = length(vUv - vec2(0.5));
+                    // Spherical gradient from top/poles to equator
+                    float distFromCenter = abs(vUv.y - 0.5) * 2.0;
                     vec3 bgBlue = vec3(0.005, 0.015, 0.04); // Soothing, dark celestial blue/indigo
                     vec3 bgBlack = vec3(0.0, 0.0, 0.002);
-                    vec3 bgColor = mix(bgBlue, bgBlack, smoothstep(0.2, 0.95, distFromCenter));
+                    vec3 bgColor = mix(bgBlack, bgBlue, smoothstep(0.0, 0.8, distFromCenter));
 
-                    // Background stars scattering using scaled UVs for high density
-                    vec2 st = vUv * 1200.0;
+                    // Background stars scattering using scaled UVs for high density wrapping
+                    vec2 st = vUv * vec2(1200.0, 600.0);
                     vec2 ipos = floor(st);
                     vec2 fpos = fract(st);
 
@@ -532,7 +534,7 @@ export class VisualEffectsManager {
         this.constellationSphere = new THREE.Mesh(geo, mat);
         this.constellationSphere.frustumCulled = false;
         this.constellationSphere.renderOrder = -1000;
-        this.constellationSphere.position.set(0, 0, -4000);
+        this.constellationSphere.position.set(0, 0, 0);
         this.constellationGroup.add(this.constellationSphere);
 
         // Add drifting, twinkling celestial stars particles

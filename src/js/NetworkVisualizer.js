@@ -632,17 +632,31 @@ export class NetworkVisualizer {
 
                     if (uIsConstellation > 0.5) {
                         float viewAlign = max(0.0, dot(normal, normalize(vViewPosition)));
-                        float intensity = pow(viewAlign, 3.0);
+                        
+                        // Bubbling, blurred plasma texture using noise_fire FBM
+                        vec2 st1 = normal.xy * 2.5 + vec2(uTime * 0.25, uTime * -0.15);
+                        vec2 st2 = normal.xy * 5.0 + vec2(uTime * -0.15, uTime * 0.3);
+                        float p1 = noise_fire(st1);
+                        float p2 = noise_fire(st2);
+                        float plasma = p1 * 0.65 + p2 * 0.35;
+                        
+                        // Fuzzy outer glow falloff (removes hard edge of sphere)
+                        float baseGlow = pow(viewAlign, 2.5);
+                        
+                        // Combine plasma bubbling with the radial falloff for varying transparency
+                        float alphaGlow = baseGlow * (0.4 + 0.6 * plasma);
                         
                         vec3 starColor = vec3(1.0, 1.0, 1.0);
                         #ifdef USE_COLOR
                             starColor = vColor.rgb;
                         #endif
                         
-                        vec3 hotCore = mix(starColor, vec3(1.0, 1.0, 1.0), 0.65);
-                        vec3 finalStarColor = mix(starColor, hotCore, pow(viewAlign, 4.0));
+                        // Blend plasma into the color to create moving thermal flares
+                        vec3 plasmaColor = mix(starColor, vec3(1.0, 1.0, 1.0), plasma * 0.5);
+                        vec3 hotCore = mix(plasmaColor, vec3(1.0, 1.0, 1.0), pow(viewAlign, 5.0) * 0.8);
                         
-                        totalEmissiveRadiance = finalStarColor * intensity * 1.3;
+                        totalEmissiveRadiance = hotCore * alphaGlow * 1.5;
+                        diffuseColor.a = alphaGlow;
                         diffuseColor.rgb = vec3(0.0);
                     }
                     `,
@@ -2330,6 +2344,8 @@ export class NetworkVisualizer {
                 theme.nodeMaterial.emissiveIntensity;
             this.nodeInstancedMesh.material.wireframe =
                 !!theme.nodeMaterial.wireframe;
+            this.nodeInstancedMesh.material.transparent =
+                themeName === 'constellation';
             this.nodeInstancedMesh.material.needsUpdate = true;
         }
 

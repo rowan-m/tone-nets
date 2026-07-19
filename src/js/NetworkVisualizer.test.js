@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
 import { NetworkVisualizer } from './NetworkVisualizer.js';
 import { Utils } from './Utils.js';
-import { DefaultTheme, TerminatorTheme } from './Themes.js';
+import { DefaultTheme, TerminatorTheme, ConstellationTheme } from './Themes.js';
 
 // --- Mocks ---
 
@@ -29,6 +29,7 @@ vi.mock('./VisualEffectsManager.js', () => ({
         this.update = vi.fn();
         this.showInstrumentEmoji = vi.fn();
         this.enableTerminatorBackground = vi.fn();
+        this.enableConstellationBackground = vi.fn();
         this.clear = vi.fn();
         this.setRetroMode = vi.fn();
     }),
@@ -482,6 +483,31 @@ describe('NetworkVisualizer', () => {
             visualizer.showInstrumentEmoji('C4', '🎹');
 
             expect(visualizer.effects.showInstrumentEmoji).toHaveBeenCalled();
+        });
+
+        it('supports gold highlights in the constellation theme when elements are highlighted', () => {
+            visualizer.themeManager.registerTheme(ConstellationTheme);
+            visualizer.setTheme('constellation');
+
+            const mockGraph = createMockGraph(
+                [
+                    { id: 'C4', data: { degree: 1 } },
+                    { id: 'G4', data: { degree: 1 } },
+                ],
+                [{ fromId: 'C4', toId: 'G4', data: { weight: 1 } }],
+            );
+            visualizer.initIncremental(mockGraph);
+            visualizer.addTransitionIncremental('C4', 'G4');
+
+            const spyNodeSetColor = vi.spyOn(
+                visualizer.nodeInstancedMesh,
+                'setColorAt',
+            );
+
+            visualizer.highlightPlayingElement('G4', 'C4');
+
+            expect(spyNodeSetColor).toHaveBeenCalled();
+            expect(visualizer.highlightColor).toBe(0xffd700);
         });
     });
 

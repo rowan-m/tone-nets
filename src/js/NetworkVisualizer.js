@@ -1803,17 +1803,10 @@ export class NetworkVisualizer {
         }
     }
 
-    animate(time) {
-        if (!this._isAnimating) return;
-        this._animationFrameId = requestAnimationFrame(this.animate);
-
-        if (this.onBeforeFrame) {
-            this.onBeforeFrame();
-        }
-
+    _shouldSkipFrame(time) {
         if (document.visibilityState === 'hidden') {
             this._lastFrameTime = time;
-            return;
+            return true;
         }
 
         // Skip heavy rendering and raycasting if the visualization is completely empty
@@ -1823,6 +1816,38 @@ export class NetworkVisualizer {
             this.nodes.size === 0
         ) {
             this._lastFrameTime = time;
+            return true;
+        }
+
+        return false;
+    }
+
+    _handleRaycasting(time) {
+        // Raycast if mouse moved, or if camera/layout is active (to keep hover accurate as things move)
+        const isInteracting =
+            this.mouseMoved ||
+            (this.mouse.x !== -1000 &&
+                (this.autoTour ||
+                    (this.incrementalMode && this.layout && !this.isPaused)));
+
+        if (
+            isInteracting &&
+            time - this._lastRaycastTime > this._raycastThrottleMs
+        ) {
+            this._performRaycast();
+            this._lastRaycastTime = time;
+        }
+    }
+
+    animate(time) {
+        if (!this._isAnimating) return;
+        this._animationFrameId = requestAnimationFrame(this.animate);
+
+        if (this.onBeforeFrame) {
+            this.onBeforeFrame();
+        }
+
+        if (this._shouldSkipFrame(time)) {
             return;
         }
 
@@ -1839,20 +1864,7 @@ export class NetworkVisualizer {
             this.controls.update();
         }
 
-        // Raycast if mouse moved, or if camera/layout is active (to keep hover accurate as things move)
-        const isInteracting =
-            this.mouseMoved ||
-            (this.mouse.x !== -1000 &&
-                (this.autoTour ||
-                    (this.incrementalMode && this.layout && !this.isPaused)));
-
-        if (
-            isInteracting &&
-            time - this._lastRaycastTime > this._raycastThrottleMs
-        ) {
-            this._performRaycast();
-            this._lastRaycastTime = time;
-        }
+        this._handleRaycasting(time);
 
         if (this.nodeShader) {
             this.nodeShader.uniforms.uTime.value += delta;
@@ -1861,7 +1873,7 @@ export class NetworkVisualizer {
         const frequencyData = this.audioSource
             ? this.audioSource.getFrequencyData()
             : null;
-        this.effects.update(delta, frequencyData);
+        this.effects.update(delta, frequencyData, this.graphCenter);
         this._updateAutoTour(delta);
         this.composer.render();
     }

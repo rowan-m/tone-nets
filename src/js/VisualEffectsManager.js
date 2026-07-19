@@ -43,6 +43,11 @@ export class VisualEffectsManager {
         this.scene.add(this.retroGroup);
         this._initRetroBackground();
 
+        this.constellationGroup = new THREE.Group();
+        this.constellationGroup.visible = false;
+        this.scene.add(this.constellationGroup);
+        this._initConstellationBackground();
+
         if (typeof document !== 'undefined' || global.document) {
             const uniqueEmojis = new Set(
                 Object.values(Utils.INSTRUMENT_EMOJIS),
@@ -237,14 +242,53 @@ export class VisualEffectsManager {
         this.retroGroup.visible = enabled;
     }
 
+    enableConstellationBackground(enabled) {
+        this.constellationGroup.visible = enabled;
+    }
+
     setRetroMode(enabled) {
         this.retroMode = enabled;
     }
 
-    update(delta, frequencyData = null) {
+    update(delta, frequencyData = null, graphCenter = null) {
         this._updateEmojis(delta);
         this._updateTerminatorBackground(delta);
         this._updateRetroBackground(frequencyData);
+        this._updateConstellationBackground(delta, graphCenter);
+    }
+
+    _updateConstellationBackground(delta, graphCenter = null) {
+        if (!this.constellationGroup.visible) return;
+
+        if (graphCenter) {
+            this.constellationGroup.position.copy(graphCenter);
+        } else {
+            this.constellationGroup.position.set(0, 0, 0);
+        }
+
+        this.constellationSphere.material.uniforms.uTime.value += delta;
+
+        if (
+            this.camera &&
+            this.camera.position &&
+            this.constellationSphere.material.uniforms.uCameraOffset
+        ) {
+            this.constellationSphere.material.uniforms.uCameraOffset.value.set(
+                this.camera.position.x * 0.01,
+                this.camera.position.y * 0.01,
+            );
+        }
+
+        if (this.constellationParticleShader) {
+            this.constellationParticleShader.uniforms.uTime.value += delta;
+
+            const viewHeight =
+                (this.camera.top - this.camera.bottom) / this.camera.zoom;
+            const viewWidth =
+                (this.camera.right - this.camera.left) / this.camera.zoom;
+            this.constellationParticleShader.uniforms.uSpread.value =
+                Math.max(viewWidth, viewHeight) * 2.0;
+        }
     }
 
     _updateTerminatorBackground(delta) {
@@ -420,6 +464,182 @@ export class VisualEffectsManager {
         this.retroEqualizer.frustumCulled = false;
         this.retroEqualizer.renderOrder = -1000;
         this.retroGroup.add(this.retroEqualizer);
+    }
+
+    _initConstellationBackground() {
+        const geo = new THREE.PlaneGeometry(2, 2);
+        const mat = new THREE.ShaderMaterial({
+            depthWrite: false,
+            depthTest: false,
+            uniforms: {
+                uTime: { value: 0 },
+                uCameraOffset: { value: new THREE.Vector2(0, 0) },
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position.xy, 1.0, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                uniform vec2 uCameraOffset;
+                varying vec2 vUv;
+
+                float hash_c(vec2 p) {
+                    p = fract(p * vec2(123.34, 456.21));
+                    p += dot(p, p + 45.32);
+                    return fract(p.x * p.y);
+                }
+
+                void main() {
+                    float distFromCenter = length(vUv - vec2(0.5));
+                    vec3 bgBlue = vec3(0.005, 0.015, 0.04); // Soothing, dark celestial blue/indigo
+                    vec3 bgBlack = vec3(0.0, 0.0, 0.002);
+                    vec3 bgColor = mix(bgBlue, bgBlack, smoothstep(0.2, 0.95, distFromCenter));
+
+                    // Background stars scattering with camera offset for parallax
+                    vec2 st = (vUv - vec2(0.5)) * 75.0 + uCameraOffset;
+                    vec2 ipos = floor(st);
+                    vec2 fpos = fract(st);
+
+                    float r = hash_c(ipos);
+                    float starValue = 0.0;
+
+                    if (r > 0.94) {
+                        vec2 starCenter = vec2(hash_c(ipos + 1.1), hash_c(ipos + 2.2));
+                        float dist = length(fpos - starCenter);
+
+                        float twinkleSpeed = 0.8 + r * 2.5;
+                        float twinkle = 0.4 + 0.6 * sin(uTime * twinkleSpeed + r * 6.28);
+
+                        float starSize = 0.04 + 0.08 * hash_c(ipos + 3.3);
+                        starValue = smoothstep(starSize, 0.0, dist) * twinkle;
+                    }
+
+                    vec3 starColor = vec3(1.0, 1.0, 1.0);
+                    float colorSeed = hash_c(ipos + 4.4);
+                    if (colorSeed < 0.3) {
+                        starColor = vec3(0.75, 0.88, 1.0); // soft celestial blue
+                    } else if (colorSeed > 0.7) {
+                        starColor = vec3(1.0, 0.94, 0.83); // soft cosmic gold
+                    }
+
+                    vec3 finalColor = bgColor + starColor * starValue * 0.35;
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `,
+        });
+
+        this.constellationSphere = new THREE.Mesh(geo, mat);
+        this.constellationSphere.frustumCulled = false;
+        this.constellationSphere.renderOrder = -1000;
+        this.constellationGroup.add(this.constellationSphere);
+
+        // Add drifting, twinkling celestial stars particles
+        const particleCount = 400;
+        const particleGeo = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+
+        const colorWhite = new THREE.Color(0xffffff);
+        const colorSoftBlue = new THREE.Color(0xb0e0e6); // Powder Blue
+        const colorSoftGold = new THREE.Color(0xfff8dc); // Cornsilk / Warm white
+        const scratchColor = new THREE.Color();
+
+        for (let i = 0; i < particleCount; i++) {
+            positions[i * 3] = Math.random() - 0.5;
+            positions[i * 3 + 1] = Math.random() - 0.5;
+            positions[i * 3 + 2] = Math.random() - 0.5;
+
+            const r = Math.random();
+            if (r < 0.4) {
+                scratchColor.copy(colorWhite);
+            } else if (r < 0.7) {
+                scratchColor
+                    .copy(colorSoftBlue)
+                    .lerp(colorWhite, Math.random() * 0.5);
+            } else {
+                scratchColor
+                    .copy(colorSoftGold)
+                    .lerp(colorWhite, Math.random() * 0.5);
+            }
+
+            colors[i * 3] = scratchColor.r;
+            colors[i * 3 + 1] = scratchColor.g;
+            colors[i * 3 + 2] = scratchColor.b;
+        }
+
+        particleGeo.setAttribute(
+            'position',
+            new THREE.BufferAttribute(positions, 3),
+        );
+        particleGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const particleMat = new THREE.PointsMaterial({
+            size: 4,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        particleMat.onBeforeCompile = (shader) => {
+            shader.uniforms.uTime = { value: 0 };
+            shader.uniforms.uSpread = { value: 1000 };
+            this.constellationParticleShader = shader;
+
+            shader.vertexShader =
+                `
+                uniform float uTime;
+                varying float vTwinkle;
+                
+                float hash_p(float n) {
+                    return fract(sin(n) * 43758.5453123);
+                }
+            ` + shader.vertexShader;
+
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <begin_vertex>',
+                `
+                float constSpread = 1600.0;
+                vec3 scaledPos = position * constSpread;
+                
+                float particleSeed = position.x + position.y + position.z;
+                float driftSpeed = 0.01 + 0.01 * hash_p(particleSeed);
+                scaledPos.x += cos(uTime * driftSpeed + particleSeed * 10.0) * 8.0;
+                scaledPos.y += sin(uTime * driftSpeed + particleSeed * 10.0) * 8.0;
+                
+                vec3 transformed = scaledPos;
+                
+                float twinkleSpeed = 0.2 + 0.3 * hash_p(particleSeed + 1.0);
+                vTwinkle = 0.3 + 0.7 * sin(uTime * twinkleSpeed + hash_p(particleSeed) * 6.28);
+                `,
+            );
+
+            shader.fragmentShader =
+                `
+                varying float vTwinkle;
+            ` + shader.fragmentShader;
+
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <premultiplied_alpha_fragment>',
+                `
+                #include <premultiplied_alpha_fragment>
+                
+                float dist = length(gl_PointCoord - vec2(0.5));
+                if (dist > 0.5) discard;
+                float radialAlpha = smoothstep(0.5, 0.05, dist);
+                
+                gl_FragColor = vec4(gl_FragColor.rgb, gl_FragColor.a * radialAlpha * vTwinkle);
+                `,
+            );
+        };
+
+        this.constellationStars = new THREE.Points(particleGeo, particleMat);
+        this.constellationGroup.add(this.constellationStars);
     }
 
     _getEmojiTexture(emoji, isRetro = false) {

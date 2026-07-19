@@ -35,6 +35,7 @@ describe('VisualEffectsManager', () => {
             remove: vi.fn(),
         };
         camera = {
+            position: new THREE.Vector3(),
             quaternion: new THREE.Quaternion(),
             top: 100,
             bottom: -100,
@@ -217,6 +218,82 @@ describe('VisualEffectsManager', () => {
 
             effectsManager.setRetroMode(false);
             expect(effectsManager.retroMode).toBe(false);
+        });
+
+        it('should toggle constellation group visibility via enableConstellationBackground', () => {
+            effectsManager.enableConstellationBackground(true);
+            expect(effectsManager.constellationGroup.visible).toBe(true);
+
+            effectsManager.enableConstellationBackground(false);
+            expect(effectsManager.constellationGroup.visible).toBe(false);
+        });
+
+        it('should update constellation background uniforms when visible', () => {
+            effectsManager.enableConstellationBackground(true);
+
+            // Test branch where constellationParticleShader is NOT yet set
+            effectsManager.update(0.1);
+            expect(
+                effectsManager.constellationSphere.material.uniforms.uTime
+                    .value,
+            ).toBeCloseTo(0.1);
+
+            // Mock the particle shader that is usually set in onBeforeCompile
+            const mockShader = {
+                uniforms: {
+                    uTime: { value: 0.1 },
+                    uSpread: { value: 0 },
+                },
+            };
+            effectsManager.constellationParticleShader = mockShader;
+
+            effectsManager.update(0.4);
+
+            expect(
+                effectsManager.constellationSphere.material.uniforms.uTime
+                    .value,
+            ).toBeCloseTo(0.5);
+            expect(mockShader.uniforms.uTime.value).toBeCloseTo(0.5);
+            expect(mockShader.uniforms.uSpread.value).toBeGreaterThan(0);
+
+            // Pan the camera and check uCameraOffset update
+            camera.position.set(100, 200, 0);
+            const mockGraphCenter = new THREE.Vector3(500, -300, 150);
+            effectsManager.update(0.1, null, mockGraphCenter);
+
+            expect(
+                effectsManager.constellationSphere.material.uniforms
+                    .uCameraOffset.value.x,
+            ).toBeCloseTo(1.0);
+            expect(
+                effectsManager.constellationSphere.material.uniforms
+                    .uCameraOffset.value.y,
+            ).toBeCloseTo(2.0);
+
+            expect(effectsManager.constellationGroup.position.x).toBe(500);
+            expect(effectsManager.constellationGroup.position.y).toBe(-300);
+            expect(effectsManager.constellationGroup.position.z).toBe(150);
+        });
+
+        it('should execute constellation shader injection logic in onBeforeCompile', () => {
+            const mockShader = {
+                uniforms: {},
+                vertexShader: '#include <begin_vertex>',
+                fragmentShader: '#include <premultiplied_alpha_fragment>',
+            };
+
+            // Trigger the onBeforeCompile hook manually
+            effectsManager.constellationStars.material.onBeforeCompile(
+                mockShader,
+            );
+
+            expect(mockShader.uniforms.uTime).toBeDefined();
+            expect(mockShader.uniforms.uSpread).toBeDefined();
+            expect(mockShader.vertexShader).toContain('uTime');
+            expect(mockShader.vertexShader).not.toContain(
+                '#include <begin_vertex>',
+            );
+            expect(mockShader.fragmentShader).toContain('vTwinkle');
         });
     });
 

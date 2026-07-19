@@ -250,14 +250,23 @@ export class VisualEffectsManager {
         this.retroMode = enabled;
     }
 
-    update(delta, frequencyData = null, graphCenter = null) {
+    update(
+        delta,
+        frequencyData = null,
+        graphCenter = null,
+        graphRadius = null,
+    ) {
         this._updateEmojis(delta);
         this._updateTerminatorBackground(delta);
         this._updateRetroBackground(frequencyData);
-        this._updateConstellationBackground(delta, graphCenter);
+        this._updateConstellationBackground(delta, graphCenter, graphRadius);
     }
 
-    _updateConstellationBackground(delta, graphCenter = null) {
+    _updateConstellationBackground(
+        delta,
+        graphCenter = null,
+        graphRadius = null,
+    ) {
         if (!this.constellationGroup.visible) return;
 
         if (graphCenter) {
@@ -282,12 +291,13 @@ export class VisualEffectsManager {
         if (this.constellationParticleShader) {
             this.constellationParticleShader.uniforms.uTime.value += delta;
 
-            const viewHeight =
-                (this.camera.top - this.camera.bottom) / this.camera.zoom;
-            const viewWidth =
-                (this.camera.right - this.camera.left) / this.camera.zoom;
+            const radiusValue =
+                graphRadius !== null && !isNaN(graphRadius)
+                    ? graphRadius
+                    : 1000.0;
+            const spreadValue = Math.max(3000.0, radiusValue * 3.0);
             this.constellationParticleShader.uniforms.uSpread.value =
-                Math.max(viewWidth, viewHeight) * 2.0;
+                spreadValue;
         }
     }
 
@@ -594,6 +604,7 @@ export class VisualEffectsManager {
             shader.vertexShader =
                 `
                 uniform float uTime;
+                uniform float uSpread;
                 varying float vTwinkle;
                 
                 float hash_p(float n) {
@@ -604,13 +615,12 @@ export class VisualEffectsManager {
             shader.vertexShader = shader.vertexShader.replace(
                 '#include <begin_vertex>',
                 `
-                float constSpread = 1600.0;
-                vec3 scaledPos = position * constSpread;
+                vec3 scaledPos = position * uSpread;
                 
                 float particleSeed = position.x + position.y + position.z;
                 float driftSpeed = 0.01 + 0.01 * hash_p(particleSeed);
-                scaledPos.x += cos(uTime * driftSpeed + particleSeed * 10.0) * 8.0;
-                scaledPos.y += sin(uTime * driftSpeed + particleSeed * 10.0) * 8.0;
+                scaledPos.x += cos(uTime * driftSpeed + particleSeed * 10.0) * uSpread * 0.005;
+                scaledPos.y += sin(uTime * driftSpeed + particleSeed * 10.0) * uSpread * 0.005;
                 
                 vec3 transformed = scaledPos;
                 

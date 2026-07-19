@@ -1969,7 +1969,12 @@ export class NetworkVisualizer {
         const frequencyData = this.audioSource
             ? this.audioSource.getFrequencyData()
             : null;
-        this.effects.update(delta, frequencyData, this.graphCenter);
+        this.effects.update(
+            delta,
+            frequencyData,
+            this.graphCenter,
+            this.graphRadius,
+        );
         this._updateAutoTour(delta);
         this.composer.render();
     }

@@ -256,19 +256,9 @@ describe('VisualEffectsManager', () => {
             expect(mockShader.uniforms.uTime.value).toBeCloseTo(0.5);
             expect(mockShader.uniforms.uSpread.value).toBeGreaterThan(0);
 
-            // Pan the camera and check uCameraOffset update
-            camera.position.set(100, 200, 0);
+            // Pan the camera and check graphCenter dynamic positioning update
             const mockGraphCenter = new THREE.Vector3(500, -300, 150);
             effectsManager.update(0.1, null, mockGraphCenter);
-
-            expect(
-                effectsManager.constellationSphere.material.uniforms
-                    .uCameraOffset.value.x,
-            ).toBeCloseTo(1.0);
-            expect(
-                effectsManager.constellationSphere.material.uniforms
-                    .uCameraOffset.value.y,
-            ).toBeCloseTo(2.0);
 
             expect(effectsManager.constellationGroup.position.x).toBe(500);
             expect(effectsManager.constellationGroup.position.y).toBe(-300);

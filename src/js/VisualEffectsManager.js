@@ -277,17 +277,6 @@ export class VisualEffectsManager {
 
         this.constellationSphere.material.uniforms.uTime.value += delta;
 
-        if (
-            this.camera &&
-            this.camera.position &&
-            this.constellationSphere.material.uniforms.uCameraOffset
-        ) {
-            this.constellationSphere.material.uniforms.uCameraOffset.value.set(
-                this.camera.position.x * 0.01,
-                this.camera.position.y * 0.01,
-            );
-        }
-
         if (this.constellationParticleShader) {
             this.constellationParticleShader.uniforms.uTime.value += delta;
 
@@ -477,24 +466,22 @@ export class VisualEffectsManager {
     }
 
     _initConstellationBackground() {
-        const geo = new THREE.PlaneGeometry(2, 2);
+        const geo = new THREE.PlaneGeometry(120000, 120000);
         const mat = new THREE.ShaderMaterial({
             depthWrite: false,
             depthTest: false,
             uniforms: {
                 uTime: { value: 0 },
-                uCameraOffset: { value: new THREE.Vector2(0, 0) },
             },
             vertexShader: `
                 varying vec2 vUv;
                 void main() {
                     vUv = uv;
-                    gl_Position = vec4(position.xy, 1.0, 1.0);
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                 }
             `,
             fragmentShader: `
                 uniform float uTime;
-                uniform vec2 uCameraOffset;
                 varying vec2 vUv;
 
                 float hash_c(vec2 p) {
@@ -509,8 +496,8 @@ export class VisualEffectsManager {
                     vec3 bgBlack = vec3(0.0, 0.0, 0.002);
                     vec3 bgColor = mix(bgBlue, bgBlack, smoothstep(0.2, 0.95, distFromCenter));
 
-                    // Background stars scattering with camera offset for parallax
-                    vec2 st = (vUv - vec2(0.5)) * 75.0 + uCameraOffset;
+                    // Background stars scattering using scaled UVs for high density
+                    vec2 st = vUv * 1200.0;
                     vec2 ipos = floor(st);
                     vec2 fpos = fract(st);
 
@@ -545,6 +532,7 @@ export class VisualEffectsManager {
         this.constellationSphere = new THREE.Mesh(geo, mat);
         this.constellationSphere.frustumCulled = false;
         this.constellationSphere.renderOrder = -1000;
+        this.constellationSphere.position.set(0, 0, -4000);
         this.constellationGroup.add(this.constellationSphere);
 
         // Add drifting, twinkling celestial stars particles

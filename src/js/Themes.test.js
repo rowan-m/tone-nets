@@ -155,10 +155,11 @@ describe('Themes', () => {
             expect(ConstellationTheme.emoji).toBe('🌌');
             expect(ConstellationTheme.background).toBe(0x00020a);
             expect(ConstellationTheme.highlightColor).toBe(0xffd700);
+            expect(ConstellationTheme.showOutlines).toBe(false);
             expect(ConstellationTheme.nodeMaterial).toEqual({
-                roughness: 0.2,
-                metalness: 0.1,
-                emissiveIntensity: 0.6,
+                roughness: 1.0,
+                metalness: 0.0,
+                emissiveIntensity: 1.8,
             });
         });
 

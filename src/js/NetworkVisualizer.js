@@ -2341,6 +2341,11 @@ export class NetworkVisualizer {
         mat.emissiveIntensity = theme.nodeMaterial.emissiveIntensity;
         mat.wireframe = !!theme.nodeMaterial.wireframe;
         mat.transparent = themeName === 'constellation';
+        mat.blending =
+            themeName === 'constellation'
+                ? THREE.AdditiveBlending
+                : THREE.NormalBlending;
+        mat.depthWrite = themeName !== 'constellation';
         mat.needsUpdate = true;
 
         if (mat.userData && mat.userData.uIsConstellation) {

@@ -543,10 +543,14 @@ export class NetworkVisualizer {
                 emissive: 0xffffff,
                 emissiveIntensity: 0.15, // Base glow for all nodes
             });
+            nodeMat.userData.uTime = { value: 0 };
+            nodeMat.userData.uIsConstellation = { value: 0 };
+
             // Inject instance-based emissive modulation and procedural reflection
             nodeMat.onBeforeCompile = (shader) => {
-                shader.uniforms.uTime = { value: 0 };
-                shader.uniforms.uIsConstellation = { value: 0 };
+                shader.uniforms.uTime = nodeMat.userData.uTime;
+                shader.uniforms.uIsConstellation =
+                    nodeMat.userData.uIsConstellation;
                 this.nodeShader = shader; // Save reference to update uTime in loop
 
                 shader.fragmentShader = shader.fragmentShader.replace(
@@ -1898,6 +1902,13 @@ export class NetworkVisualizer {
 
         this._handleRaycasting(time);
 
+        if (
+            this.nodeInstancedMesh &&
+            this.nodeInstancedMesh.material.userData.uTime
+        ) {
+            this.nodeInstancedMesh.material.userData.uTime.value += delta;
+        }
+
         if (this.nodeShader) {
             this.nodeShader.uniforms.uTime.value += delta;
         }
@@ -2304,6 +2315,23 @@ export class NetworkVisualizer {
         }
     }
 
+    _updateNodeMaterialThemeProperties(theme, themeName) {
+        if (!this.nodeInstancedMesh) return;
+
+        const mat = this.nodeInstancedMesh.material;
+        mat.roughness = theme.nodeMaterial.roughness;
+        mat.metalness = theme.nodeMaterial.metalness;
+        mat.emissiveIntensity = theme.nodeMaterial.emissiveIntensity;
+        mat.wireframe = !!theme.nodeMaterial.wireframe;
+        mat.transparent = themeName === 'constellation';
+        mat.needsUpdate = true;
+
+        if (mat.userData && mat.userData.uIsConstellation) {
+            mat.userData.uIsConstellation.value =
+                themeName === 'constellation' ? 1.0 : 0.0;
+        }
+    }
+
     setTheme(themeName) {
         const oldTheme = this.themeManager.getCurrentTheme();
         if (oldTheme && oldTheme.onDeactivate) {
@@ -2335,19 +2363,7 @@ export class NetworkVisualizer {
             this.outlineInstancedMesh.visible = theme.showOutlines !== false;
         }
 
-        if (this.nodeInstancedMesh) {
-            this.nodeInstancedMesh.material.roughness =
-                theme.nodeMaterial.roughness;
-            this.nodeInstancedMesh.material.metalness =
-                theme.nodeMaterial.metalness;
-            this.nodeInstancedMesh.material.emissiveIntensity =
-                theme.nodeMaterial.emissiveIntensity;
-            this.nodeInstancedMesh.material.wireframe =
-                !!theme.nodeMaterial.wireframe;
-            this.nodeInstancedMesh.material.transparent =
-                themeName === 'constellation';
-            this.nodeInstancedMesh.material.needsUpdate = true;
-        }
+        this._updateNodeMaterialThemeProperties(theme, themeName);
 
         if (this.nodeShader && this.nodeShader.uniforms.uIsConstellation) {
             this.nodeShader.uniforms.uIsConstellation.value =

@@ -637,30 +637,39 @@ export class NetworkVisualizer {
                     if (uIsConstellation > 0.5) {
                         float viewAlign = max(0.0, dot(normal, normalize(vViewPosition)));
                         
-                        // Bubbling, blurred plasma texture using noise_fire FBM
-                        vec2 st1 = normal.xy * 2.5 + vec2(uTime * 0.25, uTime * -0.15);
-                        vec2 st2 = normal.xy * 5.0 + vec2(uTime * -0.15, uTime * 0.3);
+                        // 1. High-Detail Bubbling Plasma (3 octaves of FBM noise)
+                        vec2 st1 = normal.xy * 3.0 + vec2(uTime * 0.2, uTime * -0.12);
+                        vec2 st2 = normal.xy * 6.0 + vec2(uTime * -0.12, uTime * 0.25);
+                        vec2 st3 = normal.xy * 12.0 + vec2(uTime * 0.35, uTime * 0.35);
+                        
                         float p1 = noise_fire(st1);
                         float p2 = noise_fire(st2);
-                        float plasma = p1 * 0.65 + p2 * 0.35;
+                        float p3 = noise_fire(st3);
+                        float plasma = p1 * 0.5 + p2 * 0.3 + p3 * 0.2;
                         
-                        // Fuzzy outer glow falloff (removes hard edge of sphere)
-                        float baseGlow = pow(viewAlign, 2.5);
-                        
-                        // Combine plasma bubbling with the radial falloff for varying transparency
-                        float alphaGlow = baseGlow * (0.4 + 0.6 * plasma);
+                        // 2. High-Density/Less Transparent Base
+                        float baseGlow = pow(viewAlign, 1.5);
+                        float alphaGlow = mix(0.6, 1.0, baseGlow) * (0.7 + 0.3 * plasma);
                         
                         vec3 starColor = vec3(1.0, 1.0, 1.0);
                         #ifdef USE_COLOR
                             starColor = vColor.rgb;
                         #endif
                         
-                        // Blend plasma into the color to create moving thermal flares
-                        vec3 plasmaColor = mix(starColor, vec3(1.0, 1.0, 1.0), plasma * 0.5);
-                        vec3 hotCore = mix(plasmaColor, vec3(1.0, 1.0, 1.0), pow(viewAlign, 5.0) * 0.8);
+                        // 3. More Luminous & Detailed Plasma Color
+                        vec3 plasmaColor = mix(starColor, vec3(1.0, 1.0, 1.0), plasma * 0.45);
+                        vec3 hotCore = mix(plasmaColor, vec3(1.0, 1.0, 1.0), pow(viewAlign, 6.0) * 0.85);
                         
-                        totalEmissiveRadiance = hotCore * alphaGlow * 1.5;
-                        diffuseColor.a = alphaGlow;
+                        // Soft star core emission (boosted to 2.2 for higher luminosity)
+                        totalEmissiveRadiance = hotCore * alphaGlow * 2.2;
+                        
+                        // 4. Corona / Fresnel Rim Glow (Eliminates the dark edge!)
+                        float rim = pow(1.0 - viewAlign, 3.5);
+                        vec3 rimColor = starColor * rim * 1.8; // Glowing outer corona
+                        totalEmissiveRadiance += rimColor;
+                        
+                        // Set final transparency (ensures edges are beautifully blended and never dark)
+                        diffuseColor.a = max(alphaGlow, rim * 0.9);
                         diffuseColor.rgb = vec3(0.0);
                     }
                     `,

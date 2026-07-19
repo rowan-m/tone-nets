@@ -656,7 +656,13 @@ export class NetworkVisualizer {
                     if (uIsConstellation > 0.5) {
                         float viewAlign = max(0.0, dot(normal, normalize(vViewPosition)));
                         
-                        // 1. High-Detail Bubbling Plasma (3 octaves of FBM noise)
+                        // 1. Detect if the node is active/highlighted (HDR color length > 2.0)
+                        float isHighlighted = 0.0;
+                        #ifdef USE_COLOR
+                            isHighlighted = step(2.0, length(vColor.rgb));
+                        #endif
+
+                        // 2. High-Detail Bubbling Plasma (3 octaves of FBM noise)
                         vec2 st1 = normal.xy * 3.0 + vec2(uTime * 0.15, uTime * -0.1);
                         vec2 st2 = normal.xy * 6.0 + vec2(uTime * -0.1, uTime * 0.2);
                         vec2 st3 = normal.xy * 12.0 + vec2(uTime * 0.25, uTime * 0.25);
@@ -666,29 +672,32 @@ export class NetworkVisualizer {
                         float p3 = noise_fire(st3);
                         float plasma = p1 * 0.5 + p2 * 0.3 + p3 * 0.2;
                         
-                        // 2. High-Density Opaque Core + Fuzzy Outer Corona (Normal Blending)
+                        // 3. High-Density Opaque Core + Fuzzy Outer Corona (Normal Blending)
                         // This makes the core completely opaque to block internal connections!
                         float starAlpha = smoothstep(0.0, 0.45, viewAlign);
                         
                         vec3 starColor = vec3(1.0, 1.0, 1.0);
                         #ifdef USE_COLOR
-                            starColor = vColor.rgb;
+                            starColor = normalize(vColor.rgb);
                         #endif
                         
-                        // 3. Detailed Plasma Color
+                        // 4. Detailed Plasma Color
                         vec3 plasmaColor = mix(starColor, vec3(1.0, 1.0, 1.0), plasma * 0.2);
                         vec3 hotCore = mix(plasmaColor, vec3(1.0, 1.0, 1.0), pow(viewAlign, 6.0) * 0.4);
                         
-                        // Emit star core intensity
-                        totalEmissiveRadiance = hotCore * starAlpha * 1.2;
+                        // 5. Dynamic Luminosity (Core emission gets a massive 4x boost when active!)
+                        float emissiveBoost = 0.6 + isHighlighted * 2.4;
+                        totalEmissiveRadiance = hotCore * starAlpha * emissiveBoost;
                         
-                        // 4. Beautiful Fresnel Corona Outer Edge (Eliminates the dark edge and makes it ultra fuzzy!)
-                        float rim = pow(1.0 - viewAlign, 3.5);
-                        vec3 rimColor = starColor * rim * 0.8; // Soft glow on outer edges
+                        // 6. Beautiful Fresnel Corona Outer Edge (Wider and brighter when active!)
+                        float rimExponent = mix(3.5, 2.0, isHighlighted);
+                        float rimIntensity = mix(0.4, 3.0, isHighlighted);
+                        float rim = pow(1.0 - viewAlign, rimExponent);
+                        vec3 rimColor = starColor * rim * rimIntensity;
                         totalEmissiveRadiance += rimColor;
                         
                         // Set the final transparency (Ensures center core is 100% opaque, outer halo is semi-transparent)
-                        diffuseColor.a = max(starAlpha, rim * 0.95);
+                        diffuseColor.a = max(starAlpha, rim * (0.95 + isHighlighted * 0.05));
                         diffuseColor.rgb = vec3(0.0);
                     }
                     `,

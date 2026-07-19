@@ -395,6 +395,7 @@ export class NetworkVisualizer {
             mipmapBlur: true,
         });
 
+        this.bloomEffect = bloomEffect;
         this.composer.addPass(new EffectPass(this.camera, bloomEffect));
     }
 
@@ -2324,6 +2325,13 @@ export class NetworkVisualizer {
         }
     }
 
+    _updateThemeBloom(themeName) {
+        if (this.bloomEffect) {
+            this.bloomEffect.intensity =
+                themeName === 'constellation' ? 5.5 : 3.0;
+        }
+    }
+
     _updateNodeMaterialThemeProperties(theme, themeName) {
         if (!this.nodeInstancedMesh) return;
 
@@ -2378,6 +2386,8 @@ export class NetworkVisualizer {
             this.nodeShader.uniforms.uIsConstellation.value =
                 themeName === 'constellation' ? 1.0 : 0.0;
         }
+
+        this._updateThemeBloom(themeName);
 
         if (this.coneInstancedMesh) {
             this.coneInstancedMesh.material.emissiveIntensity =

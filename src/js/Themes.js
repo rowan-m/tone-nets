@@ -74,7 +74,7 @@ export const ConstellationTheme = {
     nodeMaterial: {
         roughness: 0.3,
         metalness: 0.2,
-        emissiveIntensity: 0.2,
+        emissiveIntensity: 0.5,
     },
     showOutlines: false, // Turn off the black outlines
     background: 0x00020a, // Deep midnight blue

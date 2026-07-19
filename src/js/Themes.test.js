@@ -159,7 +159,7 @@ describe('Themes', () => {
             expect(ConstellationTheme.nodeMaterial).toEqual({
                 roughness: 0.3,
                 metalness: 0.2,
-                emissiveIntensity: 0.2,
+                emissiveIntensity: 0.5,
             });
         });
 

@@ -1201,9 +1201,16 @@ export class NetworkVisualizer {
             edgeOpacity = 1.0;
             if (edgeData) edgeData.line.material = this.hoverEdgeMaterial;
         } else if (isPlaying) {
-            edgeColor = this._scratchColor
-                .set(this.highlightColor)
-                .multiplyScalar(this.highlightIntensity);
+            const currentTheme = this.themeManager.getCurrentTheme();
+            if (currentTheme && currentTheme.name === 'constellation') {
+                edgeColor = this._getEdgeColor(normWeight).multiplyScalar(
+                    this.highlightIntensity * 1.5,
+                );
+            } else {
+                edgeColor = this._scratchColor
+                    .set(this.highlightColor)
+                    .multiplyScalar(this.highlightIntensity);
+            }
             edgeOpacity = 1.0;
             if (edgeData) edgeData.line.material = this.highlightEdgeMaterial;
         } else {
@@ -2116,6 +2123,28 @@ export class NetworkVisualizer {
         this.startAnimationLoop();
     }
 
+    _applyNodeHighlight(nodeData, highlightColor) {
+        const currentTheme = this.themeManager.getCurrentTheme();
+        const useBaseColor =
+            currentTheme && currentTheme.name === 'constellation';
+        const colorToUse = useBaseColor ? nodeData.baseColor : highlightColor;
+        const intensityToUse = useBaseColor
+            ? this.highlightIntensity * 1.5
+            : this.highlightIntensity;
+
+        // Update dummy mesh for tests
+        nodeData.mesh.material.emissiveIntensity = useBaseColor ? 1.5 : 1.0;
+        nodeData.mesh.material.emissive = colorToUse;
+
+        this.nodeInstancedMesh.setColorAt(
+            nodeData.instanceId,
+            this._scratchColor.set(colorToUse).multiplyScalar(intensityToUse),
+        );
+        if (this.nodeInstancedMesh.instanceColor) {
+            this.nodeInstancedMesh.instanceColor.needsUpdate = true;
+        }
+    }
+
     _highlightNode(nodeId, highlightColor) {
         const nodeData = this.nodes.get(nodeId);
         if (nodeData) {
@@ -2127,19 +2156,7 @@ export class NetworkVisualizer {
                 nodeData.playCount === 1 &&
                 this.hoveredObject !== nodeData.mesh
             ) {
-                // Update dummy mesh for tests
-                nodeData.mesh.material.emissiveIntensity = 1.0;
-                nodeData.mesh.material.emissive = highlightColor;
-
-                this.nodeInstancedMesh.setColorAt(
-                    nodeData.instanceId,
-                    this._scratchColor
-                        .set(highlightColor)
-                        .multiplyScalar(this.highlightIntensity),
-                );
-                if (this.nodeInstancedMesh.instanceColor) {
-                    this.nodeInstancedMesh.instanceColor.needsUpdate = true;
-                }
+                this._applyNodeHighlight(nodeData, highlightColor);
             }
         }
     }

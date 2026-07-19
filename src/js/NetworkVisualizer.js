@@ -554,6 +554,24 @@ export class NetworkVisualizer {
                     nodeMat.userData.uIsConstellation;
                 this.nodeShader = shader; // Save reference to update uTime in loop
 
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <common>',
+                    `
+                    #include <common>
+                    uniform float uIsConstellation;
+                    `,
+                );
+
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <begin_vertex>',
+                    `
+                    #include <begin_vertex>
+                    if (uIsConstellation > 0.5) {
+                        transformed *= 1.35;
+                    }
+                    `,
+                );
+
                 shader.fragmentShader = shader.fragmentShader.replace(
                     '#include <common>',
                     `
@@ -648,29 +666,29 @@ export class NetworkVisualizer {
                         float p3 = noise_fire(st3);
                         float plasma = p1 * 0.5 + p2 * 0.3 + p3 * 0.2;
                         
-                        // 2. High-Density/Less Transparent Base
-                        float baseGlow = pow(viewAlign, 1.5);
-                        float alphaGlow = mix(0.65, 1.0, baseGlow) * (0.75 + 0.25 * plasma);
+                        // 2. High-Density Opaque Core + Fuzzy Outer Corona (Normal Blending)
+                        // This makes the core completely opaque to block internal connections!
+                        float starAlpha = smoothstep(0.0, 0.45, viewAlign);
                         
                         vec3 starColor = vec3(1.0, 1.0, 1.0);
                         #ifdef USE_COLOR
                             starColor = vColor.rgb;
                         #endif
                         
-                        // 3. Balanced Plasma Color (Preserves the rich note color!)
-                        vec3 plasmaColor = mix(starColor, vec3(1.0, 1.0, 1.0), plasma * 0.15);
-                        vec3 hotCore = mix(plasmaColor, vec3(1.0, 1.0, 1.0), pow(viewAlign, 6.0) * 0.25);
+                        // 3. Detailed Plasma Color
+                        vec3 plasmaColor = mix(starColor, vec3(1.0, 1.0, 1.0), plasma * 0.2);
+                        vec3 hotCore = mix(plasmaColor, vec3(1.0, 1.0, 1.0), pow(viewAlign, 6.0) * 0.4);
                         
-                        // Balanced star core emission (prevents bloom blowout)
-                        totalEmissiveRadiance = hotCore * alphaGlow * 0.75;
+                        // Emit star core intensity
+                        totalEmissiveRadiance = hotCore * starAlpha * 1.5;
                         
-                        // 4. Subtle Corona / Fresnel Rim Glow (Erases dark edge softly)
+                        // 4. Beautiful Fresnel Corona Outer Edge (Eliminates the dark edge and makes it ultra fuzzy!)
                         float rim = pow(1.0 - viewAlign, 3.5);
-                        vec3 rimColor = starColor * rim * 0.5; // Soft halo glow
+                        vec3 rimColor = starColor * rim * 1.8; // High glow on outer edges
                         totalEmissiveRadiance += rimColor;
                         
-                        // Set final transparency
-                        diffuseColor.a = max(alphaGlow, rim * 0.8);
+                        // Set the final transparency (Ensures center core is 100% opaque, outer halo is semi-transparent)
+                        diffuseColor.a = max(starAlpha, rim * 0.95);
                         diffuseColor.rgb = vec3(0.0);
                     }
                     `,
@@ -2341,11 +2359,8 @@ export class NetworkVisualizer {
         mat.emissiveIntensity = theme.nodeMaterial.emissiveIntensity;
         mat.wireframe = !!theme.nodeMaterial.wireframe;
         mat.transparent = themeName === 'constellation';
-        mat.blending =
-            themeName === 'constellation'
-                ? THREE.AdditiveBlending
-                : THREE.NormalBlending;
-        mat.depthWrite = themeName !== 'constellation';
+        mat.blending = THREE.NormalBlending;
+        mat.depthWrite = true;
         mat.needsUpdate = true;
 
         if (mat.userData && mat.userData.uIsConstellation) {

@@ -638,9 +638,9 @@ export class NetworkVisualizer {
                         float viewAlign = max(0.0, dot(normal, normalize(vViewPosition)));
                         
                         // 1. High-Detail Bubbling Plasma (3 octaves of FBM noise)
-                        vec2 st1 = normal.xy * 3.0 + vec2(uTime * 0.2, uTime * -0.12);
-                        vec2 st2 = normal.xy * 6.0 + vec2(uTime * -0.12, uTime * 0.25);
-                        vec2 st3 = normal.xy * 12.0 + vec2(uTime * 0.35, uTime * 0.35);
+                        vec2 st1 = normal.xy * 3.0 + vec2(uTime * 0.15, uTime * -0.1);
+                        vec2 st2 = normal.xy * 6.0 + vec2(uTime * -0.1, uTime * 0.2);
+                        vec2 st3 = normal.xy * 12.0 + vec2(uTime * 0.25, uTime * 0.25);
                         
                         float p1 = noise_fire(st1);
                         float p2 = noise_fire(st2);
@@ -649,27 +649,27 @@ export class NetworkVisualizer {
                         
                         // 2. High-Density/Less Transparent Base
                         float baseGlow = pow(viewAlign, 1.5);
-                        float alphaGlow = mix(0.6, 1.0, baseGlow) * (0.7 + 0.3 * plasma);
+                        float alphaGlow = mix(0.65, 1.0, baseGlow) * (0.75 + 0.25 * plasma);
                         
                         vec3 starColor = vec3(1.0, 1.0, 1.0);
                         #ifdef USE_COLOR
                             starColor = vColor.rgb;
                         #endif
                         
-                        // 3. More Luminous & Detailed Plasma Color
-                        vec3 plasmaColor = mix(starColor, vec3(1.0, 1.0, 1.0), plasma * 0.45);
-                        vec3 hotCore = mix(plasmaColor, vec3(1.0, 1.0, 1.0), pow(viewAlign, 6.0) * 0.85);
+                        // 3. Balanced Plasma Color (Preserves the rich note color!)
+                        vec3 plasmaColor = mix(starColor, vec3(1.0, 1.0, 1.0), plasma * 0.15);
+                        vec3 hotCore = mix(plasmaColor, vec3(1.0, 1.0, 1.0), pow(viewAlign, 6.0) * 0.25);
                         
-                        // Soft star core emission (boosted to 2.2 for higher luminosity)
-                        totalEmissiveRadiance = hotCore * alphaGlow * 2.2;
+                        // Balanced star core emission (prevents bloom blowout)
+                        totalEmissiveRadiance = hotCore * alphaGlow * 0.75;
                         
-                        // 4. Corona / Fresnel Rim Glow (Eliminates the dark edge!)
+                        // 4. Subtle Corona / Fresnel Rim Glow (Erases dark edge softly)
                         float rim = pow(1.0 - viewAlign, 3.5);
-                        vec3 rimColor = starColor * rim * 1.8; // Glowing outer corona
+                        vec3 rimColor = starColor * rim * 0.5; // Soft halo glow
                         totalEmissiveRadiance += rimColor;
                         
-                        // Set final transparency (ensures edges are beautifully blended and never dark)
-                        diffuseColor.a = max(alphaGlow, rim * 0.9);
+                        // Set final transparency
+                        diffuseColor.a = max(alphaGlow, rim * 0.8);
                         diffuseColor.rgb = vec3(0.0);
                     }
                     `,

@@ -567,7 +567,7 @@ export class NetworkVisualizer {
                     `
                     #include <begin_vertex>
                     if (uIsConstellation > 0.5) {
-                        transformed *= 1.35;
+                        transformed *= 0.75;
                     }
                     `,
                 );
@@ -680,11 +680,11 @@ export class NetworkVisualizer {
                         vec3 hotCore = mix(plasmaColor, vec3(1.0, 1.0, 1.0), pow(viewAlign, 6.0) * 0.4);
                         
                         // Emit star core intensity
-                        totalEmissiveRadiance = hotCore * starAlpha * 1.5;
+                        totalEmissiveRadiance = hotCore * starAlpha * 0.45;
                         
                         // 4. Beautiful Fresnel Corona Outer Edge (Eliminates the dark edge and makes it ultra fuzzy!)
                         float rim = pow(1.0 - viewAlign, 3.5);
-                        vec3 rimColor = starColor * rim * 1.8; // High glow on outer edges
+                        vec3 rimColor = starColor * rim * 0.35; // Soft glow on outer edges
                         totalEmissiveRadiance += rimColor;
                         
                         // Set the final transparency (Ensures center core is 100% opaque, outer halo is semi-transparent)

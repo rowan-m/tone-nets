@@ -88,8 +88,10 @@ export const ConstellationTheme = {
     },
     onActivate: (visualizer) => {
         visualizer.effects.enableConstellationBackground(true);
+        visualizer.effects.setConstellationMode(true);
     },
     onDeactivate: (visualizer) => {
         visualizer.effects.enableConstellationBackground(false);
+        visualizer.effects.setConstellationMode(false);
     },
 };

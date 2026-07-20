@@ -184,6 +184,7 @@ describe('Themes', () => {
                 const mockVisualizer = {
                     effects: {
                         enableConstellationBackground: vi.fn(),
+                        setConstellationMode: vi.fn(),
                     },
                 };
 
@@ -192,12 +193,16 @@ describe('Themes', () => {
                 expect(
                     mockVisualizer.effects.enableConstellationBackground,
                 ).toHaveBeenCalledWith(true);
+                expect(
+                    mockVisualizer.effects.setConstellationMode,
+                ).toHaveBeenCalledWith(true);
             });
 
             it('should disable constellation background on deactivation', () => {
                 const mockVisualizer = {
                     effects: {
                         enableConstellationBackground: vi.fn(),
+                        setConstellationMode: vi.fn(),
                     },
                 };
 
@@ -205,6 +210,9 @@ describe('Themes', () => {
 
                 expect(
                     mockVisualizer.effects.enableConstellationBackground,
+                ).toHaveBeenCalledWith(false);
+                expect(
+                    mockVisualizer.effects.setConstellationMode,
                 ).toHaveBeenCalledWith(false);
             });
         });

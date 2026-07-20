@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
+import { EffectComposer } from 'postprocessing';
 import { NetworkVisualizer } from './NetworkVisualizer.js';
 import { Utils } from './Utils.js';
 import { DefaultTheme, TerminatorTheme, ConstellationTheme } from './Themes.js';
@@ -32,6 +33,7 @@ vi.mock('./VisualEffectsManager.js', () => ({
         this.enableConstellationBackground = vi.fn();
         this.clear = vi.fn();
         this.setRetroMode = vi.fn();
+        this.setConstellationMode = vi.fn();
     }),
 }));
 
@@ -82,13 +84,20 @@ vi.mock('three/examples/jsm/controls/TrackballControls.js', () => ({
 }));
 
 vi.mock('postprocessing', () => ({
-    EffectComposer: vi.fn().mockImplementation(function () {
+    EffectComposer: vi.fn().mockImplementation(function (renderer, options) {
+        const type =
+            (options && options.frameBufferType) || THREE.UnsignedByteType;
         return {
             addPass: vi.fn(),
             removePass: vi.fn(),
             setSize: vi.fn(),
             render: vi.fn(),
             dispose: vi.fn(),
+            writeBuffer: {
+                texture: {
+                    type: type,
+                },
+            },
         };
     }),
     RenderPass: vi.fn(),
@@ -409,6 +418,36 @@ describe('NetworkVisualizer', () => {
                 'pixelated',
             );
         });
+
+        it('manages high-precision HalfFloatType buffers only for the constellation theme', () => {
+            const spyComposer = vi.mocked(EffectComposer);
+
+            // Re-register the ConstellationTheme and transition to default first to set baseline
+            visualizer.themeManager.registerTheme(ConstellationTheme);
+            visualizer.setTheme('default');
+
+            spyComposer.mockClear();
+
+            // Set to constellation theme (should trigger recreation with HalfFloatType)
+            visualizer.setTheme('constellation');
+            expect(spyComposer).toHaveBeenCalledWith(
+                visualizer.renderer,
+                expect.objectContaining({
+                    frameBufferType: THREE.HalfFloatType,
+                }),
+            );
+
+            spyComposer.mockClear();
+
+            // Set back to default theme (should trigger recreation with UnsignedByteType)
+            visualizer.setTheme('default');
+            expect(spyComposer).toHaveBeenCalledWith(
+                visualizer.renderer,
+                expect.objectContaining({
+                    frameBufferType: THREE.UnsignedByteType,
+                }),
+            );
+        });
     });
 
     describe('Playback Highlights', () => {
@@ -508,6 +547,41 @@ describe('NetworkVisualizer', () => {
 
             expect(spyNodeSetColor).toHaveBeenCalled();
             expect(visualizer.highlightColor).toBe(0xffd700);
+        });
+
+        it('uses subtle dark blue for inactive edges in constellation theme, and forceOriginalColor preserves highlights', () => {
+            visualizer.themeManager.registerTheme(ConstellationTheme);
+
+            // Set to default theme first
+            visualizer.setTheme('default');
+            const defaultEdgeColor = visualizer._getEdgeColor(0.5).clone();
+            // Verify standard theme edge color is not blue
+            expect(defaultEdgeColor.r).not.toBe(
+                visualizer._constellationEdgeLow.r,
+            );
+
+            // Set to constellation theme
+            visualizer.setTheme('constellation');
+            const constellationEdgeColor = visualizer
+                ._getEdgeColor(0.5)
+                .clone();
+
+            // Verify constellation theme edge color is the subtle dark blue
+            const expectedBlue = visualizer._constellationEdgeLow
+                .clone()
+                .lerp(visualizer._constellationEdgeHigh, 0.5);
+            expect(constellationEdgeColor.r).toBeCloseTo(expectedBlue.r);
+            expect(constellationEdgeColor.g).toBeCloseTo(expectedBlue.g);
+            expect(constellationEdgeColor.b).toBeCloseTo(expectedBlue.b);
+
+            // Verify forceOriginalColor returns the original default colors
+            const forcedColor = visualizer._getEdgeColor(0.5, true).clone();
+            const expectedDefault = visualizer._colorLow
+                .clone()
+                .lerp(visualizer._colorMid, 1.0);
+            expect(forcedColor.r).toBeCloseTo(expectedDefault.r);
+            expect(forcedColor.g).toBeCloseTo(expectedDefault.g);
+            expect(forcedColor.b).toBeCloseTo(expectedDefault.b);
         });
     });
 

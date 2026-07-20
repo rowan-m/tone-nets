@@ -153,6 +153,8 @@ export class NetworkVisualizer {
         this._colorMid = new THREE.Color(0x666666);
         this._colorHigh = new THREE.Color(0x999999);
         this._scratchColor = new THREE.Color();
+        this._constellationEdgeLow = new THREE.Color(0x0a1630); // Very subtle dark midnight blue
+        this._constellationEdgeHigh = new THREE.Color(0x182c50); // Slightly lighter subtle blue for higher weights
 
         // Reusable vectors to minimize GC
         this._cameraUp = new THREE.Vector3();
@@ -385,7 +387,14 @@ export class NetworkVisualizer {
     }
 
     initPostProcessing() {
-        this.composer = new EffectComposer(this.renderer);
+        const isConstellation = this.currentThemeName === 'constellation';
+        const targetType = isConstellation
+            ? THREE.HalfFloatType
+            : THREE.UnsignedByteType;
+
+        this.composer = new EffectComposer(this.renderer, {
+            frameBufferType: targetType,
+        });
         this.composer.addPass(new RenderPass(this.scene, this.camera));
 
         const bloomEffect = new BloomEffect({
@@ -397,6 +406,36 @@ export class NetworkVisualizer {
 
         this.bloomEffect = bloomEffect;
         this.composer.addPass(new EffectPass(this.camera, bloomEffect));
+    }
+
+    _updateComposerBufferType(isConstellation) {
+        const targetType = isConstellation
+            ? THREE.HalfFloatType
+            : THREE.UnsignedByteType;
+
+        if (this.composer) {
+            const currentType = this.composer.writeBuffer
+                ? this.composer.writeBuffer.texture.type
+                : THREE.UnsignedByteType;
+            if (currentType === targetType) return;
+        }
+
+        // Recreate composer with target format
+        this.composer = new EffectComposer(this.renderer, {
+            frameBufferType: targetType,
+        });
+
+        this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+        if (this.bloomEffect) {
+            this.composer.addPass(
+                new EffectPass(this.camera, this.bloomEffect),
+            );
+        }
+
+        if (this.retroCRTPass && this.effects && this.effects.retroMode) {
+            this.composer.addPass(this.retroCRTPass);
+        }
     }
 
     clear() {
@@ -1190,7 +1229,13 @@ export class NetworkVisualizer {
         return curve;
     }
 
-    _getEdgeColor(normWeight) {
+    _getEdgeColor(normWeight, forceOriginalColor = false) {
+        if (this.currentThemeName === 'constellation' && !forceOriginalColor) {
+            return this._scratchColor
+                .copy(this._constellationEdgeLow)
+                .lerp(this._constellationEdgeHigh, normWeight);
+        }
+
         if (normWeight <= 0.5) {
             return this._scratchColor
                 .copy(this._colorLow)
@@ -1221,7 +1266,8 @@ export class NetworkVisualizer {
         } else if (isPlaying) {
             const currentTheme = this.themeManager.getCurrentTheme();
             if (currentTheme && currentTheme.name === 'constellation') {
-                edgeColor = this._getEdgeColor(normWeight).multiplyScalar(
+                // Pass true for forceOriginalColor to preserve the original highlight color/effect
+                edgeColor = this._getEdgeColor(normWeight, true).multiplyScalar(
                     this.highlightIntensity * 1.5,
                 );
             } else {
@@ -2417,6 +2463,7 @@ export class NetworkVisualizer {
 
         this.themeManager.setTheme(themeName);
         this.currentThemeName = themeName;
+        this._updateComposerBufferType(themeName === 'constellation');
         const theme = this.themeManager.getCurrentTheme();
 
         // Update CSS theme attribute

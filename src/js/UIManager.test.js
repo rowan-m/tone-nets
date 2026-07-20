@@ -311,7 +311,9 @@ describe('UIManager', () => {
             expect(mockElements['v-count'].textContent).toBe(10);
             expect(mockElements['e-count'].textContent).toBe(20);
             expect(mockElements['metric-efficiency'].textContent).toBe(0.5);
-            expect(mockElements['metric-density'].textContent).toBe(0.05);
+            expect(mockElements['metric-density'].textContent).toBeCloseTo(
+                0.05,
+            );
         });
 
         it('should truncate extremely long titles', () => {
@@ -323,7 +325,7 @@ describe('UIManager', () => {
             uiManager.updateMetrics(summary, 'test.mid', false);
 
             // Assert
-            expect(mockElements['app-title'].textContent.length).toBe(35);
+            expect(mockElements['app-title'].textContent).toHaveLength(35);
             expect(mockElements['app-title'].textContent).toMatch(/\.\.\.$/);
         });
 

@@ -237,7 +237,7 @@ describe('NetworkMetrics', () => {
             // Normalized values: 1/1.4142 ≈ 0.7071
             expect(embedding[7]).toBe('0.7071');
             expect(embedding[5]).toBe('0.7071');
-            expect(embedding.length).toBe(12);
+            expect(embedding).toHaveLength(12);
         });
 
         it('returns all zeros for an empty graph or zero weight links', () => {

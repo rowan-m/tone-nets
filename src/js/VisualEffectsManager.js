@@ -466,7 +466,7 @@ export class VisualEffectsManager {
     }
 
     _initConstellationBackground() {
-        const geo = new THREE.SphereGeometry(10000, 32, 32);
+        const geo = new THREE.SphereGeometry(6000, 32, 32);
         const mat = new THREE.ShaderMaterial({
             depthWrite: false,
             depthTest: false,

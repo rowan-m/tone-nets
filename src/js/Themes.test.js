@@ -50,8 +50,8 @@ describe('Themes', () => {
 
                     // Assert
                     expect(color.hue).toBe(expectedHue);
-                    expect(color.saturation).toBe(0.1);
-                    expect(color.lightness).toBe(0.8);
+                    expect(color.saturation).toBeCloseTo(0.1);
+                    expect(color.lightness).toBeCloseTo(0.8);
                 });
             });
         });

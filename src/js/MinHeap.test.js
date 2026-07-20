@@ -42,7 +42,7 @@ describe('MinHeap', () => {
             heap.push(['positive', 10]);
 
             // Assert
-            expect(heap.length).toBe(3);
+            expect(heap).toHaveLength(3);
             expect(heap.pop()).toEqual(['negative', -10]);
             expect(heap.pop()).toEqual(['zero', 0]);
             expect(heap.pop()).toEqual(['positive', 10]);
@@ -57,7 +57,7 @@ describe('MinHeap', () => {
             items.forEach((val) => heap.push([val, priority]));
 
             // Assert
-            expect(heap.length).toBe(items.length);
+            expect(heap).toHaveLength(items.length);
             const results = [heap.pop(), heap.pop(), heap.pop()];
             const values = results.map((r) => r[0]);
 
@@ -87,7 +87,7 @@ describe('MinHeap', () => {
 
             // Assert
             expect(result).toEqual(item);
-            expect(heap.length).toBe(0);
+            expect(heap).toHaveLength(0);
         });
 
         it('should always return the item with the minimum priority (ascending order)', () => {
@@ -123,14 +123,14 @@ describe('MinHeap', () => {
             input.forEach((item) => heap.push(item));
 
             // Assert: Verify length
-            expect(heap.length).toBe(count);
+            expect(heap).toHaveLength(count);
 
             // Act: Pop all items and verify order
             const sortedInput = [...input].sort((a, b) => a[1] - b[1]);
             for (let i = 0; i < count; i++) {
                 expect(heap.pop()).toEqual(sortedInput[i]);
             }
-            expect(heap.length).toBe(0);
+            expect(heap).toHaveLength(0);
         });
 
         it('should handle items pushed in reverse-sorted order (worst case for push)', () => {

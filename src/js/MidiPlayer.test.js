@@ -479,7 +479,7 @@ describe('MidiPlayer', () => {
             await player.initialize();
             const data = player.getFrequencyData();
             expect(data).toBeInstanceOf(Uint8Array);
-            expect(data.length).toBe(128);
+            expect(data).toHaveLength(128);
             expect(data[0]).toBe(128);
         });
     });

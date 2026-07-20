@@ -109,7 +109,7 @@ describe('VisualEffectsManager', () => {
             effectsManager.emojiPool.active = [];
 
             effectsManager.showInstrumentEmoji(new THREE.Vector3(), '🎸');
-            expect(effectsManager.emojiPool.active.length).toBe(1);
+            expect(effectsManager.emojiPool.active).toHaveLength(1);
             expect(effectsManager.emojiPool.active[0].sprite).toBeInstanceOf(
                 THREE.Sprite,
             );
@@ -124,7 +124,7 @@ describe('VisualEffectsManager', () => {
 
             effectsManager.showInstrumentEmoji(new THREE.Vector3(), '3️⃣');
 
-            expect(effectsManager.emojiPool.active.length).toBe(2);
+            expect(effectsManager.emojiPool.active).toHaveLength(2);
             // The oldest ('1️⃣') should have been released, so '2️⃣' is now at index 0
             expect(effectsManager.emojiPool.active[0]).toBe(second);
         });
@@ -157,7 +157,7 @@ describe('VisualEffectsManager', () => {
             expect(sprite.material.opacity).toBeCloseTo(0.5);
 
             effectsManager.update(0.5); // life reaches 0
-            expect(effectsManager.emojiPool.active.length).toBe(0);
+            expect(effectsManager.emojiPool.active).toHaveLength(0);
             expect(scene.remove).toHaveBeenCalledWith(sprite);
         });
 
@@ -168,7 +168,7 @@ describe('VisualEffectsManager', () => {
             effectsManager.update(0.1);
             expect(
                 effectsManager.terminatorSphere.material.uniforms.uTime.value,
-            ).toBe(0.1);
+            ).toBeCloseTo(0.1);
 
             // Mock the particle shader that is usually set in onBeforeCompile
             const mockShader = {
@@ -300,8 +300,8 @@ describe('VisualEffectsManager', () => {
 
             effectsManager.clear();
 
-            expect(effectsManager.emojiPool.active.length).toBe(0);
-            expect(effectsManager.emojiPool.pool.length).toBe(0);
+            expect(effectsManager.emojiPool.active).toHaveLength(0);
+            expect(effectsManager.emojiPool.pool).toHaveLength(0);
             expect(disposeSpy).toHaveBeenCalled();
             expect(scene.remove).toHaveBeenCalledWith(sprite);
         });

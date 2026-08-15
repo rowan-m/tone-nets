@@ -493,6 +493,30 @@ describe('NetworkVisualizer', () => {
             expect(visualizer.edgeLineSegments.visible).toBe(true);
             expect(visualizer.edgeTubeInstancedMesh.visible).toBe(false);
         });
+
+        it('activates the rotating charcoal sketch post-processing pass for the take-on-me-real theme and removes it on deactivation', () => {
+            visualizer.themeManager.registerTheme(TakeOnMeRealTheme);
+
+            const mockGraph = createMockGraph([
+                { id: 'C4', data: { degree: 1 } },
+            ]);
+            visualizer.initIncremental(mockGraph);
+
+            // Default theme should not have charcoal sketch pass active
+            visualizer.setTheme('default');
+            expect(visualizer.charcoalSketchPass).toBeNull();
+
+            // Set to take-on-me-real theme
+            visualizer.setTheme('take-on-me-real');
+            expect(visualizer.charcoalSketchPass).toBeDefined();
+            expect(visualizer.composer.addPass).toHaveBeenCalled();
+
+            // Switch back to default
+            visualizer.setTheme('default');
+            expect(visualizer.composer.removePass).toHaveBeenCalledWith(
+                visualizer.charcoalSketchPass,
+            );
+        });
     });
 
     describe('Playback Highlights', () => {

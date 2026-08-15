@@ -11,6 +11,7 @@ import {
     TerminatorTheme,
     RetroTheme,
     ConstellationTheme,
+    TakeOnMeRealTheme,
 } from './Themes.js';
 
 console.log('Tone Nets Initialized');
@@ -32,6 +33,7 @@ const init = async () => {
     visualizer.themeManager.registerTheme(TerminatorTheme);
     visualizer.themeManager.registerTheme(RetroTheme);
     visualizer.themeManager.registerTheme(ConstellationTheme);
+    visualizer.themeManager.registerTheme(TakeOnMeRealTheme);
     visualizer.setTheme('default');
 
     // Warm-up visualizer and shaders to prevent JIT/shader compilation lag on first play

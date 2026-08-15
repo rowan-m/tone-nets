@@ -95,3 +95,37 @@ export const ConstellationTheme = {
         visualizer.effects.setConstellationMode(false);
     },
 };
+
+export const TakeOnMeRealTheme = {
+    name: 'take-on-me-real',
+    highlightColor: 0xff3388, // Vivid Neon Hot Pink (fluorescent)
+    nodeMaterial: {
+        roughness: 0.1, // Ultra-smooth, high-gloss plastic
+        metalness: 0.05, // Non-metallic dielectric plastic look
+        emissiveIntensity: 0.45, // Base fluorescent glow from inside the plastic
+    },
+    showOutlines: true, // Crisp 80s outlines
+    edgeTubeRadius: 0.4, // Large diameter 80s neon tube edges
+    background: 0xf4f7f6, // Soft studio blue-grey base
+    emoji: '📼', // Vintage 80s VHS tape emoji!
+    getNodeColor: (pitchClass) => {
+        // Retro 80s pastel palette based on pitch class
+        const pastels = [
+            { hue: 340 / 360, saturation: 0.7, lightness: 0.75 }, // Pastel Pink
+            { hue: 180 / 360, saturation: 0.65, lightness: 0.7 }, // Soft Turquoise
+            { hue: 270 / 360, saturation: 0.65, lightness: 0.75 }, // Pastel Lavender
+            { hue: 25 / 360, saturation: 0.75, lightness: 0.75 }, // Pastel Peach
+            { hue: 55 / 360, saturation: 0.7, lightness: 0.78 }, // Lemon Yellow
+            { hue: 140 / 360, saturation: 0.6, lightness: 0.75 }, // Soft Mint Green
+            { hue: 205 / 360, saturation: 0.7, lightness: 0.75 }, // Powder Blue
+            { hue: 310 / 360, saturation: 0.7, lightness: 0.75 }, // Soft Orchid/Magenta
+        ];
+        return pastels[pitchClass % pastels.length];
+    },
+    onActivate: (visualizer) => {
+        visualizer.effects.enableStudioBackground(true);
+    },
+    onDeactivate: (visualizer) => {
+        visualizer.effects.enableStudioBackground(false);
+    },
+};

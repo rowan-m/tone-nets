@@ -50,6 +50,11 @@ export class VisualEffectsManager {
         this.scene.add(this.constellationGroup);
         this._initConstellationBackground();
 
+        this.studioGroup = new THREE.Group();
+        this.studioGroup.visible = false;
+        this.scene.add(this.studioGroup);
+        this._initStudioBackground();
+
         if (typeof document !== 'undefined' || global.document) {
             const uniqueEmojis = new Set(
                 Object.values(Utils.INSTRUMENT_EMOJIS),
@@ -246,6 +251,10 @@ export class VisualEffectsManager {
 
     enableConstellationBackground(enabled) {
         this.constellationGroup.visible = enabled;
+    }
+
+    enableStudioBackground(enabled) {
+        this.studioGroup.visible = enabled;
     }
 
     setRetroMode(enabled) {
@@ -687,6 +696,38 @@ export class VisualEffectsManager {
 
         this.constellationStars = new THREE.Points(particleGeo, particleMat);
         this.constellationGroup.add(this.constellationStars);
+    }
+
+    _initStudioBackground() {
+        const geo = new THREE.PlaneGeometry(2, 2);
+        const mat = new THREE.ShaderMaterial({
+            depthWrite: false,
+            depthTest: false,
+            vertexShader: `
+                varying vec2 vScreenPos;
+                void main() {
+                    gl_Position = vec4(position.xy, 1.0, 1.0);
+                    vScreenPos = position.xy;
+                }
+            `,
+            fragmentShader: `
+                varying vec2 vScreenPos;
+                void main() {
+                    float dist = length(vScreenPos);
+                    // Center of screen is a clean soft white-grey
+                    vec3 centerColor = vec3(0.956, 0.968, 0.964); // #f4f7f6
+                    // Edges fade to a soft blue-grey studio backdrop
+                    vec3 edgeColor = vec3(0.815, 0.847, 0.858);   // #d0d8db
+                    vec3 finalColor = mix(centerColor, edgeColor, smoothstep(0.0, 1.6, dist));
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `,
+        });
+
+        this.studioSphere = new THREE.Mesh(geo, mat);
+        this.studioSphere.frustumCulled = false;
+        this.studioSphere.renderOrder = -1000;
+        this.studioGroup.add(this.studioSphere);
     }
 
     _getEmojiTexture(emoji, isRetro = false, isConstellation = false) {

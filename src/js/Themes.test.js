@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { DefaultTheme, TerminatorTheme, ConstellationTheme } from './Themes.js';
+import {
+    DefaultTheme,
+    TerminatorTheme,
+    ConstellationTheme,
+    TakeOnMeRealTheme,
+} from './Themes.js';
 
 describe('Themes', () => {
     describe('DefaultTheme', () => {
@@ -213,6 +218,80 @@ describe('Themes', () => {
                 ).toHaveBeenCalledWith(false);
                 expect(
                     mockVisualizer.effects.setConstellationMode,
+                ).toHaveBeenCalledWith(false);
+            });
+        });
+    });
+
+    describe('TakeOnMeRealTheme', () => {
+        it('should define the take-on-me-real aesthetic properties', () => {
+            expect(TakeOnMeRealTheme.name).toBe('take-on-me-real');
+            expect(TakeOnMeRealTheme.emoji).toBe('📼');
+            expect(TakeOnMeRealTheme.background).toBe(0xf4f7f6);
+            expect(TakeOnMeRealTheme.highlightColor).toBe(0xff3388);
+            expect(TakeOnMeRealTheme.showOutlines).toBe(true);
+            expect(TakeOnMeRealTheme.edgeTubeRadius).toBeCloseTo(0.4);
+            expect(TakeOnMeRealTheme.nodeMaterial).toEqual({
+                roughness: 0.1,
+                metalness: 0.05,
+                emissiveIntensity: 0.45,
+            });
+        });
+
+        describe('getNodeColor', () => {
+            it('should calculate 80s pastel colors for various pitch classes', () => {
+                const testCases = [
+                    {
+                        pc: 0,
+                        expectedHue: 340 / 360,
+                        expectedSat: 0.7,
+                        expectedLight: 0.75,
+                    },
+                    {
+                        pc: 1,
+                        expectedHue: 180 / 360,
+                        expectedSat: 0.65,
+                        expectedLight: 0.7,
+                    },
+                ];
+
+                testCases.forEach(
+                    ({ pc, expectedHue, expectedSat, expectedLight }) => {
+                        const color = TakeOnMeRealTheme.getNodeColor(pc);
+                        expect(color.hue).toBeCloseTo(expectedHue);
+                        expect(color.saturation).toBeCloseTo(expectedSat);
+                        expect(color.lightness).toBeCloseTo(expectedLight);
+                    },
+                );
+            });
+        });
+
+        describe('Lifecycle Hooks', () => {
+            it('should enable studio background on activation', () => {
+                const mockVisualizer = {
+                    effects: {
+                        enableStudioBackground: vi.fn(),
+                    },
+                };
+
+                TakeOnMeRealTheme.onActivate(mockVisualizer);
+
+                expect(
+                    mockVisualizer.effects.enableStudioBackground,
+                ).toHaveBeenCalledWith(true);
+            });
+
+            it('should disable studio background on deactivation', () => {
+                const mockVisualizer = {
+                    effects: {
+                        enableStudioBackground: vi.fn(),
+                    },
+                };
+
+                TakeOnMeRealTheme.onDeactivate(mockVisualizer);
+
+                expect(
+                    mockVisualizer.effects.enableStudioBackground,
                 ).toHaveBeenCalledWith(false);
             });
         });

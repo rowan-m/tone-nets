@@ -155,6 +155,8 @@ export class NetworkVisualizer {
         this._scratchColor = new THREE.Color();
         this._constellationEdgeLow = new THREE.Color(0x0a1630); // Very subtle dark midnight blue
         this._constellationEdgeHigh = new THREE.Color(0x182c50); // Slightly lighter subtle blue for higher weights
+        this._takeOnMeEdgeLow = new THREE.Color(0xd0e8eb); // Soft blue-grey pastel teal
+        this._takeOnMeEdgeHigh = new THREE.Color(0x5cb3b1); // Vibrant pastel turquoise
 
         // Reusable vectors to minimize GC
         this._cameraUp = new THREE.Vector3();
@@ -167,6 +169,7 @@ export class NetworkVisualizer {
         this._scratchBox3 = new THREE.Box3();
         this._scratchSphere = new THREE.Sphere();
         this._scratchCurve = new THREE.QuadraticBezierCurve3();
+        this._scratchQuat_1 = new THREE.Quaternion();
 
         // Shared materials for hover/highlight states
         this.hoverEdgeMaterial = new THREE.LineBasicMaterial({
@@ -221,6 +224,8 @@ export class NetworkVisualizer {
         this.outlineInstancedMesh = null;
         this.coneInstancedMesh = null;
         this.edgeLineSegments = null;
+        this.edgeTubeInstancedMesh = null;
+        this.edgeTubeGeo = null;
 
         this.nodeInstanceIdMap = new Map(); // nodeId -> instanceId
         this.instanceIdNodeMap = new Map(); // instanceId -> nodeId
@@ -408,7 +413,8 @@ export class NetworkVisualizer {
         this.composer.addPass(new EffectPass(this.camera, bloomEffect));
     }
 
-    _updateComposerBufferType(isConstellation) {
+    _updateComposerBufferType(themeName) {
+        const isConstellation = themeName === 'constellation';
         const targetType = isConstellation
             ? THREE.HalfFloatType
             : THREE.UnsignedByteType;
@@ -419,21 +425,22 @@ export class NetworkVisualizer {
             const currentType = buffer
                 ? buffer.texture.type
                 : THREE.UnsignedByteType;
-            if (currentType === targetType) return;
+            if (currentType === targetType) {
+                // Buffer format did not change (e.g. default <-> take-on-me-real), but we still update the existing bloom effect properties dynamically
+                this._updateThemeBloom(themeName);
+                return;
+            }
         }
 
         // Dispose of old composer and bloom effect to prevent memory leaks and clear WebGL buffer states completely
-        if (this.composer) {
-            if (typeof this.composer.dispose === 'function') {
-                this.composer.dispose();
+        const disposeResource = (res) => {
+            if (res && typeof res.dispose === 'function') {
+                res.dispose();
             }
-        }
-        if (this.bloomEffect) {
-            if (typeof this.bloomEffect.dispose === 'function') {
-                this.bloomEffect.dispose();
-            }
-            this.bloomEffect = null;
-        }
+        };
+        disposeResource(this.composer);
+        disposeResource(this.bloomEffect);
+        this.bloomEffect = null;
 
         // Recreate composer with target format
         this.composer = new EffectComposer(this.renderer, {
@@ -443,9 +450,16 @@ export class NetworkVisualizer {
         this.composer.addPass(new RenderPass(this.scene, this.camera));
 
         // Create a brand new BloomEffect with appropriate baseline intensity to fully reset WebGL textures
+        const themeConfig = {
+            constellation: { intensity: 5.5, threshold: 0.15 },
+            'take-on-me-real': { intensity: 1.0, threshold: 0.9 },
+            default: { intensity: 3.0, threshold: 0.15 },
+        };
+        const config = themeConfig[themeName] || themeConfig.default;
+
         this.bloomEffect = new BloomEffect({
-            intensity: isConstellation ? 5.5 : 3.0,
-            luminanceThreshold: 0.15,
+            intensity: config.intensity,
+            luminanceThreshold: config.threshold,
             luminanceSmoothing: 0.85,
             mipmapBlur: true,
         });
@@ -507,6 +521,13 @@ export class NetworkVisualizer {
             this.coneInstancedMesh.instanceMatrix.needsUpdate = true;
             if (this.coneInstancedMesh.instanceColor) {
                 this.coneInstancedMesh.instanceColor.needsUpdate = true;
+            }
+        }
+        if (this.edgeTubeInstancedMesh) {
+            this.edgeTubeInstancedMesh.count = 0;
+            this.edgeTubeInstancedMesh.instanceMatrix.needsUpdate = true;
+            if (this.edgeTubeInstancedMesh.instanceColor) {
+                this.edgeTubeInstancedMesh.instanceColor.needsUpdate = true;
             }
         }
         if (this.edgeLineSegments) {
@@ -894,6 +915,46 @@ export class NetworkVisualizer {
             this.edgeLineSegments = new THREE.LineSegments(edgeGeo, edgeMat);
             this.edgeLineSegments.frustumCulled = false;
             this.graphGroup.add(this.edgeLineSegments);
+
+            // Tube geometry and instanced mesh for thick edges
+            this.edgeTubeGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1);
+            const tubeMat = new THREE.MeshStandardMaterial({
+                roughness: 0.1,
+                metalness: 0.05,
+                emissive: 0xffffff,
+                emissiveIntensity: 0.45,
+            });
+            tubeMat.onBeforeCompile = (shader) => {
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <emissivemap_fragment>',
+                    `
+                    #include <emissivemap_fragment>
+                    #ifdef USE_COLOR
+                        totalEmissiveRadiance *= vColor.rgb;
+                    #endif
+                    `,
+                );
+            };
+
+            this.edgeTubeInstancedMesh = new THREE.InstancedMesh(
+                this.edgeTubeGeo,
+                tubeMat,
+                this.maxEdgeCapacity * this.maxEdgeSegments,
+            );
+            this.edgeTubeInstancedMesh.instanceMatrix.setUsage(
+                THREE.DynamicDrawUsage,
+            );
+            if (this.edgeTubeInstancedMesh.instanceColor) {
+                this.edgeTubeInstancedMesh.instanceColor.setUsage(
+                    THREE.DynamicDrawUsage,
+                );
+            }
+            this.edgeTubeInstancedMesh.userData.type = 'edge-tube-batch';
+            this.edgeTubeInstancedMesh.frustumCulled = false;
+            this.edgeTubeInstancedMesh.visible = false;
+            this.edgeTubeInstancedMesh.geometry.boundingSphere =
+                new THREE.Sphere(new THREE.Vector3(), 100000);
+            this.graphGroup.add(this.edgeTubeInstancedMesh);
         }
 
         this._updateObjectsToIntersect();
@@ -923,14 +984,18 @@ export class NetworkVisualizer {
         this.coneInstancedMesh = null;
         disposeMesh(this.edgeLineSegments);
         this.edgeLineSegments = null;
+        disposeMesh(this.edgeTubeInstancedMesh);
+        this.edgeTubeInstancedMesh = null;
 
         if (this.sphereGeo) this.sphereGeo.dispose();
         if (this.outlineGeo) this.outlineGeo.dispose();
         if (this.coneGeo) this.coneGeo.dispose();
+        if (this.edgeTubeGeo) this.edgeTubeGeo.dispose();
 
         this.sphereGeo = null;
         this.outlineGeo = null;
         this.coneGeo = null;
+        this.edgeTubeGeo = null;
 
         this._initSharedGeometries(segments);
 
@@ -945,6 +1010,10 @@ export class NetworkVisualizer {
             }
             if (this.coneInstancedMesh) {
                 this.coneInstancedMesh.count = this.edges.length;
+            }
+            if (this.edgeTubeInstancedMesh) {
+                this.edgeTubeInstancedMesh.count =
+                    this.edges.length * this.maxEdgeSegments;
             }
 
             this._updatePositionsFromLayout();
@@ -1255,6 +1324,15 @@ export class NetworkVisualizer {
                 .lerp(this._constellationEdgeHigh, normWeight);
         }
 
+        if (
+            this.currentThemeName === 'take-on-me-real' &&
+            !forceOriginalColor
+        ) {
+            return this._scratchColor
+                .copy(this._takeOnMeEdgeLow)
+                .lerp(this._takeOnMeEdgeHigh, normWeight);
+        }
+
         if (normWeight <= 0.5) {
             return this._scratchColor
                 .copy(this._colorLow)
@@ -1304,6 +1382,85 @@ export class NetworkVisualizer {
         }
 
         return { edgeColor, edgeOpacity, edgeData };
+    }
+
+    _updateEdgeTubeSegment(
+        edgeIndex,
+        i,
+        p1x,
+        p1y,
+        p1z,
+        p2x,
+        p2y,
+        p2z,
+        edgeColor,
+    ) {
+        if (!this.edgeTubeInstancedMesh) return;
+
+        const instanceId = edgeIndex * this.maxEdgeSegments + i;
+
+        this._scratchVec3_1.set(p1x, p1y, p1z);
+        this._scratchVec3_2.set(p2x, p2y, p2z);
+
+        const direction = this._scratchVec3_3.subVectors(
+            this._scratchVec3_2,
+            this._scratchVec3_1,
+        );
+        const length = direction.length();
+        const normDir = direction.normalize();
+
+        const alignAxis = this._scratchVec3_4.set(0, 1, 0);
+        const quaternion = this._scratchQuat_1.setFromUnitVectors(
+            alignAxis,
+            normDir,
+        );
+
+        const midpoint = this._scratchVec3_5
+            .addVectors(this._scratchVec3_1, this._scratchVec3_2)
+            .multiplyScalar(0.5);
+
+        const radius = this._currentEdgeTubeRadius || 0.4;
+        const scale = this._scratchVec3_3.set(radius, length, radius);
+
+        this._scratchMatrix.compose(midpoint, quaternion, scale);
+        this.edgeTubeInstancedMesh.setMatrixAt(instanceId, this._scratchMatrix);
+        this.edgeTubeInstancedMesh.setColorAt(instanceId, edgeColor);
+    }
+
+    _updateEdgeCone(edgeData, curve, edgeColor, needsUpdateAttribute) {
+        if (!edgeData.cone || edgeData.cone.instanceId === undefined) return;
+
+        // Midpoint at t = 0.5: 0.25 * v0 + 0.5 * v1 + 0.25 * v2
+        const midX = 0.25 * curve.v0.x + 0.5 * curve.v1.x + 0.25 * curve.v2.x;
+        const midY = 0.25 * curve.v0.y + 0.5 * curve.v1.y + 0.25 * curve.v2.y;
+        const midZ = 0.25 * curve.v0.z + 0.5 * curve.v1.z + 0.25 * curve.v2.z;
+        this._scratchVec3_1.set(midX, midY, midZ);
+
+        // Tangent direction at t = 0.5: v2 - v0
+        this._scratchVec3_2.subVectors(curve.v2, curve.v0).normalize();
+
+        this._scratchMatrix.makeTranslation(
+            this._scratchVec3_1.x,
+            this._scratchVec3_1.y,
+            this._scratchVec3_1.z,
+        );
+        this._scratchMatrix.lookAt(
+            this._scratchVec3_1,
+            this._scratchVec3_3
+                .copy(this._scratchVec3_1)
+                .add(this._scratchVec3_2),
+            this._upVec,
+        );
+        this.coneInstancedMesh.setMatrixAt(
+            edgeData.cone.instanceId,
+            this._scratchMatrix,
+        );
+        this.coneInstancedMesh.setColorAt(edgeData.cone.instanceId, edgeColor);
+        if (needsUpdateAttribute) {
+            this._updateMeshNeedsUpdate(this.coneInstancedMesh);
+        }
+
+        edgeData.cone.position.copy(this._scratchVec3_1);
     }
 
     _updateEdgeBuffer(
@@ -1391,61 +1548,29 @@ export class NetworkVisualizer {
 
             alphaAttr.array[baseIdx + i * 2] = edgeOpacity;
             alphaAttr.array[baseIdx + i * 2 + 1] = edgeOpacity;
+
+            this._updateEdgeTubeSegment(
+                edgeIndex,
+                i,
+                p1x,
+                p1y,
+                p1z,
+                p2x,
+                p2y,
+                p2z,
+                edgeColor,
+            );
         }
 
         if (needsUpdateAttribute) {
             posAttr.needsUpdate = true;
             colorAttr.needsUpdate = true;
             alphaAttr.needsUpdate = true;
+            this._updateMeshNeedsUpdate(this.edgeTubeInstancedMesh);
         }
 
         // Update cone
-        if (
-            edgeData &&
-            edgeData.cone &&
-            edgeData.cone.instanceId !== undefined
-        ) {
-            // Midpoint at t = 0.5: 0.25 * v0 + 0.5 * v1 + 0.25 * v2
-            const midX =
-                0.25 * curve.v0.x + 0.5 * curve.v1.x + 0.25 * curve.v2.x;
-            const midY =
-                0.25 * curve.v0.y + 0.5 * curve.v1.y + 0.25 * curve.v2.y;
-            const midZ =
-                0.25 * curve.v0.z + 0.5 * curve.v1.z + 0.25 * curve.v2.z;
-            this._scratchVec3_1.set(midX, midY, midZ);
-
-            // Tangent direction at t = 0.5: v2 - v0
-            this._scratchVec3_2.subVectors(curve.v2, curve.v0).normalize();
-
-            this._scratchMatrix.makeTranslation(
-                this._scratchVec3_1.x,
-                this._scratchVec3_1.y,
-                this._scratchVec3_1.z,
-            );
-            this._scratchMatrix.lookAt(
-                this._scratchVec3_1,
-                this._scratchVec3_3
-                    .copy(this._scratchVec3_1)
-                    .add(this._scratchVec3_2),
-                this._upVec,
-            );
-            this.coneInstancedMesh.setMatrixAt(
-                edgeData.cone.instanceId,
-                this._scratchMatrix,
-            );
-            this.coneInstancedMesh.setColorAt(
-                edgeData.cone.instanceId,
-                edgeColor,
-            );
-            if (needsUpdateAttribute) {
-                this.coneInstancedMesh.instanceMatrix.needsUpdate = true;
-                if (this.coneInstancedMesh.instanceColor) {
-                    this.coneInstancedMesh.instanceColor.needsUpdate = true;
-                }
-            }
-
-            edgeData.cone.position.copy(this._scratchVec3_1);
-        }
+        this._updateEdgeCone(edgeData, curve, edgeColor, needsUpdateAttribute);
 
         this.edgeLineSegments.geometry.setDrawRange(
             0,
@@ -1571,6 +1696,11 @@ export class NetworkVisualizer {
         };
         this.edges.push(edgeData);
         this.edgeMap.set(edgeId, edgeData);
+
+        if (this.edgeTubeInstancedMesh) {
+            this.edgeTubeInstancedMesh.count =
+                this.edges.length * this.maxEdgeSegments;
+        }
 
         this._updateEdgeBuffer(edgeId, link, layoutScale, maxWeight);
     }
@@ -1886,6 +2016,23 @@ export class NetworkVisualizer {
         this.outlineInstancedMesh.instanceMatrix.needsUpdate = true;
     }
 
+    _updateLineSegmentsNeedsUpdate() {
+        if (!this.edgeLineSegments || this.edges.length === 0) return;
+        const geom = this.edgeLineSegments.geometry;
+        if (geom.attributes.position)
+            geom.attributes.position.needsUpdate = true;
+        if (geom.attributes.color) geom.attributes.color.needsUpdate = true;
+        if (geom.attributes.alpha) geom.attributes.alpha.needsUpdate = true;
+    }
+
+    _updateMeshNeedsUpdate(mesh) {
+        if (!mesh) return;
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) {
+            mesh.instanceColor.needsUpdate = true;
+        }
+    }
+
     _updateEdgePositions() {
         for (let i = 0; i < this.edges.length; i++) {
             const edgeData = this.edges[i];
@@ -1901,21 +2048,11 @@ export class NetworkVisualizer {
             }
         }
 
-        // Batch update GPU attributes once for all edges
-        if (this.edgeLineSegments && this.edges.length > 0) {
-            const posAttr = this.edgeLineSegments.geometry.attributes.position;
-            const colorAttr = this.edgeLineSegments.geometry.attributes.color;
-            const alphaAttr = this.edgeLineSegments.geometry.attributes.alpha;
-            if (posAttr) posAttr.needsUpdate = true;
-            if (colorAttr) colorAttr.needsUpdate = true;
-            if (alphaAttr) alphaAttr.needsUpdate = true;
-        }
+        this._updateLineSegmentsNeedsUpdate();
 
-        if (this.coneInstancedMesh && this.edges.length > 0) {
-            this.coneInstancedMesh.instanceMatrix.needsUpdate = true;
-            if (this.coneInstancedMesh.instanceColor) {
-                this.coneInstancedMesh.instanceColor.needsUpdate = true;
-            }
+        if (this.edges.length > 0) {
+            this._updateMeshNeedsUpdate(this.coneInstancedMesh);
+            this._updateMeshNeedsUpdate(this.edgeTubeInstancedMesh);
         }
     }
 
@@ -2067,6 +2204,9 @@ export class NetworkVisualizer {
         if (this.edgeLineSegments) {
             this._objectsToIntersect.push(this.edgeLineSegments);
         }
+        if (this.edgeTubeInstancedMesh) {
+            this._objectsToIntersect.push(this.edgeTubeInstancedMesh);
+        }
         for (let i = 0; i < this.pickableObjects.length; i++) {
             if (this.pickableObjects[i]) {
                 this._objectsToIntersect.push(this.pickableObjects[i]);
@@ -2086,6 +2226,12 @@ export class NetworkVisualizer {
         } else if (intersect.object === this.coneInstancedMesh) {
             const instanceId = intersect.instanceId;
             const edgeId = this.instanceIdEdgeMap.get(instanceId);
+            const edgeData = this.edgeMap.get(edgeId);
+            return edgeData ? edgeData.line : null;
+        } else if (intersect.object === this.edgeTubeInstancedMesh) {
+            const instanceId = intersect.instanceId;
+            const edgeIndex = Math.floor(instanceId / this.maxEdgeSegments);
+            const edgeId = this.instanceIdEdgeMap.get(edgeIndex);
             const edgeData = this.edgeMap.get(edgeId);
             return edgeData ? edgeData.line : null;
         } else if (intersect.object === this.edgeLineSegments) {
@@ -2450,8 +2596,22 @@ export class NetworkVisualizer {
 
     _updateThemeBloom(themeName) {
         if (this.bloomEffect) {
-            this.bloomEffect.intensity =
-                themeName === 'constellation' ? 5.5 : 3.0;
+            if (themeName === 'constellation') {
+                this.bloomEffect.intensity = 5.5;
+                if (this.bloomEffect.luminanceMaterial) {
+                    this.bloomEffect.luminanceMaterial.threshold = 0.15;
+                }
+            } else if (themeName === 'take-on-me-real') {
+                this.bloomEffect.intensity = 1.0;
+                if (this.bloomEffect.luminanceMaterial) {
+                    this.bloomEffect.luminanceMaterial.threshold = 0.9;
+                }
+            } else {
+                this.bloomEffect.intensity = 3.0;
+                if (this.bloomEffect.luminanceMaterial) {
+                    this.bloomEffect.luminanceMaterial.threshold = 0.15;
+                }
+            }
         }
     }
 
@@ -2474,6 +2634,48 @@ export class NetworkVisualizer {
         }
     }
 
+    _updateThemeCones(theme) {
+        if (this.coneInstancedMesh) {
+            this.coneInstancedMesh.material.emissiveIntensity =
+                theme.nodeMaterial.emissiveIntensity + 0.05;
+            this.coneInstancedMesh.material.wireframe =
+                !!theme.nodeMaterial.wireframe;
+            this.coneInstancedMesh.material.needsUpdate = true;
+        }
+    }
+
+    _updateThemeEdgesVisibility(themeName, theme) {
+        const isTakeOnMeReal = themeName === 'take-on-me-real';
+
+        if (this.edgeLineSegments) {
+            this.edgeLineSegments.visible = !isTakeOnMeReal;
+            this.edgeLineSegments.material.transparent = true;
+            this.edgeLineSegments.material.opacity = theme.nodeMaterial
+                .wireframe
+                ? 0.4
+                : 1.0;
+        }
+
+        if (this.edgeTubeInstancedMesh) {
+            this.edgeTubeInstancedMesh.visible = isTakeOnMeReal;
+            this.edgeTubeInstancedMesh.material.roughness =
+                theme.nodeMaterial.roughness !== undefined
+                    ? theme.nodeMaterial.roughness
+                    : 0.1;
+            this.edgeTubeInstancedMesh.material.metalness =
+                theme.nodeMaterial.metalness !== undefined
+                    ? theme.nodeMaterial.metalness
+                    : 0.05;
+            this.edgeTubeInstancedMesh.material.emissiveIntensity =
+                theme.nodeMaterial.emissiveIntensity !== undefined
+                    ? theme.nodeMaterial.emissiveIntensity
+                    : 0.45;
+            this.edgeTubeInstancedMesh.material.wireframe =
+                !!theme.nodeMaterial.wireframe;
+            this.edgeTubeInstancedMesh.material.needsUpdate = true;
+        }
+    }
+
     setTheme(themeName) {
         const oldTheme = this.themeManager.getCurrentTheme();
         if (oldTheme && oldTheme.onDeactivate) {
@@ -2482,8 +2684,9 @@ export class NetworkVisualizer {
 
         this.themeManager.setTheme(themeName);
         this.currentThemeName = themeName;
-        this._updateComposerBufferType(themeName === 'constellation');
+        this._updateComposerBufferType(themeName);
         const theme = this.themeManager.getCurrentTheme();
+        this._currentEdgeTubeRadius = theme.edgeTubeRadius || 0.4;
 
         // Update CSS theme attribute
         if (typeof document !== 'undefined') {
@@ -2521,22 +2724,8 @@ export class NetworkVisualizer {
         }
 
         this._updateThemeBloom(themeName);
-
-        if (this.coneInstancedMesh) {
-            this.coneInstancedMesh.material.emissiveIntensity =
-                theme.nodeMaterial.emissiveIntensity + 0.05;
-            this.coneInstancedMesh.material.wireframe =
-                !!theme.nodeMaterial.wireframe;
-            this.coneInstancedMesh.material.needsUpdate = true;
-        }
-
-        if (this.edgeLineSegments) {
-            this.edgeLineSegments.material.transparent = true;
-            this.edgeLineSegments.material.opacity = theme.nodeMaterial
-                .wireframe
-                ? 0.4
-                : 1.0;
-        }
+        this._updateThemeCones(theme);
+        this._updateThemeEdgesVisibility(themeName, theme);
 
         this.renderer.setClearColor(theme.background);
 

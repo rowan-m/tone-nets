@@ -50,6 +50,49 @@
     --panel-border: rgba(0, 255, 68, 0.2);
 }
 
+[data-theme='take-on-me-real'] {
+    --bg-color: #f4f7f6;
+    --text-color: #1a2224;
+    --text-muted: #5e6b6f;
+    --accent-color: #ff3388; /* Vivid Neon Hot Pink */
+    --accent-glow: rgba(255, 51, 136, 0.15);
+    --accent-secondary: #3aa19e; /* Vibrant turquoise teal */
+    --panel-bg: rgba(255, 255, 255, 0.88); /* Glassmorphism light card */
+    --panel-border: rgba(26, 34, 36, 0.12);
+}
+
+[data-theme='take-on-me-real'] .btn {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme='take-on-me-real'] .btn:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme='take-on-me-real'] .toggle-control {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+[data-theme='take-on-me-real'] .toggle-control:hover:not(:has(input:disabled)) {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme='take-on-me-real'] .close-btn {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme='take-on-me-real'] .close-btn:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme='take-on-me-real'] header {
+    background: linear-gradient(
+        to bottom,
+        rgba(244, 247, 246, 0.95),
+        transparent
+    );
+}
+
 body,
 html {
     margin: 0;

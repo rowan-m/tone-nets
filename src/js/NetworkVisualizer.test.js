@@ -3,7 +3,12 @@ import * as THREE from 'three';
 import { EffectComposer } from 'postprocessing';
 import { NetworkVisualizer } from './NetworkVisualizer.js';
 import { Utils } from './Utils.js';
-import { DefaultTheme, TerminatorTheme, ConstellationTheme } from './Themes.js';
+import {
+    DefaultTheme,
+    TerminatorTheme,
+    ConstellationTheme,
+    TakeOnMeRealTheme,
+} from './Themes.js';
 
 // --- Mocks ---
 
@@ -31,6 +36,7 @@ vi.mock('./VisualEffectsManager.js', () => ({
         this.showInstrumentEmoji = vi.fn();
         this.enableTerminatorBackground = vi.fn();
         this.enableConstellationBackground = vi.fn();
+        this.enableStudioBackground = vi.fn();
         this.clear = vi.fn();
         this.setRetroMode = vi.fn();
         this.setConstellationMode = vi.fn();
@@ -104,7 +110,14 @@ vi.mock('postprocessing', () => ({
     }),
     RenderPass: vi.fn(),
     EffectPass: vi.fn(),
-    BloomEffect: vi.fn(),
+    BloomEffect: vi.fn().mockImplementation(function (options) {
+        return {
+            intensity: options ? options.intensity : 3.0,
+            luminanceMaterial: {
+                threshold: options ? options.luminanceThreshold : 0.15,
+            },
+        };
+    }),
     Effect: class {
         constructor() {
             this.uniforms = new Map();
@@ -450,6 +463,36 @@ describe('NetworkVisualizer', () => {
                 }),
             );
         });
+
+        it('configures bloom intensity and luminance threshold based on the active theme to avoid white haze on light backgrounds', () => {
+            visualizer.themeManager.registerTheme(TakeOnMeRealTheme);
+
+            const mockGraph = createMockGraph([
+                { id: 'C4', data: { degree: 1 } },
+            ]);
+            visualizer.initIncremental(mockGraph);
+
+            // Transition to default theme first
+            visualizer.setTheme('default');
+            expect(visualizer.bloomEffect.intensity).toBeCloseTo(3.0);
+            expect(
+                visualizer.bloomEffect.luminanceMaterial.threshold,
+            ).toBeCloseTo(0.15);
+
+            // Switch to take-on-me-real theme
+            visualizer.setTheme('take-on-me-real');
+            expect(visualizer.bloomEffect.intensity).toBeCloseTo(1.0);
+            expect(
+                visualizer.bloomEffect.luminanceMaterial.threshold,
+            ).toBeCloseTo(0.9);
+            expect(visualizer.edgeLineSegments.visible).toBe(false);
+            expect(visualizer.edgeTubeInstancedMesh.visible).toBe(true);
+
+            // Transition back to default theme first (should disable visibility)
+            visualizer.setTheme('default');
+            expect(visualizer.edgeLineSegments.visible).toBe(true);
+            expect(visualizer.edgeTubeInstancedMesh.visible).toBe(false);
+        });
     });
 
     describe('Playback Highlights', () => {
@@ -575,6 +618,37 @@ describe('NetworkVisualizer', () => {
             expect(constellationEdgeColor.r).toBeCloseTo(expectedBlue.r);
             expect(constellationEdgeColor.g).toBeCloseTo(expectedBlue.g);
             expect(constellationEdgeColor.b).toBeCloseTo(expectedBlue.b);
+
+            // Verify forceOriginalColor returns the original default colors
+            const forcedColor = visualizer._getEdgeColor(0.5, true).clone();
+            const expectedDefault = visualizer._colorLow
+                .clone()
+                .lerp(visualizer._colorMid, 1.0);
+            expect(forcedColor.r).toBeCloseTo(expectedDefault.r);
+            expect(forcedColor.g).toBeCloseTo(expectedDefault.g);
+            expect(forcedColor.b).toBeCloseTo(expectedDefault.b);
+        });
+
+        it('uses soft pastel teal for inactive edges in take-on-me-real theme, and forceOriginalColor preserves highlights', () => {
+            visualizer.themeManager.registerTheme(TakeOnMeRealTheme);
+
+            // Set to default theme first
+            visualizer.setTheme('default');
+            const defaultEdgeColor = visualizer._getEdgeColor(0.5).clone();
+            // Verify standard theme edge color is not pastel teal
+            expect(defaultEdgeColor.r).not.toBe(visualizer._takeOnMeEdgeLow.r);
+
+            // Set to take-on-me-real theme
+            visualizer.setTheme('take-on-me-real');
+            const takeOnMeEdgeColor = visualizer._getEdgeColor(0.5).clone();
+
+            // Verify take-on-me-real theme edge color is the soft pastel teal
+            const expectedTeal = visualizer._takeOnMeEdgeLow
+                .clone()
+                .lerp(visualizer._takeOnMeEdgeHigh, 0.5);
+            expect(takeOnMeEdgeColor.r).toBeCloseTo(expectedTeal.r);
+            expect(takeOnMeEdgeColor.g).toBeCloseTo(expectedTeal.g);
+            expect(takeOnMeEdgeColor.b).toBeCloseTo(expectedTeal.b);
 
             // Verify forceOriginalColor returns the original default colors
             const forcedColor = visualizer._getEdgeColor(0.5, true).clone();

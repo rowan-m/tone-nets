@@ -67,3 +67,31 @@ export const RetroTheme = {
         visualizer.effects.enableRetroBackground(false);
     },
 };
+
+export const ConstellationTheme = {
+    name: 'constellation',
+    highlightColor: 0xffd700, // Twinkling Gold
+    nodeMaterial: {
+        roughness: 0.3,
+        metalness: 0.2,
+        emissiveIntensity: 1.5,
+    },
+    showOutlines: false, // Turn off the black outlines
+    background: 0x00020a, // Deep midnight blue
+    emoji: '🌌',
+    getNodeColor: (pitchClass) => {
+        // Luminous celestial colors
+        const hue = pitchClass / 12;
+        const saturation = 0.6;
+        const lightness = 0.7;
+        return { hue, saturation, lightness };
+    },
+    onActivate: (visualizer) => {
+        visualizer.effects.enableConstellationBackground(true);
+        visualizer.effects.setConstellationMode(true);
+    },
+    onDeactivate: (visualizer) => {
+        visualizer.effects.enableConstellationBackground(false);
+        visualizer.effects.setConstellationMode(false);
+    },
+};

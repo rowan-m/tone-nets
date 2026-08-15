@@ -93,7 +93,7 @@ describe('NetworkLayout', () => {
 
             expect(physics.springLength).toBe(100);
             expect(physics.gravity).toBe(-500);
-            expect(physics.theta).toBe(0.8); // Default preserved
+            expect(physics.theta).toBeCloseTo(0.8); // Default preserved
         });
     });
 
@@ -151,7 +151,8 @@ describe('NetworkLayout', () => {
             springTransformFn(fakeLink, spring);
 
             // Assert
-            expect(spring.length).toBe(0);
+            const springLength = spring.length;
+            expect(springLength).toBe(0);
             expect(spring.weight).toBe(5);
         });
 
@@ -164,7 +165,8 @@ describe('NetworkLayout', () => {
             springTransformFn(realLink, spring);
 
             // Assert
-            expect(spring.length).toBe(40);
+            const springLength = spring.length;
+            expect(springLength).toBe(40);
             expect(spring.weight).toBe(10);
         });
 
@@ -177,7 +179,8 @@ describe('NetworkLayout', () => {
             springTransformFn(plainLink, spring);
 
             // Assert
-            expect(spring.length).toBe(40);
+            const springLength = spring.length;
+            expect(springLength).toBe(40);
             expect(spring.weight).toBe(1);
         });
     });

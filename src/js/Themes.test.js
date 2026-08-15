@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { DefaultTheme, TerminatorTheme } from './Themes.js';
+import { DefaultTheme, TerminatorTheme, ConstellationTheme } from './Themes.js';
 
 describe('Themes', () => {
     describe('DefaultTheme', () => {
@@ -50,8 +50,8 @@ describe('Themes', () => {
 
                     // Assert
                     expect(color.hue).toBe(expectedHue);
-                    expect(color.saturation).toBe(0.1);
-                    expect(color.lightness).toBe(0.8);
+                    expect(color.saturation).toBeCloseTo(0.1);
+                    expect(color.lightness).toBeCloseTo(0.8);
                 });
             });
         });
@@ -144,6 +144,75 @@ describe('Themes', () => {
                 );
                 expect(
                     mockVisualizer.effects.enableRetroBackground,
+                ).toHaveBeenCalledWith(false);
+            });
+        });
+    });
+
+    describe('ConstellationTheme', () => {
+        it('should define the constellation aesthetic properties', () => {
+            expect(ConstellationTheme.name).toBe('constellation');
+            expect(ConstellationTheme.emoji).toBe('🌌');
+            expect(ConstellationTheme.background).toBe(0x00020a);
+            expect(ConstellationTheme.highlightColor).toBe(0xffd700);
+            expect(ConstellationTheme.showOutlines).toBe(false);
+            expect(ConstellationTheme.nodeMaterial).toEqual({
+                roughness: 0.3,
+                metalness: 0.2,
+                emissiveIntensity: 1.5,
+            });
+        });
+
+        describe('getNodeColor', () => {
+            it('should calculate luminous celestial colors for various pitch classes', () => {
+                const testCases = [
+                    { pc: 0, expectedHue: 0 },
+                    { pc: 6, expectedHue: 0.5 },
+                ];
+
+                testCases.forEach(({ pc, expectedHue }) => {
+                    const color = ConstellationTheme.getNodeColor(pc);
+                    expect(color.hue).toBeCloseTo(expectedHue);
+                    expect(color.saturation).toBeCloseTo(0.6);
+                    expect(color.lightness).toBeCloseTo(0.7);
+                });
+            });
+        });
+
+        describe('Lifecycle Hooks', () => {
+            it('should enable constellation background on activation', () => {
+                const mockVisualizer = {
+                    effects: {
+                        enableConstellationBackground: vi.fn(),
+                        setConstellationMode: vi.fn(),
+                    },
+                };
+
+                ConstellationTheme.onActivate(mockVisualizer);
+
+                expect(
+                    mockVisualizer.effects.enableConstellationBackground,
+                ).toHaveBeenCalledWith(true);
+                expect(
+                    mockVisualizer.effects.setConstellationMode,
+                ).toHaveBeenCalledWith(true);
+            });
+
+            it('should disable constellation background on deactivation', () => {
+                const mockVisualizer = {
+                    effects: {
+                        enableConstellationBackground: vi.fn(),
+                        setConstellationMode: vi.fn(),
+                    },
+                };
+
+                ConstellationTheme.onDeactivate(mockVisualizer);
+
+                expect(
+                    mockVisualizer.effects.enableConstellationBackground,
+                ).toHaveBeenCalledWith(false);
+                expect(
+                    mockVisualizer.effects.setConstellationMode,
                 ).toHaveBeenCalledWith(false);
             });
         });

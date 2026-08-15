@@ -65,8 +65,8 @@ describe('ThemeManager', () => {
             const registered = themeManager.getTheme('material-theme');
 
             // Assert
-            expect(registered.nodeMaterial.roughness).toBe(0.95);
-            expect(registered.nodeMaterial.metalness).toBe(0.2); // Default value
+            expect(registered.nodeMaterial.roughness).toBeCloseTo(0.95);
+            expect(registered.nodeMaterial.metalness).toBeCloseTo(0.2); // Default value
         });
 
         it('should set the first registered theme as the current theme', () => {

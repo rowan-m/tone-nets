@@ -14,6 +14,7 @@ export class VisualEffectsManager {
         this.maxEmojis = 100;
         this.emojiTextureCache = new Map();
         this.retroMode = false;
+        this.constellationMode = false;
 
         this.emojiPool = new ObjectPool(
             (emoji) => this._createEmojiSprite(emoji),
@@ -21,6 +22,7 @@ export class VisualEffectsManager {
                 item.sprite.material.map = this._getEmojiTexture(
                     emoji,
                     this.retroMode,
+                    this.constellationMode,
                 );
                 item.sprite.material.opacity = 1.0;
                 item.life = 1.0;
@@ -42,6 +44,11 @@ export class VisualEffectsManager {
         this.retroGroup.visible = false;
         this.scene.add(this.retroGroup);
         this._initRetroBackground();
+
+        this.constellationGroup = new THREE.Group();
+        this.constellationGroup.visible = false;
+        this.scene.add(this.constellationGroup);
+        this._initConstellationBackground();
 
         if (typeof document !== 'undefined' || global.document) {
             const uniqueEmojis = new Set(
@@ -237,14 +244,85 @@ export class VisualEffectsManager {
         this.retroGroup.visible = enabled;
     }
 
+    enableConstellationBackground(enabled) {
+        this.constellationGroup.visible = enabled;
+    }
+
     setRetroMode(enabled) {
         this.retroMode = enabled;
     }
 
-    update(delta, frequencyData = null) {
+    setConstellationMode(enabled) {
+        this.constellationMode = enabled;
+    }
+
+    update(
+        delta,
+        frequencyData = null,
+        graphCenter = null,
+        graphRadius = null,
+    ) {
         this._updateEmojis(delta);
         this._updateTerminatorBackground(delta);
         this._updateRetroBackground(frequencyData);
+        this._updateConstellationBackground(delta, graphCenter, graphRadius);
+    }
+
+    _updateConstellationBackground(
+        delta,
+        graphCenter = null,
+        graphRadius = null,
+    ) {
+        if (!this.constellationGroup.visible) return;
+
+        // Position the main constellation group at the graph center so particle stars behave normally
+        if (graphCenter) {
+            this.constellationGroup.position.copy(graphCenter);
+        } else {
+            this.constellationGroup.position.set(0, 0, 0);
+        }
+
+        // Position the background sphere at the camera and apply physical scaling with clipping protection
+        if (this.camera && this.camera.position) {
+            this.constellationSphere.position
+                .copy(this.camera.position)
+                .sub(this.constellationGroup.position);
+
+            // Physical base radius is 2500. Far clipping plane is 10000.
+            // We clamp the scale to 3.6 so the physical radius never exceeds 9000, protecting from clipping.
+            const zoom = this.camera.zoom || 1.0;
+            const targetScale = Math.min(3.6, 1.0 / zoom);
+            this.constellationSphere.scale.set(
+                targetScale,
+                targetScale,
+                targetScale,
+            );
+
+            // Apply fractional rotation (slerp) to make stars rotate 10x slower in the viewport (90% tracking)
+            if (this.camera.quaternion) {
+                this.constellationSphere.quaternion
+                    .set(0, 0, 0, 1)
+                    .slerp(this.camera.quaternion, 0.9);
+            }
+        } else {
+            this.constellationSphere.position.set(0, 0, 0);
+            this.constellationSphere.scale.set(1.0, 1.0, 1.0);
+            this.constellationSphere.quaternion.set(0, 0, 0, 1);
+        }
+
+        this.constellationSphere.material.uniforms.uTime.value += delta;
+
+        if (this.constellationParticleShader) {
+            this.constellationParticleShader.uniforms.uTime.value += delta;
+
+            const radiusValue =
+                graphRadius !== null && !isNaN(graphRadius)
+                    ? graphRadius
+                    : 1000.0;
+            const spreadValue = Math.max(3000.0, radiusValue * 3.0);
+            this.constellationParticleShader.uniforms.uSpread.value =
+                spreadValue;
+        }
     }
 
     _updateTerminatorBackground(delta) {
@@ -422,8 +500,202 @@ export class VisualEffectsManager {
         this.retroGroup.add(this.retroEqualizer);
     }
 
-    _getEmojiTexture(emoji, isRetro = false) {
-        const cacheKey = isRetro ? `${emoji}_retro` : emoji;
+    _initConstellationBackground() {
+        const geo = new THREE.SphereGeometry(2500, 32, 32);
+        const mat = new THREE.ShaderMaterial({
+            depthWrite: false,
+            depthTest: false,
+            side: THREE.BackSide,
+            uniforms: {
+                uTime: { value: 0 },
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec2 vScreenPos;
+                void main() {
+                    vUv = uv;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    vScreenPos = gl_Position.xy / gl_Position.w;
+                }
+            `,
+            fragmentShader: `
+                uniform float uTime;
+                varying vec2 vUv;
+                varying vec2 vScreenPos;
+
+                float hash_c(vec2 p) {
+                    p = fract(p * vec2(123.34, 456.21));
+                    p += dot(p, p + 45.32);
+                    return fract(p.x * p.y);
+                }
+
+                float random_dither(vec2 uv) {
+                    return fract(sin(dot(uv.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+                }
+
+                void main() {
+                    // Screen-space radial gradient from center of viewport (black) to edges (dark indigo)
+                    float distFromCenter = length(vScreenPos);
+                    vec3 bgBlue = vec3(0.002, 0.012, 0.035); // Soothing, dark celestial blue/indigo
+                    vec3 bgBlack = vec3(0.0, 0.0, 0.002);
+                    vec3 bgColor = mix(bgBlack, bgBlue, smoothstep(0.0, 1.2, distFromCenter));
+
+                    // Background stars scattering using standard UVs for high density wrapping
+                    vec2 st = vUv * vec2(1200.0, 600.0);
+                    vec2 ipos = floor(st);
+                    vec2 fpos = fract(st);
+
+                    float r = hash_c(ipos);
+                    float starValue = 0.0;
+
+                    if (r > 0.94) {
+                        vec2 starCenter = vec2(hash_c(ipos + 1.1), hash_c(ipos + 2.2));
+                        float dist = length(fpos - starCenter);
+
+                        float twinkleSpeed = 0.02 + r * 0.15;
+                        float twinkle = 0.8 + 0.2 * sin(uTime * twinkleSpeed + r * 100.0);
+
+                        float starSize = 0.07 + 0.11 * hash_c(ipos + 3.3);
+                        starValue = smoothstep(starSize, 0.0, dist) * twinkle;
+                    }
+
+                    vec3 starColor = vec3(1.0, 1.0, 1.0);
+                    float colorSeed = hash_c(ipos + 4.4);
+                    if (colorSeed < 0.3) {
+                        starColor = vec3(0.75, 0.88, 1.0); // soft celestial blue
+                    } else if (colorSeed > 0.7) {
+                        starColor = vec3(1.0, 0.94, 0.83); // soft cosmic gold
+                    }
+
+                    vec3 finalColor = bgColor + starColor * starValue * 0.35;
+                    
+                    // Apply high-frequency sub-perceptual dithering noise to completely dissolve 8-bit color banding
+                    float dither = random_dither(gl_FragCoord.xy);
+                    finalColor += (dither - 0.5) / 255.0;
+
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `,
+        });
+
+        this.constellationSphere = new THREE.Mesh(geo, mat);
+        this.constellationSphere.frustumCulled = false;
+        this.constellationSphere.renderOrder = -1000;
+        this.constellationSphere.position.set(0, 0, 0);
+        this.constellationGroup.add(this.constellationSphere);
+
+        // Add drifting, twinkling celestial stars particles
+        const particleCount = 400;
+        const particleGeo = new THREE.BufferGeometry();
+        const positions = new Float32Array(particleCount * 3);
+        const colors = new Float32Array(particleCount * 3);
+
+        const colorWhite = new THREE.Color(0xffffff);
+        const colorSoftBlue = new THREE.Color(0xb0e0e6); // Powder Blue
+        const colorSoftGold = new THREE.Color(0xfff8dc); // Cornsilk / Warm white
+        const scratchColor = new THREE.Color();
+
+        for (let i = 0; i < particleCount; i++) {
+            positions[i * 3] = Math.random() - 0.5;
+            positions[i * 3 + 1] = Math.random() - 0.5;
+            positions[i * 3 + 2] = Math.random() - 0.5;
+
+            const r = Math.random();
+            if (r < 0.4) {
+                scratchColor.copy(colorWhite);
+            } else if (r < 0.7) {
+                scratchColor
+                    .copy(colorSoftBlue)
+                    .lerp(colorWhite, Math.random() * 0.5);
+            } else {
+                scratchColor
+                    .copy(colorSoftGold)
+                    .lerp(colorWhite, Math.random() * 0.5);
+            }
+
+            colors[i * 3] = scratchColor.r;
+            colors[i * 3 + 1] = scratchColor.g;
+            colors[i * 3 + 2] = scratchColor.b;
+        }
+
+        particleGeo.setAttribute(
+            'position',
+            new THREE.BufferAttribute(positions, 3),
+        );
+        particleGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const particleMat = new THREE.PointsMaterial({
+            size: 4,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+        });
+
+        particleMat.onBeforeCompile = (shader) => {
+            shader.uniforms.uTime = { value: 0 };
+            shader.uniforms.uSpread = { value: 1000 };
+            this.constellationParticleShader = shader;
+
+            shader.vertexShader =
+                `
+                uniform float uTime;
+                uniform float uSpread;
+                varying float vTwinkle;
+                
+                float hash_p(float n) {
+                    return fract(sin(n) * 43758.5453123);
+                }
+            ` + shader.vertexShader;
+
+            shader.vertexShader = shader.vertexShader.replace(
+                '#include <begin_vertex>',
+                `
+                vec3 scaledPos = position * uSpread;
+                
+                float particleSeed = position.x + position.y + position.z;
+                float driftSpeed = 0.01 + 0.01 * hash_p(particleSeed);
+                scaledPos.x += cos(uTime * driftSpeed + particleSeed * 10.0) * uSpread * 0.005;
+                scaledPos.y += sin(uTime * driftSpeed + particleSeed * 10.0) * uSpread * 0.005;
+                
+                vec3 transformed = scaledPos;
+                
+                float twinkleSpeed = 0.2 + 0.3 * hash_p(particleSeed + 1.0);
+                vTwinkle = 0.1 + 0.9 * (0.5 + 0.5 * sin(uTime * twinkleSpeed + hash_p(particleSeed) * 6.28));
+                `,
+            );
+
+            shader.fragmentShader =
+                `
+                varying float vTwinkle;
+            ` + shader.fragmentShader;
+
+            shader.fragmentShader = shader.fragmentShader.replace(
+                '#include <premultiplied_alpha_fragment>',
+                `
+                #include <premultiplied_alpha_fragment>
+                
+                float dist = length(gl_PointCoord - vec2(0.5));
+                if (dist > 0.5) discard;
+                float radialAlpha = smoothstep(0.5, 0.05, dist);
+                
+                gl_FragColor = vec4(gl_FragColor.rgb, gl_FragColor.a * radialAlpha * vTwinkle);
+                `,
+            );
+        };
+
+        this.constellationStars = new THREE.Points(particleGeo, particleMat);
+        this.constellationGroup.add(this.constellationStars);
+    }
+
+    _getEmojiTexture(emoji, isRetro = false, isConstellation = false) {
+        let cacheKey = emoji;
+        if (isRetro) {
+            cacheKey = `${emoji}_retro`;
+        } else if (isConstellation) {
+            cacheKey = `${emoji}_constellation`;
+        }
         let texture = this.emojiTextureCache.get(cacheKey);
 
         if (!texture) {
@@ -450,6 +722,20 @@ export class VisualEffectsManager {
                 // Final pass: ensure background transparency is maintained (as 'color' fills the rect)
                 ctx.globalCompositeOperation = 'destination-in';
                 ctx.fillText(emoji, 32, 32);
+            } else if (isConstellation) {
+                // Draw the emoji grayscaled to preserve internal luminosity details
+                ctx.filter = 'grayscale(100%) contrast(120%)';
+                ctx.fillText(emoji, 32, 32);
+
+                // Tint using 'color' mode: preserves luminosity (details) while applying a beautiful slightly lighter celestial blue hue
+                ctx.filter = 'none';
+                ctx.globalCompositeOperation = 'color';
+                ctx.fillStyle = '#58a6ff'; // Beautiful slightly lighter celestial blue shade
+                ctx.fillRect(0, 0, 64, 64);
+
+                // Final pass: ensure background transparency is maintained
+                ctx.globalCompositeOperation = 'destination-in';
+                ctx.fillText(emoji, 32, 32);
             } else {
                 ctx.fillText(emoji, 32, 32);
             }
@@ -461,7 +747,11 @@ export class VisualEffectsManager {
     }
 
     _createEmojiSprite(emoji) {
-        const texture = this._getEmojiTexture(emoji, this.retroMode);
+        const texture = this._getEmojiTexture(
+            emoji,
+            this.retroMode,
+            this.constellationMode,
+        );
 
         const material = new THREE.SpriteMaterial({
             map: texture,

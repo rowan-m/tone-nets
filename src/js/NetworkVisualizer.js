@@ -153,6 +153,8 @@ export class NetworkVisualizer {
         this._colorMid = new THREE.Color(0x666666);
         this._colorHigh = new THREE.Color(0x999999);
         this._scratchColor = new THREE.Color();
+        this._constellationEdgeLow = new THREE.Color(0x0a1630); // Very subtle dark midnight blue
+        this._constellationEdgeHigh = new THREE.Color(0x182c50); // Slightly lighter subtle blue for higher weights
 
         // Reusable vectors to minimize GC
         this._cameraUp = new THREE.Vector3();
@@ -385,7 +387,14 @@ export class NetworkVisualizer {
     }
 
     initPostProcessing() {
-        this.composer = new EffectComposer(this.renderer);
+        const isConstellation = this.currentThemeName === 'constellation';
+        const targetType = isConstellation
+            ? THREE.HalfFloatType
+            : THREE.UnsignedByteType;
+
+        this.composer = new EffectComposer(this.renderer, {
+            frameBufferType: targetType,
+        });
         this.composer.addPass(new RenderPass(this.scene, this.camera));
 
         const bloomEffect = new BloomEffect({
@@ -395,7 +404,57 @@ export class NetworkVisualizer {
             mipmapBlur: true,
         });
 
+        this.bloomEffect = bloomEffect;
         this.composer.addPass(new EffectPass(this.camera, bloomEffect));
+    }
+
+    _updateComposerBufferType(isConstellation) {
+        const targetType = isConstellation
+            ? THREE.HalfFloatType
+            : THREE.UnsignedByteType;
+
+        if (this.composer) {
+            const buffer =
+                this.composer.inputBuffer || this.composer.writeBuffer;
+            const currentType = buffer
+                ? buffer.texture.type
+                : THREE.UnsignedByteType;
+            if (currentType === targetType) return;
+        }
+
+        // Dispose of old composer and bloom effect to prevent memory leaks and clear WebGL buffer states completely
+        if (this.composer) {
+            if (typeof this.composer.dispose === 'function') {
+                this.composer.dispose();
+            }
+        }
+        if (this.bloomEffect) {
+            if (typeof this.bloomEffect.dispose === 'function') {
+                this.bloomEffect.dispose();
+            }
+            this.bloomEffect = null;
+        }
+
+        // Recreate composer with target format
+        this.composer = new EffectComposer(this.renderer, {
+            frameBufferType: targetType,
+        });
+
+        this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+        // Create a brand new BloomEffect with appropriate baseline intensity to fully reset WebGL textures
+        this.bloomEffect = new BloomEffect({
+            intensity: isConstellation ? 5.5 : 3.0,
+            luminanceThreshold: 0.15,
+            luminanceSmoothing: 0.85,
+            mipmapBlur: true,
+        });
+
+        this.composer.addPass(new EffectPass(this.camera, this.bloomEffect));
+
+        if (this.retroCRTPass && this.effects && this.effects.retroMode) {
+            this.composer.addPass(this.retroCRTPass);
+        }
     }
 
     clear() {
@@ -543,16 +602,40 @@ export class NetworkVisualizer {
                 emissive: 0xffffff,
                 emissiveIntensity: 0.15, // Base glow for all nodes
             });
+            nodeMat.userData.uTime = { value: 0 };
+            nodeMat.userData.uIsConstellation = { value: 0 };
+
             // Inject instance-based emissive modulation and procedural reflection
             nodeMat.onBeforeCompile = (shader) => {
-                shader.uniforms.uTime = { value: 0 };
+                shader.uniforms.uTime = nodeMat.userData.uTime;
+                shader.uniforms.uIsConstellation =
+                    nodeMat.userData.uIsConstellation;
                 this.nodeShader = shader; // Save reference to update uTime in loop
+
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <common>',
+                    `
+                    #include <common>
+                    uniform float uIsConstellation;
+                    `,
+                );
+
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <begin_vertex>',
+                    `
+                    #include <begin_vertex>
+                    if (uIsConstellation > 0.5) {
+                        transformed *= 0.45;
+                    }
+                    `,
+                );
 
                 shader.fragmentShader = shader.fragmentShader.replace(
                     '#include <common>',
                     `
                     #include <common>
                     uniform float uTime;
+                    uniform float uIsConstellation;
                     
                     float random_fire(in vec2 st) {
                         return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
@@ -626,6 +709,63 @@ export class NetworkVisualizer {
                             // Force an intense emissive boost when highlighted to guarantee a clean, bright bloom over the dark metal
                             totalEmissiveRadiance += vColor.rgb * isHighlighted * 0.5;
                         #endif
+                    }
+
+                    if (uIsConstellation > 0.5) {
+                        float viewAlign = max(0.0, dot(normal, normalize(vViewPosition)));
+                        
+                        // 1. Detect if the node is active/highlighted (HDR color length > 2.0)
+                        float isHighlighted = 0.0;
+                        #ifdef USE_COLOR
+                            isHighlighted = step(2.0, length(vColor.rgb));
+                        #endif
+
+                        // 2. High-Detail Bubbling Plasma (3 octaves of FBM noise)
+                        vec2 st1 = normal.xy * 3.0 + vec2(uTime * 0.15, uTime * -0.1);
+                        vec2 st2 = normal.xy * 6.0 + vec2(uTime * -0.1, uTime * 0.2);
+                        vec2 st3 = normal.xy * 12.0 + vec2(uTime * 0.25, uTime * 0.25);
+                        
+                        float p1 = noise_fire(st1);
+                        float p2 = noise_fire(st2);
+                        float p3 = noise_fire(st3);
+                        float plasma = p1 * 0.5 + p2 * 0.3 + p3 * 0.2;
+                        
+                        // 3. High-Density Opaque Core + Fuzzy Outer Corona (Normal Blending)
+                        // This makes the core completely opaque to block internal connections!
+                        float starAlpha = smoothstep(0.0, 0.45, viewAlign);
+                        
+                        vec3 starColor = vec3(1.0, 1.0, 1.0);
+                        #ifdef USE_COLOR
+                            starColor = normalize(vColor.rgb);
+                        #endif
+                        
+                        // 4. Detailed Plasma Color
+                        vec3 plasmaColor = mix(starColor, vec3(1.0, 1.0, 1.0), plasma * 0.2);
+                        vec3 hotCore = mix(plasmaColor, vec3(1.0, 1.0, 1.0), pow(viewAlign, 6.0) * 0.4);
+                        
+                        // 5. Dynamic Luminosity (Inactive is brighter, active gets a massive boost!)
+                        float emissiveBoost = 0.95 + isHighlighted * 2.05;
+                        totalEmissiveRadiance = hotCore * starAlpha * emissiveBoost;
+                        
+                        // 6. Beautiful Fresnel Corona Outer Edge (Wider and brighter when active!)
+                        float rimExponent = mix(3.5, 2.0, isHighlighted);
+                        float rimIntensity = mix(0.4, 2.2, isHighlighted);
+                        float rim = pow(1.0 - viewAlign, rimExponent);
+                        vec3 rimColor = starColor * rim * rimIntensity;
+                        totalEmissiveRadiance += rimColor;
+                        
+                        // 7. Four-Way Lens Flare Diffraction Spikes (Burst forth when active!)
+                        float spikeH = exp(-abs(normal.y) * 45.0) * exp(-abs(normal.x) * 1.5);
+                        float spikeV = exp(-abs(normal.x) * 45.0) * exp(-abs(normal.y) * 1.5);
+                        float spike = (spikeH + spikeV) * viewAlign;
+                        vec3 spikeColor = (starColor + vec3(0.5)) * spike * isHighlighted * 3.5;
+                        totalEmissiveRadiance += spikeColor;
+                        
+                        // Set the final transparency (Corona & Spikes expand when active)
+                        float finalAlpha = max(starAlpha, rim * (0.95 + isHighlighted * 0.05));
+                        finalAlpha = max(finalAlpha, spike * isHighlighted * 0.95);
+                        diffuseColor.a = finalAlpha;
+                        diffuseColor.rgb = vec3(0.0);
                     }
                     `,
                 );
@@ -1108,7 +1248,13 @@ export class NetworkVisualizer {
         return curve;
     }
 
-    _getEdgeColor(normWeight) {
+    _getEdgeColor(normWeight, forceOriginalColor = false) {
+        if (this.currentThemeName === 'constellation' && !forceOriginalColor) {
+            return this._scratchColor
+                .copy(this._constellationEdgeLow)
+                .lerp(this._constellationEdgeHigh, normWeight);
+        }
+
         if (normWeight <= 0.5) {
             return this._scratchColor
                 .copy(this._colorLow)
@@ -1137,9 +1283,17 @@ export class NetworkVisualizer {
             edgeOpacity = 1.0;
             if (edgeData) edgeData.line.material = this.hoverEdgeMaterial;
         } else if (isPlaying) {
-            edgeColor = this._scratchColor
-                .set(this.highlightColor)
-                .multiplyScalar(this.highlightIntensity);
+            const currentTheme = this.themeManager.getCurrentTheme();
+            if (currentTheme && currentTheme.name === 'constellation') {
+                // Pass true for forceOriginalColor to preserve the original highlight color/effect
+                edgeColor = this._getEdgeColor(normWeight, true).multiplyScalar(
+                    this.highlightIntensity * 1.5,
+                );
+            } else {
+                edgeColor = this._scratchColor
+                    .set(this.highlightColor)
+                    .multiplyScalar(this.highlightIntensity);
+            }
             edgeOpacity = 1.0;
             if (edgeData) edgeData.line.material = this.highlightEdgeMaterial;
         } else {
@@ -1803,17 +1957,10 @@ export class NetworkVisualizer {
         }
     }
 
-    animate(time) {
-        if (!this._isAnimating) return;
-        this._animationFrameId = requestAnimationFrame(this.animate);
-
-        if (this.onBeforeFrame) {
-            this.onBeforeFrame();
-        }
-
+    _shouldSkipFrame(time) {
         if (document.visibilityState === 'hidden') {
             this._lastFrameTime = time;
-            return;
+            return true;
         }
 
         // Skip heavy rendering and raycasting if the visualization is completely empty
@@ -1823,6 +1970,38 @@ export class NetworkVisualizer {
             this.nodes.size === 0
         ) {
             this._lastFrameTime = time;
+            return true;
+        }
+
+        return false;
+    }
+
+    _handleRaycasting(time) {
+        // Raycast if mouse moved, or if camera/layout is active (to keep hover accurate as things move)
+        const isInteracting =
+            this.mouseMoved ||
+            (this.mouse.x !== -1000 &&
+                (this.autoTour ||
+                    (this.incrementalMode && this.layout && !this.isPaused)));
+
+        if (
+            isInteracting &&
+            time - this._lastRaycastTime > this._raycastThrottleMs
+        ) {
+            this._performRaycast();
+            this._lastRaycastTime = time;
+        }
+    }
+
+    animate(time) {
+        if (!this._isAnimating) return;
+        this._animationFrameId = requestAnimationFrame(this.animate);
+
+        if (this.onBeforeFrame) {
+            this.onBeforeFrame();
+        }
+
+        if (this._shouldSkipFrame(time)) {
             return;
         }
 
@@ -1839,19 +2018,13 @@ export class NetworkVisualizer {
             this.controls.update();
         }
 
-        // Raycast if mouse moved, or if camera/layout is active (to keep hover accurate as things move)
-        const isInteracting =
-            this.mouseMoved ||
-            (this.mouse.x !== -1000 &&
-                (this.autoTour ||
-                    (this.incrementalMode && this.layout && !this.isPaused)));
+        this._handleRaycasting(time);
 
         if (
-            isInteracting &&
-            time - this._lastRaycastTime > this._raycastThrottleMs
+            this.nodeInstancedMesh &&
+            this.nodeInstancedMesh.material.userData.uTime
         ) {
-            this._performRaycast();
-            this._lastRaycastTime = time;
+            this.nodeInstancedMesh.material.userData.uTime.value += delta;
         }
 
         if (this.nodeShader) {
@@ -1861,7 +2034,12 @@ export class NetworkVisualizer {
         const frequencyData = this.audioSource
             ? this.audioSource.getFrequencyData()
             : null;
-        this.effects.update(delta, frequencyData);
+        this.effects.update(
+            delta,
+            frequencyData,
+            this.graphCenter,
+            this.graphRadius,
+        );
         this._updateAutoTour(delta);
         this.composer.render();
     }
@@ -2033,6 +2211,28 @@ export class NetworkVisualizer {
         this.startAnimationLoop();
     }
 
+    _applyNodeHighlight(nodeData, highlightColor) {
+        const currentTheme = this.themeManager.getCurrentTheme();
+        const useBaseColor =
+            currentTheme && currentTheme.name === 'constellation';
+        const colorToUse = useBaseColor ? nodeData.baseColor : highlightColor;
+        const intensityToUse = useBaseColor
+            ? this.highlightIntensity * 1.5
+            : this.highlightIntensity;
+
+        // Update dummy mesh for tests
+        nodeData.mesh.material.emissiveIntensity = useBaseColor ? 1.5 : 1.0;
+        nodeData.mesh.material.emissive = colorToUse;
+
+        this.nodeInstancedMesh.setColorAt(
+            nodeData.instanceId,
+            this._scratchColor.set(colorToUse).multiplyScalar(intensityToUse),
+        );
+        if (this.nodeInstancedMesh.instanceColor) {
+            this.nodeInstancedMesh.instanceColor.needsUpdate = true;
+        }
+    }
+
     _highlightNode(nodeId, highlightColor) {
         const nodeData = this.nodes.get(nodeId);
         if (nodeData) {
@@ -2044,19 +2244,7 @@ export class NetworkVisualizer {
                 nodeData.playCount === 1 &&
                 this.hoveredObject !== nodeData.mesh
             ) {
-                // Update dummy mesh for tests
-                nodeData.mesh.material.emissiveIntensity = 1.0;
-                nodeData.mesh.material.emissive = highlightColor;
-
-                this.nodeInstancedMesh.setColorAt(
-                    nodeData.instanceId,
-                    this._scratchColor
-                        .set(highlightColor)
-                        .multiplyScalar(this.highlightIntensity),
-                );
-                if (this.nodeInstancedMesh.instanceColor) {
-                    this.nodeInstancedMesh.instanceColor.needsUpdate = true;
-                }
+                this._applyNodeHighlight(nodeData, highlightColor);
             }
         }
     }
@@ -2260,6 +2448,32 @@ export class NetworkVisualizer {
         }
     }
 
+    _updateThemeBloom(themeName) {
+        if (this.bloomEffect) {
+            this.bloomEffect.intensity =
+                themeName === 'constellation' ? 5.5 : 3.0;
+        }
+    }
+
+    _updateNodeMaterialThemeProperties(theme, themeName) {
+        if (!this.nodeInstancedMesh) return;
+
+        const mat = this.nodeInstancedMesh.material;
+        mat.roughness = theme.nodeMaterial.roughness;
+        mat.metalness = theme.nodeMaterial.metalness;
+        mat.emissiveIntensity = theme.nodeMaterial.emissiveIntensity;
+        mat.wireframe = !!theme.nodeMaterial.wireframe;
+        mat.transparent = themeName === 'constellation';
+        mat.blending = THREE.NormalBlending;
+        mat.depthWrite = true;
+        mat.needsUpdate = true;
+
+        if (mat.userData && mat.userData.uIsConstellation) {
+            mat.userData.uIsConstellation.value =
+                themeName === 'constellation' ? 1.0 : 0.0;
+        }
+    }
+
     setTheme(themeName) {
         const oldTheme = this.themeManager.getCurrentTheme();
         if (oldTheme && oldTheme.onDeactivate) {
@@ -2268,6 +2482,7 @@ export class NetworkVisualizer {
 
         this.themeManager.setTheme(themeName);
         this.currentThemeName = themeName;
+        this._updateComposerBufferType(themeName === 'constellation');
         const theme = this.themeManager.getCurrentTheme();
 
         // Update CSS theme attribute
@@ -2282,6 +2497,13 @@ export class NetworkVisualizer {
         this._updateResolution();
         this._updateThemeNodeColors(themeName);
 
+        // Reset and update highlights for all currently active/playing nodes under the new theme
+        for (const nodeData of this.playingNodes) {
+            this._applyNodeHighlight(nodeData, this.highlightColor);
+        }
+
+        this._updateEdgePositions();
+
         const targetSegments = theme.geometrySegments || 32;
         if (targetSegments !== this._currentGeometrySegments) {
             this._reinitGeometries(targetSegments);
@@ -2291,17 +2513,14 @@ export class NetworkVisualizer {
             this.outlineInstancedMesh.visible = theme.showOutlines !== false;
         }
 
-        if (this.nodeInstancedMesh) {
-            this.nodeInstancedMesh.material.roughness =
-                theme.nodeMaterial.roughness;
-            this.nodeInstancedMesh.material.metalness =
-                theme.nodeMaterial.metalness;
-            this.nodeInstancedMesh.material.emissiveIntensity =
-                theme.nodeMaterial.emissiveIntensity;
-            this.nodeInstancedMesh.material.wireframe =
-                !!theme.nodeMaterial.wireframe;
-            this.nodeInstancedMesh.material.needsUpdate = true;
+        this._updateNodeMaterialThemeProperties(theme, themeName);
+
+        if (this.nodeShader && this.nodeShader.uniforms.uIsConstellation) {
+            this.nodeShader.uniforms.uIsConstellation.value =
+                themeName === 'constellation' ? 1.0 : 0.0;
         }
+
+        this._updateThemeBloom(themeName);
 
         if (this.coneInstancedMesh) {
             this.coneInstancedMesh.material.emissiveIntensity =
@@ -2326,7 +2545,6 @@ export class NetworkVisualizer {
         }
 
         // Refresh existing highlights with new color
-        this.resetPlayingHighlights();
         this._updateAllVisualScales();
     }
 

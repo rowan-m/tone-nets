@@ -35,6 +35,7 @@ describe('VisualEffectsManager', () => {
             remove: vi.fn(),
         };
         camera = {
+            position: new THREE.Vector3(),
             quaternion: new THREE.Quaternion(),
             top: 100,
             bottom: -100,
@@ -108,7 +109,7 @@ describe('VisualEffectsManager', () => {
             effectsManager.emojiPool.active = [];
 
             effectsManager.showInstrumentEmoji(new THREE.Vector3(), '🎸');
-            expect(effectsManager.emojiPool.active.length).toBe(1);
+            expect(effectsManager.emojiPool.active).toHaveLength(1);
             expect(effectsManager.emojiPool.active[0].sprite).toBeInstanceOf(
                 THREE.Sprite,
             );
@@ -123,7 +124,7 @@ describe('VisualEffectsManager', () => {
 
             effectsManager.showInstrumentEmoji(new THREE.Vector3(), '3️⃣');
 
-            expect(effectsManager.emojiPool.active.length).toBe(2);
+            expect(effectsManager.emojiPool.active).toHaveLength(2);
             // The oldest ('1️⃣') should have been released, so '2️⃣' is now at index 0
             expect(effectsManager.emojiPool.active[0]).toBe(second);
         });
@@ -156,7 +157,7 @@ describe('VisualEffectsManager', () => {
             expect(sprite.material.opacity).toBeCloseTo(0.5);
 
             effectsManager.update(0.5); // life reaches 0
-            expect(effectsManager.emojiPool.active.length).toBe(0);
+            expect(effectsManager.emojiPool.active).toHaveLength(0);
             expect(scene.remove).toHaveBeenCalledWith(sprite);
         });
 
@@ -167,7 +168,7 @@ describe('VisualEffectsManager', () => {
             effectsManager.update(0.1);
             expect(
                 effectsManager.terminatorSphere.material.uniforms.uTime.value,
-            ).toBe(0.1);
+            ).toBeCloseTo(0.1);
 
             // Mock the particle shader that is usually set in onBeforeCompile
             const mockShader = {
@@ -218,6 +219,129 @@ describe('VisualEffectsManager', () => {
             effectsManager.setRetroMode(false);
             expect(effectsManager.retroMode).toBe(false);
         });
+
+        it('should support constellation mode for emoji textures', () => {
+            effectsManager.setConstellationMode(true);
+            expect(effectsManager.constellationMode).toBe(true);
+
+            effectsManager.showInstrumentEmoji(new THREE.Vector3(), '🎹');
+            // Check if a constellation version was cached
+            expect(
+                effectsManager.emojiTextureCache.has('🎹_constellation'),
+            ).toBe(true);
+
+            effectsManager.setConstellationMode(false);
+            expect(effectsManager.constellationMode).toBe(false);
+        });
+
+        it('should toggle constellation group visibility via enableConstellationBackground', () => {
+            effectsManager.enableConstellationBackground(true);
+            expect(effectsManager.constellationGroup.visible).toBe(true);
+
+            effectsManager.enableConstellationBackground(false);
+            expect(effectsManager.constellationGroup.visible).toBe(false);
+        });
+
+        it('should update constellation background uniforms when visible', () => {
+            effectsManager.enableConstellationBackground(true);
+
+            // Test branch where constellationParticleShader is NOT yet set
+            effectsManager.update(0.1);
+            expect(
+                effectsManager.constellationSphere.material.uniforms.uTime
+                    .value,
+            ).toBeCloseTo(0.1);
+
+            // Mock the particle shader that is usually set in onBeforeCompile
+            const mockShader = {
+                uniforms: {
+                    uTime: { value: 0.1 },
+                    uSpread: { value: 0 },
+                },
+            };
+            effectsManager.constellationParticleShader = mockShader;
+
+            effectsManager.update(0.4);
+
+            expect(
+                effectsManager.constellationSphere.material.uniforms.uTime
+                    .value,
+            ).toBeCloseTo(0.5);
+            expect(mockShader.uniforms.uTime.value).toBeCloseTo(0.5);
+            expect(mockShader.uniforms.uSpread.value).toBeGreaterThan(0);
+
+            // Pan the camera and check camera-following dynamic positioning update on sphere, and graphCenter positioning on constellationGroup
+            effectsManager.camera.position.set(500, -300, 150);
+            effectsManager.camera.quaternion.setFromAxisAngle(
+                new THREE.Vector3(0, 1, 0),
+                Math.PI / 2,
+            );
+            effectsManager.camera.zoom = 2.0;
+            const mockGraphCenter = new THREE.Vector3(100, 200, 300);
+            effectsManager.update(0.1, null, mockGraphCenter);
+
+            // Group should align with graph center (for original particle star behavior)
+            expect(effectsManager.constellationGroup.position.x).toBe(100);
+            expect(effectsManager.constellationGroup.position.y).toBe(200);
+            expect(effectsManager.constellationGroup.position.z).toBe(300);
+
+            // Sphere should be offset to align with camera position in world space
+            expect(effectsManager.constellationSphere.position.x).toBe(400); // 500 - 100
+            expect(effectsManager.constellationSphere.position.y).toBe(-500); // -300 - 200
+            expect(effectsManager.constellationSphere.position.z).toBe(-150); // 150 - 300
+            expect(effectsManager.constellationSphere.scale.x).toBeCloseTo(0.5); // 1 / 2.0
+
+            // Sphere should track 90% of camera rotation using slerp
+            const expectedQuat = new THREE.Quaternion()
+                .set(0, 0, 0, 1)
+                .slerp(effectsManager.camera.quaternion, 0.9);
+            expect(effectsManager.constellationSphere.quaternion.x).toBeCloseTo(
+                expectedQuat.x,
+            );
+            expect(effectsManager.constellationSphere.quaternion.y).toBeCloseTo(
+                expectedQuat.y,
+            );
+            expect(effectsManager.constellationSphere.quaternion.z).toBeCloseTo(
+                expectedQuat.z,
+            );
+            expect(effectsManager.constellationSphere.quaternion.w).toBeCloseTo(
+                expectedQuat.w,
+            );
+
+            // Fallback: if camera is not present, use graphCenter
+            effectsManager.camera = { quaternion: new THREE.Quaternion() };
+            const fallbackGraphCenter = new THREE.Vector3(200, -100, 50);
+            effectsManager.update(0.1, null, fallbackGraphCenter);
+
+            expect(effectsManager.constellationGroup.position.x).toBe(200);
+            expect(effectsManager.constellationGroup.position.y).toBe(-100);
+            expect(effectsManager.constellationGroup.position.z).toBe(50);
+            expect(effectsManager.constellationSphere.position.x).toBe(0);
+            expect(effectsManager.constellationSphere.position.y).toBe(0);
+            expect(effectsManager.constellationSphere.position.z).toBe(0);
+            expect(effectsManager.constellationSphere.scale.x).toBe(1.0);
+        });
+
+        it('should execute constellation shader injection logic in onBeforeCompile', () => {
+            const mockShader = {
+                uniforms: {},
+                vertexShader: '#include <begin_vertex>',
+                fragmentShader: '#include <premultiplied_alpha_fragment>',
+            };
+
+            // Trigger the onBeforeCompile hook manually
+            effectsManager.constellationStars.material.onBeforeCompile(
+                mockShader,
+            );
+
+            expect(mockShader.uniforms.uTime).toBeDefined();
+            expect(mockShader.uniforms.uSpread).toBeDefined();
+            expect(mockShader.vertexShader).toContain('uTime');
+            expect(mockShader.vertexShader).not.toContain(
+                '#include <begin_vertex>',
+            );
+            expect(mockShader.fragmentShader).toContain('vTwinkle');
+        });
     });
 
     describe('Cleanup', () => {
@@ -233,8 +357,8 @@ describe('VisualEffectsManager', () => {
 
             effectsManager.clear();
 
-            expect(effectsManager.emojiPool.active.length).toBe(0);
-            expect(effectsManager.emojiPool.pool.length).toBe(0);
+            expect(effectsManager.emojiPool.active).toHaveLength(0);
+            expect(effectsManager.emojiPool.pool).toHaveLength(0);
             expect(disposeSpy).toHaveBeenCalled();
             expect(scene.remove).toHaveBeenCalledWith(sprite);
         });

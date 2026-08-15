@@ -414,10 +414,25 @@ export class NetworkVisualizer {
             : THREE.UnsignedByteType;
 
         if (this.composer) {
-            const currentType = this.composer.writeBuffer
-                ? this.composer.writeBuffer.texture.type
+            const buffer =
+                this.composer.inputBuffer || this.composer.writeBuffer;
+            const currentType = buffer
+                ? buffer.texture.type
                 : THREE.UnsignedByteType;
             if (currentType === targetType) return;
+        }
+
+        // Dispose of old composer and bloom effect to prevent memory leaks and clear WebGL buffer states completely
+        if (this.composer) {
+            if (typeof this.composer.dispose === 'function') {
+                this.composer.dispose();
+            }
+        }
+        if (this.bloomEffect) {
+            if (typeof this.bloomEffect.dispose === 'function') {
+                this.bloomEffect.dispose();
+            }
+            this.bloomEffect = null;
         }
 
         // Recreate composer with target format
@@ -427,11 +442,15 @@ export class NetworkVisualizer {
 
         this.composer.addPass(new RenderPass(this.scene, this.camera));
 
-        if (this.bloomEffect) {
-            this.composer.addPass(
-                new EffectPass(this.camera, this.bloomEffect),
-            );
-        }
+        // Create a brand new BloomEffect with appropriate baseline intensity to fully reset WebGL textures
+        this.bloomEffect = new BloomEffect({
+            intensity: isConstellation ? 5.5 : 3.0,
+            luminanceThreshold: 0.15,
+            luminanceSmoothing: 0.85,
+            mipmapBlur: true,
+        });
+
+        this.composer.addPass(new EffectPass(this.camera, this.bloomEffect));
 
         if (this.retroCRTPass && this.effects && this.effects.retroMode) {
             this.composer.addPass(this.retroCRTPass);
@@ -2478,6 +2497,13 @@ export class NetworkVisualizer {
         this._updateResolution();
         this._updateThemeNodeColors(themeName);
 
+        // Reset and update highlights for all currently active/playing nodes under the new theme
+        for (const nodeData of this.playingNodes) {
+            this._applyNodeHighlight(nodeData, this.highlightColor);
+        }
+
+        this._updateEdgePositions();
+
         const targetSegments = theme.geometrySegments || 32;
         if (targetSegments !== this._currentGeometrySegments) {
             this._reinitGeometries(targetSegments);
@@ -2519,7 +2545,6 @@ export class NetworkVisualizer {
         }
 
         // Refresh existing highlights with new color
-        this.resetPlayingHighlights();
         this._updateAllVisualScales();
     }
 

@@ -87,17 +87,19 @@ vi.mock('postprocessing', () => ({
     EffectComposer: vi.fn().mockImplementation(function (renderer, options) {
         const type =
             (options && options.frameBufferType) || THREE.UnsignedByteType;
+        const buffer = {
+            texture: {
+                type: type,
+            },
+        };
         return {
             addPass: vi.fn(),
             removePass: vi.fn(),
             setSize: vi.fn(),
             render: vi.fn(),
             dispose: vi.fn(),
-            writeBuffer: {
-                texture: {
-                    type: type,
-                },
-            },
+            inputBuffer: buffer,
+            writeBuffer: buffer,
         };
     }),
     RenderPass: vi.fn(),
@@ -582,6 +584,90 @@ describe('NetworkVisualizer', () => {
             expect(forcedColor.r).toBeCloseTo(expectedDefault.r);
             expect(forcedColor.g).toBeCloseTo(expectedDefault.g);
             expect(forcedColor.b).toBeCloseTo(expectedDefault.b);
+        });
+
+        it('should update the colors of already-existing edges in the graph when switching themes to prevent side effects', () => {
+            visualizer.themeManager.registerTheme(ConstellationTheme);
+            visualizer.setTheme('default');
+
+            const mockGraph = createMockGraph(
+                [
+                    { id: 'C4', data: { degree: 1 } },
+                    { id: 'G4', data: { degree: 1 } },
+                ],
+                [{ fromId: 'C4', toId: 'G4', data: { weight: 1 } }],
+            );
+            visualizer.initIncremental(mockGraph);
+            visualizer.addTransitionIncremental('C4', 'G4');
+
+            // Set to constellation theme (should update edge buffer colors to blue)
+            visualizer.setTheme('constellation');
+            const colorAttr =
+                visualizer.edgeLineSegments.geometry.attributes.color;
+
+            // Check that the buffer color is updated to the constellation blue
+            const expectedBlue = visualizer._constellationEdgeLow
+                .clone()
+                .lerp(visualizer._constellationEdgeHigh, 1.0);
+            expect(colorAttr.array[0]).toBeCloseTo(expectedBlue.r);
+            expect(colorAttr.array[1]).toBeCloseTo(expectedBlue.g);
+            expect(colorAttr.array[2]).toBeCloseTo(expectedBlue.b);
+
+            // Set back to default theme (should reset edge colors and not leave side effects)
+            visualizer.setTheme('default');
+            const expectedDefaultColor = visualizer._colorMid
+                .clone()
+                .lerp(visualizer._colorHigh, 1.0);
+            expect(colorAttr.array[0]).toBeCloseTo(expectedDefaultColor.r);
+            expect(colorAttr.array[1]).toBeCloseTo(expectedDefaultColor.g);
+            expect(colorAttr.array[2]).toBeCloseTo(expectedDefaultColor.b);
+        });
+
+        it('should update the colors of currently active highlighted nodes when switching themes to prevent side effects', () => {
+            visualizer.themeManager.registerTheme(ConstellationTheme);
+            visualizer.setTheme('default');
+
+            const mockGraph = createMockGraph([
+                { id: 'C4', data: { degree: 1 } },
+            ]);
+            visualizer.initIncremental(mockGraph);
+            visualizer.addTransitionIncremental(null, 'C4');
+
+            const nodeData = visualizer.nodes.get('C4');
+            const setColorCalls = [];
+            visualizer.nodeInstancedMesh.setColorAt = (idx, color) => {
+                setColorCalls.push(color.clone());
+            };
+
+            // Highlight the node under default theme
+            visualizer.highlightPlayingElement('C4');
+
+            // Expected default highlight color is highlightColor (0xffe600) * highlightIntensity (3.5)
+            const defaultExpected = new THREE.Color(
+                visualizer.highlightColor,
+            ).multiplyScalar(visualizer.highlightIntensity);
+            expect(setColorCalls[0].r).toBeCloseTo(defaultExpected.r);
+            expect(setColorCalls[0].g).toBeCloseTo(defaultExpected.g);
+            expect(setColorCalls[0].b).toBeCloseTo(defaultExpected.b);
+
+            setColorCalls.length = 0;
+
+            // Switch to constellation theme (should update currently highlighted node to base color * constellation boost)
+            visualizer.setTheme('constellation');
+            const constellationExpected = new THREE.Color(
+                nodeData.baseColor,
+            ).multiplyScalar(visualizer.highlightIntensity * 1.5);
+            expect(setColorCalls[0].r).toBeCloseTo(constellationExpected.r);
+            expect(setColorCalls[0].g).toBeCloseTo(constellationExpected.g);
+            expect(setColorCalls[0].b).toBeCloseTo(constellationExpected.b);
+
+            setColorCalls.length = 0;
+
+            // Switch back to default theme (should update active node color back to default highlight color and intensity)
+            visualizer.setTheme('default');
+            expect(setColorCalls[0].r).toBeCloseTo(defaultExpected.r);
+            expect(setColorCalls[0].g).toBeCloseTo(defaultExpected.g);
+            expect(setColorCalls[0].b).toBeCloseTo(defaultExpected.b);
         });
     });
 

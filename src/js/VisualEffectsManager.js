@@ -34,6 +34,10 @@ export class VisualEffectsManager {
         );
 
         this._cameraUp = new THREE.Vector3();
+        this._scratchVec3_1 = new THREE.Vector3();
+        this._scratchQuat_1 = new THREE.Quaternion();
+        this._scratchQuat_2 = new THREE.Quaternion();
+        this.studioGrid = null;
 
         this.terminatorGroup = new THREE.Group();
         this.terminatorGroup.visible = false;
@@ -257,6 +261,17 @@ export class VisualEffectsManager {
         this.studioGroup.visible = enabled;
     }
 
+    updateStudioPosition(center, radius = 250) {
+        if (this.studioGroup) {
+            this.studioGroup.position.copy(center);
+            if (this.studioGrid) {
+                // Place the floor grid safely at least 250 units (or 1.1x the graph radius) below the network center
+                const yOffset = Math.min(-250, -radius * 1.1);
+                this.studioGrid.position.set(0, yOffset, 0);
+            }
+        }
+    }
+
     setRetroMode(enabled) {
         this.retroMode = enabled;
     }
@@ -275,6 +290,50 @@ export class VisualEffectsManager {
         this._updateTerminatorBackground(delta);
         this._updateRetroBackground(frequencyData);
         this._updateConstellationBackground(delta, graphCenter, graphRadius);
+        this._updateStudioBackground();
+    }
+
+    _updateStudioBackground() {
+        if (!this.studioGroup.visible) return;
+
+        // Position and rotate the 3D floor grid relative to the camera
+        // so it stays fixed to the bottom/center of the screen but tilts in 3D perspective!
+        if (this.camera && this.studioGrid) {
+            const zoom = this.camera.zoom || 1.0;
+            // Calculate orthographic viewport height
+            const viewHeight = (this.camera.top - this.camera.bottom) / zoom;
+
+            // 1. Center the grid horizontally under the camera
+            this._scratchVec3_1.x =
+                this.camera.position.x - this.studioGroup.position.x;
+            this._scratchVec3_1.z =
+                this.camera.position.z - this.studioGroup.position.z;
+
+            // 2. Position the grid vertically higher up (15% of viewport height downward)
+            // This raises the apparent horizon line for the grid to sit around the center of the viewport
+            this._scratchVec3_1.y =
+                this.camera.position.y -
+                this.studioGroup.position.y -
+                viewHeight * 0.15;
+
+            this.studioGrid.position.copy(this._scratchVec3_1);
+
+            // 3. Slerp track camera rotation (88% slerp) for sluggish parallax,
+            // and compose an additional 23-degree (0.4 rad) pitch tilt on the X-axis
+            // to slant the floor towards the camera and show much more of the grid
+            this._scratchQuat_1
+                .set(0, 0, 0, 1)
+                .slerp(this.camera.quaternion, 0.88);
+
+            this._scratchQuat_2.setFromAxisAngle(
+                this._scratchVec3_1.set(1, 0, 0),
+                0.4,
+            );
+
+            this.studioGrid.quaternion
+                .copy(this._scratchQuat_1)
+                .multiply(this._scratchQuat_2);
+        }
     }
 
     _updateConstellationBackground(
@@ -699,8 +758,9 @@ export class VisualEffectsManager {
     }
 
     _initStudioBackground() {
-        const geo = new THREE.PlaneGeometry(2, 2);
-        const mat = new THREE.ShaderMaterial({
+        // 1. Screen-space 2D plane vignette background with soft, organic charcoal dust smudges
+        const planeGeo = new THREE.PlaneGeometry(2, 2);
+        const planeMat = new THREE.ShaderMaterial({
             depthWrite: false,
             depthTest: false,
             vertexShader: `
@@ -712,22 +772,76 @@ export class VisualEffectsManager {
             `,
             fragmentShader: `
                 varying vec2 vScreenPos;
+                
+                float hash_smudge(vec2 p) {
+                    p = fract(p * vec2(123.34, 456.21));
+                    p += dot(p, p + 45.32);
+                    return fract(p.x * p.y);
+                }
+                
+                float noise_smudge(vec2 p) {
+                    vec2 i = floor(p);
+                    vec2 f = fract(p);
+                    vec2 u = f * f * (3.0 - 2.0 * f);
+                    return mix(
+                        mix(hash_smudge(i + vec2(0.0, 0.0)), hash_smudge(i + vec2(1.0, 0.0)), u.x),
+                        mix(hash_smudge(i + vec2(0.0, 1.0)), hash_smudge(i + vec2(1.0, 1.0)), u.x),
+                        u.y
+                    );
+                }
+                
+                float fbm(vec2 p) {
+                    float v = 0.0;
+                    float a = 0.5;
+                    for (int i = 0; i < 3; i++) {
+                        v += a * noise_smudge(p);
+                        p *= 2.0;
+                        a *= 0.5;
+                    }
+                    return v;
+                }
+                
                 void main() {
+                    // Soft, irregular, organic charcoal dust smudges to simulate hand-rubbed graphite shadow clouds
+                    float smudge = fbm(vScreenPos * 1.5 + vec2(1.2, 3.4));
+                    
                     float dist = length(vScreenPos);
-                    // Center of screen is a clean soft white-grey
+                    // Modulate the vignette boundaries with the smudge noise to warp the shadows into hand-drawn patterns
+                    float vignette = smoothstep(0.0, 1.8, dist + (smudge - 0.5) * 0.45);
+                    
                     vec3 centerColor = vec3(0.956, 0.968, 0.964); // #f4f7f6
-                    // Edges fade to a soft blue-grey studio backdrop
                     vec3 edgeColor = vec3(0.815, 0.847, 0.858);   // #d0d8db
-                    vec3 finalColor = mix(centerColor, edgeColor, smoothstep(0.0, 1.6, dist));
+                    vec3 paperColor = mix(centerColor, edgeColor, vignette);
+                    
+                    // Add subtle paper grain tooth
+                    float grain = hash_smudge(vScreenPos * 400.0);
+                    vec3 finalColor = paperColor * (0.975 + 0.05 * grain);
+                    
                     gl_FragColor = vec4(finalColor, 1.0);
                 }
             `,
         });
 
-        this.studioSphere = new THREE.Mesh(geo, mat);
+        this.studioSphere = new THREE.Mesh(planeGeo, planeMat);
         this.studioSphere.frustumCulled = false;
         this.studioSphere.renderOrder = -1000;
         this.studioGroup.add(this.studioSphere);
+
+        // 2. Faint drafted floor grid to anchor the 3D perspective
+        const gridSize = 16000;
+        const divisions = 64;
+        const grid = new THREE.GridHelper(
+            gridSize,
+            divisions,
+            new THREE.Color(0x7c8a8c), // Center axes pencil color
+            new THREE.Color(0xc2cbcc), // Grid line pencil color
+        );
+        grid.position.set(0, -250, 0);
+        grid.material.transparent = true;
+        grid.material.opacity = 0.22; // Very faint, subtle lines
+        grid.renderOrder = -900; // Rendered behind nodes but in front of background
+        this.studioGroup.add(grid);
+        this.studioGrid = grid;
     }
 
     _getEmojiTexture(emoji, isRetro = false, isConstellation = false) {

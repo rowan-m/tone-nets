@@ -2248,6 +2248,26 @@ export class NetworkVisualizer {
         this._updateNodePositions();
         this._updateEdgePositions();
 
+        if (this.nodes.size > 0) {
+            this.graphBoundingBox.makeEmpty();
+            for (let i = 0; i < this.nodeList.length; i++) {
+                this.graphBoundingBox.expandByPoint(
+                    this.nodeList[i].mesh.position,
+                );
+            }
+            this.graphBoundingBox.getCenter(this.graphCenter);
+            this.graphRadius = this.graphBoundingBox.getBoundingSphere(
+                this._scratchSphere,
+            ).radius;
+
+            if (this.effects) {
+                this.effects.updateStudioPosition(
+                    this.graphCenter,
+                    this.graphRadius,
+                );
+            }
+        }
+
         if (this.autoTour) {
             this._updateAutoTourBounds();
         }

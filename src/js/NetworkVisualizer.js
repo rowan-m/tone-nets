@@ -211,7 +211,7 @@ class CharcoalSketchEffect extends Effect {
                 ['uTime', new THREE.Uniform(0)],
                 ['uPaneAngle', new THREE.Uniform(0)],
                 ['uPaneCenter', new THREE.Uniform(new THREE.Vector2(0.5, 0.5))],
-                ['uPaneSize', new THREE.Uniform(new THREE.Vector2(0.55, 0.45))],
+                ['uPaneSize', new THREE.Uniform(new THREE.Vector2(0.75, 0.55))],
                 ['uPaneYaw', new THREE.Uniform(0)],
                 ['uPanePitch', new THREE.Uniform(0)],
                 ['uPaneWidth', new THREE.Uniform(0.015)],
@@ -238,10 +238,10 @@ class CharcoalSketchEffect extends Effect {
         center.x = 0.5 + 0.42 * Math.sin(time * 0.22); // Sweeps between 0.08 and 0.92 (slower)
         center.y = 0.5 + 0.05 * Math.cos(time * 0.12); // Gentle vertical float (slower)
 
-        // Focused breathing scale of the portal's dimensions
+        // Focused breathing scale of the portal's dimensions (scaled up again)
         const size = this.uniforms.get('uPaneSize').value;
-        size.x = 0.55 + 0.05 * Math.sin(time * 0.3);
-        size.y = 0.45 + 0.04 * Math.cos(time * 0.5);
+        size.x = 0.75 + 0.08 * Math.sin(time * 0.3);
+        size.y = 0.55 + 0.05 * Math.cos(time * 0.5);
 
         // Animate 3D tilt (yaw and pitch oscillations)
         this.uniforms.get('uPaneYaw').value = 0.45 * Math.sin(time * 0.4);

@@ -142,10 +142,10 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
     // 5. Render the Charcoal Drawing / Pencil Sketch effect!
     float sketchTime = floor(uTime * uFPS) / uFPS;
     
-    // Smooth, low-frequency continuous coordinate wiggling (no water ripples or jagged dashed lines)
-    // Using a low spatial frequency (25.0) so nodes and lines wobble organically as unified solid shapes
-    float n1 = noise2D(uv * 25.0 + sketchTime * 8.0);
-    float n2 = noise2D(uv * 25.0 - sketchTime * 11.0);
+    // Smooth, continuous coordinate wiggling
+    // Raised spatial frequency (45.0) to slightly break outline coherence for a scribbled hand-drawn look
+    float n1 = noise2D(uv * 45.0 + sketchTime * 8.0);
+    float n2 = noise2D(uv * 45.0 - sketchTime * 11.0);
     vec2 jitter = vec2(n1 - 0.5, n2 - 0.5) * uJitterStrength;
     vec2 jitterUv = uv + jitter;
 
@@ -168,11 +168,14 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
     float sy = (g02 + 2.0 * g12 + g22) - (g00 + 2.0 * g10 + g20);
     float edge = sqrt(sx * sx + sy * sy);
 
-    // B. Create a high-frequency stroke mask affecting transparency, representing dry lead lightly skipping on paper
-    float strokeMask = smoothstep(0.35, 0.65, noise2D(jitterUv * 180.0 + sketchTime * 6.0));
+    // B. Create a high-frequency, multi-layered stroke mask to vary the transparency of outlines and details
+    float mask1 = noise2D(jitterUv * 130.0 + sketchTime * 5.0);
+    float mask2 = noise2D(jitterUv * 260.0 - sketchTime * 8.5);
+    float strokeMask = smoothstep(0.3, 0.7, (mask1 + mask2 * 0.5) / 1.5);
     
     // Multiply edge detection by the stroke mask to elegantly break up lines and make them freeform & minimal
-    float edgeStroke = smoothstep(0.14, 0.38, edge) * strokeMask;
+    // Widened smoothstep bounds (0.08 to 0.45) for rich variance in stroke transparency based on edge strength
+    float edgeStroke = smoothstep(0.08, 0.45, edge) * strokeMask;
 
     float paper = noise2D(uv * 400.0) * 0.12 + 0.88;
     
@@ -2359,8 +2362,8 @@ export class NetworkVisualizer {
             }
             bassEnergy = bassSum / bassCount;
         }
-        // Base jitter is 0.0018, wiggles up to 0.006 with bass energy!
-        const targetJitter = 0.0018 + bassEnergy * 0.0042;
+        // Base jitter is 0.0028, wiggles up to 0.0083 with bass energy! (increased for more distortion)
+        const targetJitter = 0.0028 + bassEnergy * 0.0055;
         const curJitter =
             this.charcoalSketchEffect.uniforms.get('uJitterStrength').value;
         this.charcoalSketchEffect.uniforms.get('uJitterStrength').value =

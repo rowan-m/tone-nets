@@ -290,10 +290,10 @@ export class VisualEffectsManager {
         this._updateTerminatorBackground(delta);
         this._updateRetroBackground(frequencyData);
         this._updateConstellationBackground(delta, graphCenter, graphRadius);
-        this._updateStudioBackground();
+        this._updateStudioBackground(delta, frequencyData);
     }
 
-    _updateStudioBackground() {
+    _updateStudioBackground(delta, frequencyData = null) {
         if (!this.studioGroup.visible) return;
 
         // Position and rotate the 3D floor grid relative to the camera
@@ -333,6 +333,42 @@ export class VisualEffectsManager {
             this.studioGrid.quaternion
                 .copy(this._scratchQuat_1)
                 .multiply(this._scratchQuat_2);
+        }
+
+        // 4. Update the background vignette's time and audio-reactive sunset neon glows (Concept 4)
+        if (
+            this.studioSphere &&
+            this.studioSphere.material &&
+            this.studioSphere.material.uniforms.uNeonGlow
+        ) {
+            const uniforms = this.studioSphere.material.uniforms;
+            uniforms.uTime.value += delta;
+            const time = uniforms.uTime.value;
+
+            // Calculate treble (high-frequency) energy
+            let trebleEnergy = 0;
+            if (frequencyData && frequencyData.length > 0) {
+                const startBin = Math.floor(frequencyData.length * 0.5);
+                let trebleSum = 0;
+                for (let i = startBin; i < frequencyData.length; i++) {
+                    trebleSum += frequencyData[i] / 255.0;
+                }
+                trebleEnergy =
+                    trebleSum / (frequencyData.length - startBin || 1);
+            }
+
+            // Slowly cycle HSL hue over time to create a gentle, rotating sunset light cycle (80s vibe!)
+            const hue = (time * 0.035) % 1.0;
+
+            // Set the target neon color (vivid, highly saturated 80s glows)
+            // Add a beautiful, noticeable ambient baseline of 0.18 (18% always visible)
+            // that pulses dynamically up to 100% based on synthesizer treble energy!
+            const glowIntensity = 0.18 + trebleEnergy * 0.82;
+            const targetGlow = new THREE.Color().setHSL(hue, 0.92, 0.65);
+            targetGlow.multiplyScalar(glowIntensity);
+
+            // Smoothly lerp to avoid abrupt color flickering
+            uniforms.uNeonGlow.value.lerp(targetGlow, 0.12);
         }
     }
 
@@ -763,6 +799,10 @@ export class VisualEffectsManager {
         const planeMat = new THREE.ShaderMaterial({
             depthWrite: false,
             depthTest: false,
+            uniforms: {
+                uTime: { value: 0 },
+                uNeonGlow: { value: new THREE.Color(0, 0, 0) },
+            },
             vertexShader: `
                 varying vec2 vScreenPos;
                 void main() {
@@ -771,6 +811,8 @@ export class VisualEffectsManager {
                 }
             `,
             fragmentShader: `
+                uniform float uTime;
+                uniform vec3 uNeonGlow;
                 varying vec2 vScreenPos;
                 
                 float hash_smudge(vec2 p) {
@@ -813,9 +855,12 @@ export class VisualEffectsManager {
                     vec3 edgeColor = vec3(0.815, 0.847, 0.858);   // #d0d8db
                     vec3 paperColor = mix(centerColor, edgeColor, vignette);
                     
+                    // Blend the neon glow into the corners dynamically (increased mix factor for high visibility)
+                    vec3 glowedColor = mix(paperColor, uNeonGlow, vignette * 0.55);
+                    
                     // Add subtle paper grain tooth
                     float grain = hash_smudge(vScreenPos * 400.0);
-                    vec3 finalColor = paperColor * (0.975 + 0.05 * grain);
+                    vec3 finalColor = glowedColor * (0.975 + 0.05 * grain);
                     
                     gl_FragColor = vec4(finalColor, 1.0);
                 }

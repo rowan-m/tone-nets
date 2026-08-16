@@ -81,6 +81,7 @@ uniform float uPaneYaw;
 uniform float uPanePitch;
 uniform float uPaneWidth;
 uniform float uFPS;
+uniform float uJitterStrength;
 uniform vec2 uResolution;
 
 float hash2D(vec2 p) {
@@ -145,7 +146,7 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
     // Using a low spatial frequency (25.0) so nodes and lines wobble organically as unified solid shapes
     float n1 = noise2D(uv * 25.0 + sketchTime * 8.0);
     float n2 = noise2D(uv * 25.0 - sketchTime * 11.0);
-    vec2 jitter = vec2(n1 - 0.5, n2 - 0.5) * 0.0035;
+    vec2 jitter = vec2(n1 - 0.5, n2 - 0.5) * uJitterStrength;
     vec2 jitterUv = uv + jitter;
 
     vec4 texColor = texture2D(inputBuffer, jitterUv);
@@ -215,6 +216,7 @@ class CharcoalSketchEffect extends Effect {
                 ['uPanePitch', new THREE.Uniform(0)],
                 ['uPaneWidth', new THREE.Uniform(0.015)],
                 ['uFPS', new THREE.Uniform(5.0)],
+                ['uJitterStrength', new THREE.Uniform(0.0035)],
                 [
                     'uResolution',
                     new THREE.Uniform(new THREE.Vector2(1024, 768)),
@@ -308,6 +310,7 @@ export class NetworkVisualizer {
         this.themeManager = new ThemeManager();
         this.currentThemeName = null;
         this.charcoalSketchPass = null;
+        this.charcoalSketchEffect = null;
         this.retroCRTPass = null;
 
         this._isMobile = Utils.isMobile();
@@ -2336,6 +2339,34 @@ export class NetworkVisualizer {
         }
     }
 
+    _updateAudioReactiveJitter(frequencyData) {
+        if (
+            !this.charcoalSketchEffect ||
+            this.currentThemeName !== 'take-on-me-real'
+        ) {
+            return;
+        }
+
+        let bassEnergy = 0;
+        if (frequencyData && frequencyData.length > 0) {
+            const bassCount = Math.max(
+                1,
+                Math.floor(frequencyData.length * 0.2),
+            );
+            let bassSum = 0;
+            for (let i = 0; i < bassCount; i++) {
+                bassSum += frequencyData[i] / 255.0;
+            }
+            bassEnergy = bassSum / bassCount;
+        }
+        // Base jitter is 0.0018, wiggles up to 0.006 with bass energy!
+        const targetJitter = 0.0018 + bassEnergy * 0.0042;
+        const curJitter =
+            this.charcoalSketchEffect.uniforms.get('uJitterStrength').value;
+        this.charcoalSketchEffect.uniforms.get('uJitterStrength').value =
+            THREE.MathUtils.lerp(curJitter, targetJitter, 0.15);
+    }
+
     animate(time) {
         if (!this._isAnimating) return;
         this._animationFrameId = requestAnimationFrame(this.animate);
@@ -2383,6 +2414,9 @@ export class NetworkVisualizer {
             this.graphCenter,
             this.graphRadius,
         );
+
+        this._updateAudioReactiveJitter(frequencyData);
+
         this._updateAutoTour(delta);
         this.composer.render();
     }
@@ -2935,8 +2969,11 @@ export class NetworkVisualizer {
 
         if (themeName === 'take-on-me-real') {
             if (!this.charcoalSketchPass) {
-                const effect = new CharcoalSketchEffect();
-                this.charcoalSketchPass = new EffectPass(this.camera, effect);
+                this.charcoalSketchEffect = new CharcoalSketchEffect();
+                this.charcoalSketchPass = new EffectPass(
+                    this.camera,
+                    this.charcoalSketchEffect,
+                );
             }
             this.composer.addPass(this.charcoalSketchPass);
         } else if (this.charcoalSketchPass) {
@@ -2986,6 +3023,7 @@ export class NetworkVisualizer {
         if (this.charcoalSketchPass) {
             this.charcoalSketchPass.dispose();
             this.charcoalSketchPass = null;
+            this.charcoalSketchEffect = null;
         }
 
         if (this.layout) {

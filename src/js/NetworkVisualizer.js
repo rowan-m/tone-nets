@@ -315,6 +315,7 @@ export class NetworkVisualizer {
         this.charcoalSketchPass = null;
         this.charcoalSketchEffect = null;
         this.retroCRTPass = null;
+        this._lastSketchFrame = -1;
 
         this._isMobile = Utils.isMobile();
         this._frameCount = 0;
@@ -2350,24 +2351,31 @@ export class NetworkVisualizer {
             return;
         }
 
-        let bassEnergy = 0;
-        if (frequencyData && frequencyData.length > 0) {
-            const bassCount = Math.max(
-                1,
-                Math.floor(frequencyData.length * 0.2),
-            );
-            let bassSum = 0;
-            for (let i = 0; i < bassCount; i++) {
-                bassSum += frequencyData[i] / 255.0;
+        const uTime = this.charcoalSketchEffect.uniforms.get('uTime').value;
+        const currentFrame = Math.floor(uTime * 5.0); // Clamped to 5.0 FPS (matches uFPS)
+
+        // Only update the wiggling amplitude when a new stop-motion sketch cell triggers!
+        // This eliminates 60fps high-frequency vibrations and guarantees a chunky, solid traditional 5fps stop-motion feel
+        if (currentFrame !== this._lastSketchFrame) {
+            this._lastSketchFrame = currentFrame;
+
+            let bassEnergy = 0;
+            if (frequencyData && frequencyData.length > 0) {
+                const bassCount = Math.max(
+                    1,
+                    Math.floor(frequencyData.length * 0.2),
+                );
+                let bassSum = 0;
+                for (let i = 0; i < bassCount; i++) {
+                    bassSum += frequencyData[i] / 255.0;
+                }
+                bassEnergy = bassSum / bassCount;
             }
-            bassEnergy = bassSum / bassCount;
+            // Base jitter is 0.0028, wiggles up to 0.0083 with bass energy!
+            const targetJitter = 0.0028 + bassEnergy * 0.0055;
+            this.charcoalSketchEffect.uniforms.get('uJitterStrength').value =
+                targetJitter;
         }
-        // Base jitter is 0.0028, wiggles up to 0.0083 with bass energy! (increased for more distortion)
-        const targetJitter = 0.0028 + bassEnergy * 0.0055;
-        const curJitter =
-            this.charcoalSketchEffect.uniforms.get('uJitterStrength').value;
-        this.charcoalSketchEffect.uniforms.get('uJitterStrength').value =
-            THREE.MathUtils.lerp(curJitter, targetJitter, 0.15);
     }
 
     animate(time) {

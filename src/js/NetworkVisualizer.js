@@ -1640,10 +1640,10 @@ export class NetworkVisualizer {
             this._scratchVec3_1.z,
         );
         this._scratchMatrix.lookAt(
-            this._scratchVec3_1,
             this._scratchVec3_3
                 .copy(this._scratchVec3_1)
                 .add(this._scratchVec3_2),
+            this._scratchVec3_1,
             this._upVec,
         );
         this.coneInstancedMesh.setMatrixAt(

@@ -5,257 +5,11 @@ import {
     RenderPass,
     EffectPass,
     BloomEffect,
-    Effect,
 } from 'postprocessing';
 import { Utils } from './Utils.js';
 import { NetworkLayout } from './NetworkLayout.js';
 import { VisualEffectsManager } from './VisualEffectsManager.js';
 import { ThemeManager } from './ThemeManager.js';
-
-/**
- * Custom post-processing effect for a retro CRT look.
- * Includes barrel distortion, RGB shift, scanlines, and noise.
- */
-const retroCRTFragmentShader = `
-uniform float uTime;
-uniform float uDistortion;
-
-void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
-    // Barrel Distortion
-    vec2 centeredUv = uv - 0.5;
-    float dist = dot(centeredUv, centeredUv);
-    vec2 distortedUv = uv + centeredUv * dist * uDistortion;
-    
-    // Check bounds
-    if (distortedUv.x < 0.0 || distortedUv.x > 1.0 || distortedUv.y < 0.0 || distortedUv.y > 1.0) {
-        outputColor = vec4(0.0, 0.0, 0.0, 1.0);
-        return;
-    }
-    
-    // Chromatic Aberration (RGB Shift)
-    // Shift is stronger at the edges of the screen
-    float shift = 0.0015 * (1.0 + dist * 2.0);
-    vec4 col;
-    col.r = texture2D(inputBuffer, distortedUv + vec2(shift, 0.0)).r;
-    col.g = texture2D(inputBuffer, distortedUv).g;
-    col.b = texture2D(inputBuffer, distortedUv - vec2(shift, 0.0)).b;
-    col.a = 1.0;
-    
-    // Subtle Scanlines
-    float scanline = sin(distortedUv.y * 800.0) * 0.005;
-    col.rgb -= scanline;
-    
-    // Static Noise
-    float noise = (fract(sin(dot(distortedUv + uTime * 0.01, vec2(12.9898,78.233))) * 43758.5453) - 0.5) * 0.015;
-    col.rgb += noise;
-    
-    // Vignette
-    float vignette = 1.0 - dist * 0.6;
-    col.rgb *= vignette;
-    
-    outputColor = col;
-}
-`;
-
-class RetroCRTEffect extends Effect {
-    constructor() {
-        super('RetroCRTEffect', retroCRTFragmentShader, {
-            uniforms: new Map([
-                ['uTime', new THREE.Uniform(0)],
-                ['uDistortion', new THREE.Uniform(0.12)],
-            ]),
-        });
-    }
-
-    update(renderer, inputBuffer, deltaTime) {
-        this.uniforms.get('uTime').value += deltaTime;
-    }
-}
-
-const charcoalSketchFragmentShader = `
-uniform float uTime;
-uniform float uPaneAngle;
-uniform vec2 uPaneCenter;
-uniform vec2 uPaneSize;
-uniform float uPaneYaw;
-uniform float uPanePitch;
-uniform float uPaneWidth;
-uniform float uFPS;
-uniform float uJitterStrength;
-uniform vec2 uResolution;
-
-float hash2D(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-}
-
-float noise2D(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(
-        mix(hash2D(i + vec2(0.0, 0.0)), hash2D(i + vec2(1.0, 0.0)), u.x),
-        mix(hash2D(i + vec2(0.0, 1.0)), hash2D(i + vec2(1.0, 1.0)), u.x),
-        u.y
-    );
-}
-
-void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
-    // 1. Aspect ratio correction to prevent shearing/squashing as the box rotates
-    float aspect = uResolution.x / uResolution.y;
-    vec2 aspectUv = vec2(uv.x * aspect, uv.y);
-    vec2 aspectCenter = vec2(uPaneCenter.x * aspect, uPaneCenter.y);
-    vec2 centeredUv = aspectUv - aspectCenter;
-
-    // 2. Apply 3D Perspective Rotation (Yaw / Pitch) assuming z = 0 initially
-    float x_rot = centeredUv.x * cos(uPaneYaw);
-    float y_rot = centeredUv.y * cos(uPanePitch) - centeredUv.x * sin(uPaneYaw) * sin(uPanePitch);
-    float z_rot = centeredUv.y * sin(uPanePitch) + centeredUv.x * sin(uPaneYaw) * cos(uPanePitch);
-
-    // Perspective projection back to 2D screen plane
-    float focalDistance = 1.8; // Perspective intensity strength (smaller = more dramatic tilt)
-    float w = 1.0 - z_rot / focalDistance;
-    vec2 projected = vec2(x_rot, y_rot) / w;
-
-    // 3. Apply 2D Z-axis rotation to the projected coordinates
-    float cosTheta = cos(uPaneAngle);
-    float sinTheta = sin(uPaneAngle);
-    vec2 dUv = vec2(
-        projected.x * cosTheta + projected.y * sinTheta,
-        -projected.x * sinTheta + projected.y * cosTheta
-    );
-
-    // 4. Calculate 2D Box Signed Distance Field (SDF) using the projected/transformed coords
-    vec2 d = abs(dUv) - uPaneSize * 0.5;
-    float outsideDist = length(max(d, 0.0));
-    float insideDist = min(max(d.x, d.y), 0.0);
-    float sdf = outsideDist + insideDist;
-
-    // Determine if we are inside the portal or within the sketchy border thickness
-    bool isInside = (sdf <= 0.0);
-    bool isBorder = (abs(sdf) <= uPaneWidth);
-
-    if (!isInside && !isBorder) {
-        outputColor = inputColor;
-        return;
-    }
-
-    // 5. Render the Charcoal Drawing / Pencil Sketch effect!
-    float sketchTime = floor(uTime * uFPS) / uFPS;
-    
-    // Smooth, continuous coordinate wiggling
-    // Raised spatial frequency (45.0) to slightly break outline coherence for a scribbled hand-drawn look
-    float n1 = noise2D(uv * 45.0 + sketchTime * 8.0);
-    float n2 = noise2D(uv * 45.0 - sketchTime * 11.0);
-    vec2 jitter = vec2(n1 - 0.5, n2 - 0.5) * uJitterStrength;
-    vec2 jitterUv = uv + jitter;
-
-    vec4 texColor = texture2D(inputBuffer, jitterUv);
-    float gray = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
-
-    float texelX = 1.0 / uResolution.x;
-    float texelY = 1.0 / uResolution.y;
-
-    float g00 = dot(texture2D(inputBuffer, jitterUv + vec2(-texelX, -texelY)).rgb, vec3(0.299, 0.587, 0.114));
-    float g10 = dot(texture2D(inputBuffer, jitterUv + vec2(0.0, -texelY)).rgb, vec3(0.299, 0.587, 0.114));
-    float g20 = dot(texture2D(inputBuffer, jitterUv + vec2(texelX, -texelY)).rgb, vec3(0.299, 0.587, 0.114));
-    float g01 = dot(texture2D(inputBuffer, jitterUv + vec2(-texelX, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
-    float g21 = dot(texture2D(inputBuffer, jitterUv + vec2(texelX, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
-    float g02 = dot(texture2D(inputBuffer, jitterUv + vec2(-texelX, texelY)).rgb, vec3(0.299, 0.587, 0.114));
-    float g12 = dot(texture2D(inputBuffer, jitterUv + vec2(0.0, texelY)).rgb, vec3(0.299, 0.587, 0.114));
-    float g22 = dot(texture2D(inputBuffer, jitterUv + vec2(texelX, texelY)).rgb, vec3(0.299, 0.587, 0.114));
-
-    float sx = (g20 + 2.0 * g21 + g22) - (g00 + 2.0 * g01 + g02);
-    float sy = (g02 + 2.0 * g12 + g22) - (g00 + 2.0 * g10 + g20);
-    float edge = sqrt(sx * sx + sy * sy);
-
-    // B. Create a high-frequency, multi-layered stroke mask to vary the transparency of outlines and details
-    float mask1 = noise2D(jitterUv * 130.0 + sketchTime * 5.0);
-    float mask2 = noise2D(jitterUv * 260.0 - sketchTime * 8.5);
-    float strokeMask = smoothstep(0.3, 0.7, (mask1 + mask2 * 0.5) / 1.5);
-    
-    // Multiply edge detection by the stroke mask to elegantly break up lines and make them freeform & minimal
-    // Widened smoothstep bounds (0.08 to 0.45) for rich variance in stroke transparency based on edge strength
-    float edgeStroke = smoothstep(0.08, 0.45, edge) * strokeMask;
-
-    float paper = noise2D(uv * 400.0) * 0.12 + 0.88;
-    
-    // C. Blend outlines with soft charcoal grey (0.22) rather than hard black, keeping strokes beautifully light
-    float outlineColor = mix(gray, 0.22, edgeStroke * 0.75);
-
-    // D. Soft minimal shading in shadowed areas
-    float shadeNoise = noise2D(jitterUv * 200.0 + vec2(sketchTime, -sketchTime) * 2.0);
-    float shadedGray = outlineColor;
-    if (outlineColor < 0.8) {
-        float shadeFactor = smoothstep(0.8, 0.2, outlineColor) * strokeMask;
-        shadedGray = mix(outlineColor, outlineColor * (0.6 + 0.4 * shadeNoise), shadeFactor * 0.55);
-    }
-
-    // E. Calm contrast mapping to preserve soft midtones and graphite texture
-    float sketchColor = smoothstep(0.01, 0.99, shadedGray * paper);
-
-    vec3 finalSketch = vec3(sketchColor);
-
-    // 6. Render a sketchy charcoal frame outline
-    if (isBorder && !isInside) {
-        float borderStroke = noise2D(uv * 300.0 + sketchTime * 5.0) * 0.4 + 0.6;
-        float edgeOutline = smoothstep(uPaneWidth, uPaneWidth * 0.3, abs(sdf)) * borderStroke;
-        finalSketch = mix(finalSketch, vec3(0.05), edgeOutline); // Rich charcoal stroke
-        outputColor = vec4(finalSketch, 1.0);
-    } else {
-        outputColor = vec4(finalSketch, 1.0);
-    }
-}
-`;
-
-class CharcoalSketchEffect extends Effect {
-    constructor() {
-        super('CharcoalSketchEffect', charcoalSketchFragmentShader, {
-            uniforms: new Map([
-                ['uTime', new THREE.Uniform(0)],
-                ['uPaneAngle', new THREE.Uniform(0)],
-                ['uPaneCenter', new THREE.Uniform(new THREE.Vector2(0.5, 0.5))],
-                ['uPaneSize', new THREE.Uniform(new THREE.Vector2(0.75, 0.55))],
-                ['uPaneYaw', new THREE.Uniform(0)],
-                ['uPanePitch', new THREE.Uniform(0)],
-                ['uPaneWidth', new THREE.Uniform(0.015)],
-                ['uFPS', new THREE.Uniform(5.0)],
-                ['uJitterStrength', new THREE.Uniform(0.0035)],
-                [
-                    'uResolution',
-                    new THREE.Uniform(new THREE.Vector2(1024, 768)),
-                ],
-            ]),
-        });
-    }
-
-    update(renderer, inputBuffer, deltaTime) {
-        const uTimeUniform = this.uniforms.get('uTime');
-        uTimeUniform.value += deltaTime;
-        const time = uTimeUniform.value;
-
-        // Slow, elegant rotation (e.g. rotating the portal window)
-        this.uniforms.get('uPaneAngle').value = time * 0.25;
-
-        // Sweep horizontally from left to right and back to show wide glimpses of both worlds (slightly slower)
-        const center = this.uniforms.get('uPaneCenter').value;
-        center.x = 0.5 + 0.42 * Math.sin(time * 0.22); // Sweeps between 0.08 and 0.92 (slower)
-        center.y = 0.5 + 0.05 * Math.cos(time * 0.12); // Gentle vertical float (slower)
-
-        // Focused breathing scale of the portal's dimensions (scaled up again)
-        const size = this.uniforms.get('uPaneSize').value;
-        size.x = 0.75 + 0.08 * Math.sin(time * 0.3);
-        size.y = 0.55 + 0.05 * Math.cos(time * 0.5);
-
-        // Animate 3D tilt (yaw and pitch oscillations)
-        this.uniforms.get('uPaneYaw').value = 0.45 * Math.sin(time * 0.4);
-        this.uniforms.get('uPanePitch').value = 0.3 * Math.cos(time * 0.6);
-
-        const res = this.uniforms.get('uResolution').value;
-        if (inputBuffer) {
-            res.set(inputBuffer.width, inputBuffer.height);
-        }
-    }
-}
 
 export class NetworkVisualizer {
     constructor(containerId) {
@@ -312,10 +66,9 @@ export class NetworkVisualizer {
 
         this.themeManager = new ThemeManager();
         this.currentThemeName = null;
-        this.charcoalSketchPass = null;
-        this.charcoalSketchEffect = null;
-        this.retroCRTPass = null;
-        this._lastSketchFrame = -1;
+        this.themeEffectCache = new Map();
+        this.activeThemePass = null;
+        this.activeThemeEffects = [];
 
         this._isMobile = Utils.isMobile();
         this._frameCount = 0;
@@ -342,10 +95,9 @@ export class NetworkVisualizer {
         this._colorMid = new THREE.Color(0x666666);
         this._colorHigh = new THREE.Color(0x999999);
         this._scratchColor = new THREE.Color();
-        this._constellationEdgeLow = new THREE.Color(0x0a1630); // Very subtle dark midnight blue
-        this._constellationEdgeHigh = new THREE.Color(0x182c50); // Slightly lighter subtle blue for higher weights
-        this._takeOnMeEdgeLow = new THREE.Color(0xd0e8eb); // Soft blue-grey pastel teal
-        this._takeOnMeEdgeHigh = new THREE.Color(0x5cb3b1); // Vibrant pastel turquoise
+        this._paletteLowColor = new THREE.Color();
+        this._paletteMidColor = new THREE.Color();
+        this._paletteHighColor = new THREE.Color();
 
         // Reusable vectors to minimize GC
         this._cameraUp = new THREE.Vector3();
@@ -502,22 +254,6 @@ export class NetworkVisualizer {
             theme && theme.maxResolution ? 'pixelated' : 'auto';
     }
 
-    enableRetroEffects(enabled) {
-        if (this.effects) {
-            this.effects.setRetroMode(enabled);
-        }
-
-        if (enabled) {
-            if (!this.retroCRTPass) {
-                const effect = new RetroCRTEffect();
-                this.retroCRTPass = new EffectPass(this.camera, effect);
-            }
-            this.composer.addPass(this.retroCRTPass);
-        } else if (this.retroCRTPass) {
-            this.composer.removePass(this.retroCRTPass);
-        }
-    }
-
     _onPointerInteraction(e) {
         const rect = this.container.getBoundingClientRect();
         this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -582,8 +318,11 @@ export class NetworkVisualizer {
     }
 
     initPostProcessing() {
-        const isConstellation = this.currentThemeName === 'constellation';
-        const targetType = isConstellation
+        const theme = this.themeManager.getCurrentTheme();
+        const useHdr = Boolean(
+            theme && theme.postProcessing && theme.postProcessing.hdrBuffer,
+        );
+        const targetType = useHdr
             ? THREE.HalfFloatType
             : THREE.UnsignedByteType;
 
@@ -603,9 +342,11 @@ export class NetworkVisualizer {
         this.composer.addPass(new EffectPass(this.camera, bloomEffect));
     }
 
-    _updateComposerBufferType(themeName) {
-        const isConstellation = themeName === 'constellation';
-        const targetType = isConstellation
+    _updateComposerBufferType(theme) {
+        const useHdr = Boolean(
+            theme && theme.postProcessing && theme.postProcessing.hdrBuffer,
+        );
+        const targetType = useHdr
             ? THREE.HalfFloatType
             : THREE.UnsignedByteType;
 
@@ -616,13 +357,11 @@ export class NetworkVisualizer {
                 ? buffer.texture.type
                 : THREE.UnsignedByteType;
             if (currentType === targetType) {
-                // Buffer format did not change (e.g. default <-> take-on-me-real), but we still update the existing bloom effect properties dynamically
-                this._updateThemeBloom(themeName);
+                this._updateThemeBloom(theme);
                 return;
             }
         }
 
-        // Dispose of old composer and bloom effect to prevent memory leaks and clear WebGL buffer states completely
         const disposeResource = (res) => {
             if (res && typeof res.dispose === 'function') {
                 res.dispose();
@@ -632,36 +371,56 @@ export class NetworkVisualizer {
         disposeResource(this.bloomEffect);
         this.bloomEffect = null;
 
-        // Recreate composer with target format
         this.composer = new EffectComposer(this.renderer, {
             frameBufferType: targetType,
         });
 
         this.composer.addPass(new RenderPass(this.scene, this.camera));
 
-        // Create a brand new BloomEffect with appropriate baseline intensity to fully reset WebGL textures
-        const themeConfig = {
-            constellation: { intensity: 5.5, threshold: 0.15 },
-            'take-on-me-real': { intensity: 1.0, threshold: 0.9 },
-            default: { intensity: 3.0, threshold: 0.15 },
+        const bloomConfig = (theme &&
+            theme.postProcessing &&
+            theme.postProcessing.bloom) || {
+            intensity: 3.0,
+            threshold: 0.15,
         };
-        const config = themeConfig[themeName] || themeConfig.default;
 
         this.bloomEffect = new BloomEffect({
-            intensity: config.intensity,
-            luminanceThreshold: config.threshold,
+            intensity: bloomConfig.intensity,
+            luminanceThreshold: bloomConfig.threshold,
             luminanceSmoothing: 0.85,
             mipmapBlur: true,
         });
 
         this.composer.addPass(new EffectPass(this.camera, this.bloomEffect));
+    }
 
-        if (this.retroCRTPass && this.effects && this.effects.retroMode) {
-            this.composer.addPass(this.retroCRTPass);
+    _updateThemePostProcessing(theme) {
+        if (this.activeThemePass && this.composer) {
+            this.composer.removePass(this.activeThemePass);
         }
+        this.activeThemePass = null;
+        this.activeThemeEffects = [];
 
-        if (this.charcoalSketchPass && themeName === 'take-on-me-real') {
-            this.composer.addPass(this.charcoalSketchPass);
+        if (
+            theme &&
+            theme.postProcessing &&
+            typeof theme.postProcessing.createEffects === 'function'
+        ) {
+            let cached = this.themeEffectCache.get(theme.name);
+            if (!cached) {
+                const effects = theme.postProcessing.createEffects() || [];
+                const pass =
+                    effects.length > 0
+                        ? new EffectPass(this.camera, ...effects)
+                        : null;
+                cached = { effects, pass };
+                this.themeEffectCache.set(theme.name, cached);
+            }
+            if (cached.pass && this.composer) {
+                this.activeThemePass = cached.pass;
+                this.activeThemeEffects = cached.effects;
+                this.composer.addPass(cached.pass);
+            }
         }
     }
 
@@ -818,172 +577,36 @@ export class NetworkVisualizer {
                 emissiveIntensity: 0.15, // Base glow for all nodes
             });
             nodeMat.userData.uTime = { value: 0 };
-            nodeMat.userData.uIsConstellation = { value: 0 };
 
-            // Inject instance-based emissive modulation and procedural reflection
+            nodeMat.customProgramCacheKey = () => {
+                const currentTheme = this.themeManager.getCurrentTheme();
+                return currentTheme &&
+                    typeof currentTheme.nodeShader === 'function'
+                    ? currentTheme.name
+                    : 'standard';
+            };
+
             nodeMat.onBeforeCompile = (shader) => {
                 shader.uniforms.uTime = nodeMat.userData.uTime;
-                shader.uniforms.uIsConstellation =
-                    nodeMat.userData.uIsConstellation;
-                this.nodeShader = shader; // Save reference to update uTime in loop
+                this.nodeShader = shader;
 
-                shader.vertexShader = shader.vertexShader.replace(
-                    '#include <common>',
-                    `
-                    #include <common>
-                    uniform float uIsConstellation;
-                    `,
-                );
-
-                shader.vertexShader = shader.vertexShader.replace(
-                    '#include <begin_vertex>',
-                    `
-                    #include <begin_vertex>
-                    if (uIsConstellation > 0.5) {
-                        transformed *= 0.45;
-                    }
-                    `,
-                );
-
-                shader.fragmentShader = shader.fragmentShader.replace(
-                    '#include <common>',
-                    `
-                    #include <common>
-                    uniform float uTime;
-                    uniform float uIsConstellation;
-                    
-                    float random_fire(in vec2 st) {
-                        return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
-                    }
-
-                    float noise_fire(in vec2 st) {
-                        vec2 i = floor(st);
-                        vec2 f = fract(st);
-                        float a = random_fire(i);
-                        float b = random_fire(i + vec2(1.0, 0.0));
-                        float c = random_fire(i + vec2(0.0, 1.0));
-                        float d = random_fire(i + vec2(1.0, 1.0));
-                        vec2 u = f * f * (3.0 - 2.0 * f);
-                        return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
-                    }
-                    `,
-                );
-
-                shader.fragmentShader = shader.fragmentShader.replace(
-                    '#include <emissivemap_fragment>',
-                    `
-                    #include <emissivemap_fragment>
-                    
-                    float isHighlighted = 0.0;
-                    #ifdef USE_COLOR
-                        totalEmissiveRadiance *= vColor.rgb;
-                        // Detect if the node is currently highlighted (HDR values > 2.0)
-                        isHighlighted = step(2.0, length(vColor.rgb));
-                    #endif
-
-                    // Procedural Reflection Layer
-                    if (metalnessFactor > 0.5) {
-                        // Calculate reflection vector in VIEW space instead of world space.
-                        vec3 viewIncident = -normalize(vViewPosition);
-                        vec3 ref = reflect(viewIncident, normal);
-
-                        // Convert to equirectangular UVs
-                        float u = atan(ref.z, ref.x) / (2.0 * PI) + 0.5;
-                        float v = ref.y * 0.5 + 0.5;
-                        vec2 refUv = vec2(u, v);
-
-                        vec2 st = refUv * vec2(4.0, 2.0);
-
-                        // Flow upwards faster and sway chaotically
-                        st.y -= uTime * 1.2;
-                        st.x += sin(uTime * 0.8 + refUv.y * 4.0) * 0.2 + cos(uTime * 1.5 - refUv.y * 8.0) * 0.1;
-
-                        // Layered noise with time-based offset for internal chaos
-                        float n = noise_fire(st * 2.0) * 0.5 
-                                + noise_fire(st * 5.0 - vec2(uTime * 0.3, 0.0)) * 0.25
-                                + noise_fire(st * 10.0 + vec2(0.0, uTime * 0.6)) * 0.125;
-
-                        float grad = smoothstep(1.0, 0.1, refUv.y);
-                        float intensity = n * grad * 2.5;
-
-                        vec3 dark = vec3(0.02, 0.02, 0.02);
-                        vec3 red = vec3(0.8, 0.1, 0.0);
-                        vec3 orange = vec3(1.0, 0.5, 0.0);
-                        vec3 gold = vec3(1.0, 0.85, 0.2);
-
-                        vec3 fireColor = mix(dark, red, smoothstep(0.1, 0.5, intensity));
-                        fireColor = mix(fireColor, orange, smoothstep(0.4, 0.8, intensity));
-                        fireColor = mix(fireColor, gold, smoothstep(0.7, 0.95, intensity));
-
-                        // If the node is highlighted, we fade out the fire reflection so it doesn't wash out the pure blue highlight
-                        fireColor = mix(fireColor * 1.5, vec3(0.0), isHighlighted * 0.8);
-
-                        totalEmissiveRadiance += fireColor;
-                        
+                const currentTheme = this.themeManager.getCurrentTheme();
+                if (
+                    currentTheme &&
+                    typeof currentTheme.nodeShader === 'function'
+                ) {
+                    currentTheme.nodeShader(shader);
+                } else {
+                    shader.fragmentShader = shader.fragmentShader.replace(
+                        '#include <emissivemap_fragment>',
+                        `
+                        #include <emissivemap_fragment>
                         #ifdef USE_COLOR
-                            // Force an intense emissive boost when highlighted to guarantee a clean, bright bloom over the dark metal
-                            totalEmissiveRadiance += vColor.rgb * isHighlighted * 0.5;
+                            totalEmissiveRadiance *= vColor.rgb;
                         #endif
-                    }
-
-                    if (uIsConstellation > 0.5) {
-                        float viewAlign = max(0.0, dot(normal, normalize(vViewPosition)));
-                        
-                        // 1. Detect if the node is active/highlighted (HDR color length > 2.0)
-                        float isHighlighted = 0.0;
-                        #ifdef USE_COLOR
-                            isHighlighted = step(2.0, length(vColor.rgb));
-                        #endif
-
-                        // 2. High-Detail Bubbling Plasma (3 octaves of FBM noise)
-                        vec2 st1 = normal.xy * 3.0 + vec2(uTime * 0.15, uTime * -0.1);
-                        vec2 st2 = normal.xy * 6.0 + vec2(uTime * -0.1, uTime * 0.2);
-                        vec2 st3 = normal.xy * 12.0 + vec2(uTime * 0.25, uTime * 0.25);
-                        
-                        float p1 = noise_fire(st1);
-                        float p2 = noise_fire(st2);
-                        float p3 = noise_fire(st3);
-                        float plasma = p1 * 0.5 + p2 * 0.3 + p3 * 0.2;
-                        
-                        // 3. High-Density Opaque Core + Fuzzy Outer Corona (Normal Blending)
-                        // This makes the core completely opaque to block internal connections!
-                        float starAlpha = smoothstep(0.0, 0.45, viewAlign);
-                        
-                        vec3 starColor = vec3(1.0, 1.0, 1.0);
-                        #ifdef USE_COLOR
-                            starColor = normalize(vColor.rgb);
-                        #endif
-                        
-                        // 4. Detailed Plasma Color
-                        vec3 plasmaColor = mix(starColor, vec3(1.0, 1.0, 1.0), plasma * 0.2);
-                        vec3 hotCore = mix(plasmaColor, vec3(1.0, 1.0, 1.0), pow(viewAlign, 6.0) * 0.4);
-                        
-                        // 5. Dynamic Luminosity (Inactive is brighter, active gets a massive boost!)
-                        float emissiveBoost = 0.95 + isHighlighted * 2.05;
-                        totalEmissiveRadiance = hotCore * starAlpha * emissiveBoost;
-                        
-                        // 6. Beautiful Fresnel Corona Outer Edge (Wider and brighter when active!)
-                        float rimExponent = mix(3.5, 2.0, isHighlighted);
-                        float rimIntensity = mix(0.4, 2.2, isHighlighted);
-                        float rim = pow(1.0 - viewAlign, rimExponent);
-                        vec3 rimColor = starColor * rim * rimIntensity;
-                        totalEmissiveRadiance += rimColor;
-                        
-                        // 7. Four-Way Lens Flare Diffraction Spikes (Burst forth when active!)
-                        float spikeH = exp(-abs(normal.y) * 45.0) * exp(-abs(normal.x) * 1.5);
-                        float spikeV = exp(-abs(normal.x) * 45.0) * exp(-abs(normal.y) * 1.5);
-                        float spike = (spikeH + spikeV) * viewAlign;
-                        vec3 spikeColor = (starColor + vec3(0.5)) * spike * isHighlighted * 3.5;
-                        totalEmissiveRadiance += spikeColor;
-                        
-                        // Set the final transparency (Corona & Spikes expand when active)
-                        float finalAlpha = max(starAlpha, rim * (0.95 + isHighlighted * 0.05));
-                        finalAlpha = max(finalAlpha, spike * isHighlighted * 0.95);
-                        diffuseColor.a = finalAlpha;
-                        diffuseColor.rgb = vec3(0.0);
-                    }
-                    `,
-                );
+                        `,
+                    );
+                }
             };
 
             this.nodeInstancedMesh = new THREE.InstancedMesh(
@@ -1130,6 +753,13 @@ export class NetworkVisualizer {
                 );
             };
 
+            const activeTheme = this.themeManager.getCurrentTheme();
+            const useTubes = Boolean(
+                activeTheme &&
+                activeTheme.edges &&
+                activeTheme.edges.renderMode === 'tubes',
+            );
+
             this.edgeTubeInstancedMesh = new THREE.InstancedMesh(
                 this.edgeTubeGeo,
                 tubeMat,
@@ -1145,8 +775,7 @@ export class NetworkVisualizer {
             }
             this.edgeTubeInstancedMesh.userData.type = 'edge-tube-batch';
             this.edgeTubeInstancedMesh.frustumCulled = false;
-            this.edgeTubeInstancedMesh.visible =
-                this.currentThemeName === 'take-on-me-real';
+            this.edgeTubeInstancedMesh.visible = useTubes;
             this.edgeTubeInstancedMesh.geometry.boundingSphere =
                 new THREE.Sphere(new THREE.Vector3(), 100000);
             this.graphGroup.add(this.edgeTubeInstancedMesh);
@@ -1513,19 +1142,26 @@ export class NetworkVisualizer {
     }
 
     _getEdgeColor(normWeight, forceOriginalColor = false) {
-        if (this.currentThemeName === 'constellation' && !forceOriginalColor) {
-            return this._scratchColor
-                .copy(this._constellationEdgeLow)
-                .lerp(this._constellationEdgeHigh, normWeight);
-        }
+        const currentTheme = this.themeManager.getCurrentTheme();
+        const palette = !forceOriginalColor && currentTheme?.edges?.palette;
 
-        if (
-            this.currentThemeName === 'take-on-me-real' &&
-            !forceOriginalColor
-        ) {
+        if (palette) {
+            this._paletteLowColor.setHex(palette.low);
+            this._paletteHighColor.setHex(palette.high);
+            if (palette.mid !== undefined) {
+                this._paletteMidColor.setHex(palette.mid);
+                if (normWeight <= 0.5) {
+                    return this._scratchColor
+                        .copy(this._paletteLowColor)
+                        .lerp(this._paletteMidColor, normWeight * 2);
+                }
+                return this._scratchColor
+                    .copy(this._paletteMidColor)
+                    .lerp(this._paletteHighColor, (normWeight - 0.5) * 2);
+            }
             return this._scratchColor
-                .copy(this._takeOnMeEdgeLow)
-                .lerp(this._takeOnMeEdgeHigh, normWeight);
+                .copy(this._paletteLowColor)
+                .lerp(this._paletteHighColor, normWeight);
         }
 
         if (normWeight <= 0.5) {
@@ -1557,10 +1193,11 @@ export class NetworkVisualizer {
             if (edgeData) edgeData.line.material = this.hoverEdgeMaterial;
         } else if (isPlaying) {
             const currentTheme = this.themeManager.getCurrentTheme();
-            if (currentTheme && currentTheme.name === 'constellation') {
-                // Pass true for forceOriginalColor to preserve the original highlight color/effect
+            const edgeHighlight = currentTheme?.edges?.highlight;
+            if (edgeHighlight?.useWeightColor) {
+                const mult = edgeHighlight.intensityMultiplier ?? 1.0;
                 edgeColor = this._getEdgeColor(normWeight, true).multiplyScalar(
-                    this.highlightIntensity * 1.5,
+                    this.highlightIntensity * mult,
                 );
             } else {
                 edgeColor = this._scratchColor
@@ -2285,7 +1922,7 @@ export class NetworkVisualizer {
             ).radius;
 
             if (this.effects) {
-                this.effects.updateStudioPosition(
+                this.effects.updateGraphBounds(
                     this.graphCenter,
                     this.graphRadius,
                 );
@@ -2360,41 +1997,6 @@ export class NetworkVisualizer {
         }
     }
 
-    _updateAudioReactiveJitter(frequencyData) {
-        if (
-            !this.charcoalSketchEffect ||
-            this.currentThemeName !== 'take-on-me-real'
-        ) {
-            return;
-        }
-
-        const uTime = this.charcoalSketchEffect.uniforms.get('uTime').value;
-        const currentFrame = Math.floor(uTime * 5.0); // Clamped to 5.0 FPS (matches uFPS)
-
-        // Only update the wiggling amplitude when a new stop-motion sketch cell triggers!
-        // This eliminates 60fps high-frequency vibrations and guarantees a chunky, solid traditional 5fps stop-motion feel
-        if (currentFrame !== this._lastSketchFrame) {
-            this._lastSketchFrame = currentFrame;
-
-            let bassEnergy = 0;
-            if (frequencyData && frequencyData.length > 0) {
-                const bassCount = Math.max(
-                    1,
-                    Math.floor(frequencyData.length * 0.2),
-                );
-                let bassSum = 0;
-                for (let i = 0; i < bassCount; i++) {
-                    bassSum += frequencyData[i] / 255.0;
-                }
-                bassEnergy = bassSum / bassCount;
-            }
-            // Base jitter is 0.0028, wiggles up to 0.0083 with bass energy!
-            const targetJitter = 0.0028 + bassEnergy * 0.0055;
-            this.charcoalSketchEffect.uniforms.get('uJitterStrength').value =
-                targetJitter;
-        }
-    }
-
     animate(time) {
         if (!this._isAnimating) return;
         this._animationFrameId = requestAnimationFrame(this.animate);
@@ -2429,10 +2031,6 @@ export class NetworkVisualizer {
             this.nodeInstancedMesh.material.userData.uTime.value += delta;
         }
 
-        if (this.nodeShader) {
-            this.nodeShader.uniforms.uTime.value += delta;
-        }
-
         const frequencyData = this.audioSource
             ? this.audioSource.getFrequencyData()
             : null;
@@ -2443,7 +2041,12 @@ export class NetworkVisualizer {
             this.graphRadius,
         );
 
-        this._updateAudioReactiveJitter(frequencyData);
+        for (let i = 0; i < this.activeThemeEffects.length; i++) {
+            const effect = this.activeThemeEffects[i];
+            if (effect && typeof effect.updateAudio === 'function') {
+                effect.updateAudio(frequencyData);
+            }
+        }
 
         this._updateAutoTour(delta);
         this.composer.render();
@@ -2627,15 +2230,15 @@ export class NetworkVisualizer {
 
     _applyNodeHighlight(nodeData, highlightColor) {
         const currentTheme = this.themeManager.getCurrentTheme();
-        const useBaseColor =
-            currentTheme && currentTheme.name === 'constellation';
+        const nodeHighlight = currentTheme?.nodeHighlight;
+        const useBaseColor = !!nodeHighlight?.useBaseColor;
+        const mult = nodeHighlight?.intensityMultiplier ?? 1.0;
         const colorToUse = useBaseColor ? nodeData.baseColor : highlightColor;
-        const intensityToUse = useBaseColor
-            ? this.highlightIntensity * 1.5
-            : this.highlightIntensity;
+        const intensityToUse = this.highlightIntensity * mult;
 
         // Update dummy mesh for tests
-        nodeData.mesh.material.emissiveIntensity = useBaseColor ? 1.5 : 1.0;
+        nodeData.mesh.material.emissiveIntensity =
+            nodeHighlight?.activeEmissiveIntensity ?? mult;
         nodeData.mesh.material.emissive = colorToUse;
 
         this.nodeInstancedMesh.setColorAt(
@@ -2863,28 +2466,18 @@ export class NetworkVisualizer {
         }
     }
 
-    _updateThemeBloom(themeName) {
+    _updateThemeBloom(theme) {
         if (this.bloomEffect) {
-            if (themeName === 'constellation') {
-                this.bloomEffect.intensity = 5.5;
-                if (this.bloomEffect.luminanceMaterial) {
-                    this.bloomEffect.luminanceMaterial.threshold = 0.15;
-                }
-            } else if (themeName === 'take-on-me-real') {
-                this.bloomEffect.intensity = 1.0;
-                if (this.bloomEffect.luminanceMaterial) {
-                    this.bloomEffect.luminanceMaterial.threshold = 0.9;
-                }
-            } else {
-                this.bloomEffect.intensity = 3.0;
-                if (this.bloomEffect.luminanceMaterial) {
-                    this.bloomEffect.luminanceMaterial.threshold = 0.15;
-                }
+            const bloomConfig = theme?.postProcessing?.bloom;
+            this.bloomEffect.intensity = bloomConfig?.intensity ?? 3.0;
+            if (this.bloomEffect.luminanceMaterial) {
+                this.bloomEffect.luminanceMaterial.threshold =
+                    bloomConfig?.threshold ?? 0.15;
             }
         }
     }
 
-    _updateNodeMaterialThemeProperties(theme, themeName) {
+    _updateNodeMaterialThemeProperties(theme) {
         if (!this.nodeInstancedMesh) return;
 
         const mat = this.nodeInstancedMesh.material;
@@ -2892,15 +2485,10 @@ export class NetworkVisualizer {
         mat.metalness = theme.nodeMaterial.metalness;
         mat.emissiveIntensity = theme.nodeMaterial.emissiveIntensity;
         mat.wireframe = !!theme.nodeMaterial.wireframe;
-        mat.transparent = themeName === 'constellation';
+        mat.transparent = !!theme.nodeMaterial.transparent;
         mat.blending = THREE.NormalBlending;
         mat.depthWrite = true;
         mat.needsUpdate = true;
-
-        if (mat.userData && mat.userData.uIsConstellation) {
-            mat.userData.uIsConstellation.value =
-                themeName === 'constellation' ? 1.0 : 0.0;
-        }
     }
 
     _updateThemeCones(theme) {
@@ -2913,11 +2501,11 @@ export class NetworkVisualizer {
         }
     }
 
-    _updateThemeEdgesVisibility(themeName, theme) {
-        const isTakeOnMeReal = themeName === 'take-on-me-real';
+    _updateThemeEdgesVisibility(theme) {
+        const useTubes = theme?.edges?.renderMode === 'tubes';
 
         if (this.edgeLineSegments) {
-            this.edgeLineSegments.visible = !isTakeOnMeReal;
+            this.edgeLineSegments.visible = !useTubes;
             this.edgeLineSegments.material.transparent = true;
             this.edgeLineSegments.material.opacity = theme.nodeMaterial
                 .wireframe
@@ -2926,7 +2514,7 @@ export class NetworkVisualizer {
         }
 
         if (this.edgeTubeInstancedMesh) {
-            this.edgeTubeInstancedMesh.visible = isTakeOnMeReal;
+            this.edgeTubeInstancedMesh.visible = useTubes;
             this.edgeTubeInstancedMesh.material.roughness =
                 theme.nodeMaterial.roughness !== undefined
                     ? theme.nodeMaterial.roughness
@@ -2953,9 +2541,9 @@ export class NetworkVisualizer {
 
         this.themeManager.setTheme(themeName);
         this.currentThemeName = themeName;
-        this._updateComposerBufferType(themeName);
         const theme = this.themeManager.getCurrentTheme();
-        this._currentEdgeTubeRadius = theme.edgeTubeRadius || 0.4;
+        this._updateComposerBufferType(theme);
+        this._currentEdgeTubeRadius = theme.edges?.tubeRadius || 0.4;
 
         // Update CSS theme attribute
         if (typeof document !== 'undefined') {
@@ -2973,7 +2561,7 @@ export class NetworkVisualizer {
             this._reinitGeometries(targetSegments);
         }
 
-        this._updateThemeEdgesVisibility(themeName, theme);
+        this._updateThemeEdgesVisibility(theme);
         this._updateThemeNodeColors(themeName);
 
         // Reset and update highlights for all currently active/playing nodes under the new theme
@@ -2987,30 +2575,16 @@ export class NetworkVisualizer {
             this.outlineInstancedMesh.visible = theme.showOutlines !== false;
         }
 
-        this._updateNodeMaterialThemeProperties(theme, themeName);
-
-        if (this.nodeShader && this.nodeShader.uniforms.uIsConstellation) {
-            this.nodeShader.uniforms.uIsConstellation.value =
-                themeName === 'constellation' ? 1.0 : 0.0;
-        }
-
-        this._updateThemeBloom(themeName);
+        this._updateNodeMaterialThemeProperties(theme);
+        this._updateThemeBloom(theme);
         this._updateThemeCones(theme);
-
-        if (themeName === 'take-on-me-real') {
-            if (!this.charcoalSketchPass) {
-                this.charcoalSketchEffect = new CharcoalSketchEffect();
-                this.charcoalSketchPass = new EffectPass(
-                    this.camera,
-                    this.charcoalSketchEffect,
-                );
-            }
-            this.composer.addPass(this.charcoalSketchPass);
-        } else if (this.charcoalSketchPass) {
-            this.composer.removePass(this.charcoalSketchPass);
-        }
+        this._updateThemePostProcessing(theme);
 
         this.renderer.setClearColor(theme.background);
+
+        if (this.effects) {
+            this.effects.applyTheme(theme);
+        }
 
         if (theme.onActivate) {
             theme.onActivate(this);
@@ -3050,10 +2624,17 @@ export class NetworkVisualizer {
             this.composer.dispose();
         }
 
-        if (this.charcoalSketchPass) {
-            this.charcoalSketchPass.dispose();
-            this.charcoalSketchPass = null;
-            this.charcoalSketchEffect = null;
+        for (const entry of this.themeEffectCache.values()) {
+            if (entry.pass && typeof entry.pass.dispose === 'function') {
+                entry.pass.dispose();
+            }
+        }
+        this.themeEffectCache.clear();
+        this.activeThemePass = null;
+        this.activeThemeEffects = [];
+
+        if (this.effects && typeof this.effects.dispose === 'function') {
+            this.effects.dispose();
         }
 
         if (this.layout) {

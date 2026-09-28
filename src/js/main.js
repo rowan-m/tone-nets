@@ -5,13 +5,7 @@ import { UIManager } from './UIManager.js';
 import { Midi } from '@tonejs/midi';
 import createGraph from 'ngraph.graph';
 import { Utils } from './Utils.js';
-import {
-    DefaultTheme,
-    TerminatorTheme,
-    RetroTheme,
-    ConstellationTheme,
-    TakeOnMeRealTheme,
-} from './Themes.js';
+import { BUILT_IN_THEMES } from './Themes.js';
 
 console.log('Tone Nets Initialized');
 
@@ -30,11 +24,9 @@ export const init = async () => {
     const visualizer = new NetworkVisualizer('canvas-container');
 
     // Register themes
-    visualizer.themeManager.registerTheme(DefaultTheme);
-    visualizer.themeManager.registerTheme(TerminatorTheme);
-    visualizer.themeManager.registerTheme(RetroTheme);
-    visualizer.themeManager.registerTheme(ConstellationTheme);
-    visualizer.themeManager.registerTheme(TakeOnMeRealTheme);
+    for (const theme of BUILT_IN_THEMES) {
+        visualizer.themeManager.registerTheme(theme);
+    }
     visualizer.setTheme('default');
 
     // Warm-up visualizer and shaders to prevent JIT/shader compilation lag on first play

@@ -6,6 +6,7 @@ import { Utils } from './Utils.js';
 import {
     DefaultTheme,
     TerminatorTheme,
+    RetroTheme,
     ConstellationTheme,
     TakeOnMeRealTheme,
 } from './Themes.js';
@@ -34,12 +35,10 @@ vi.mock('./VisualEffectsManager.js', () => ({
         this.activeEmojis = [];
         this.update = vi.fn();
         this.showInstrumentEmoji = vi.fn();
-        this.enableTerminatorBackground = vi.fn();
-        this.enableConstellationBackground = vi.fn();
-        this.enableStudioBackground = vi.fn();
+        this.applyTheme = vi.fn();
+        this.updateGraphBounds = vi.fn();
         this.clear = vi.fn();
-        this.setRetroMode = vi.fn();
-        this.setConstellationMode = vi.fn();
+        this.dispose = vi.fn();
     }),
 }));
 
@@ -429,13 +428,20 @@ describe('NetworkVisualizer', () => {
             expect(visualizer.currentThemeName).toBe(nextTheme);
         });
 
-        it('enables and disables retro effects', () => {
-            visualizer.enableRetroEffects(true);
-            expect(visualizer.composer.addPass).toHaveBeenCalled();
-            expect(visualizer.retroCRTPass).toBeDefined();
+        it('mounts and unmounts retro post-processing effects via theme contract', () => {
+            visualizer.themeManager.registerTheme(RetroTheme);
 
-            visualizer.enableRetroEffects(false);
-            expect(visualizer.composer.removePass).toHaveBeenCalled();
+            visualizer.setTheme('retro');
+            expect(visualizer.composer.addPass).toHaveBeenCalled();
+            expect(visualizer.activeThemePass).toBeDefined();
+            expect(visualizer.effects.applyTheme).toHaveBeenCalledWith(
+                expect.objectContaining({ name: 'retro' }),
+            );
+
+            const pass = visualizer.activeThemePass;
+            visualizer.setTheme('default');
+            expect(visualizer.composer.removePass).toHaveBeenCalledWith(pass);
+            expect(visualizer.activeThemePass).toBeNull();
         });
 
         it('re-initializes geometries with different LOD', () => {
@@ -466,16 +472,15 @@ describe('NetworkVisualizer', () => {
             );
         });
 
-        it('manages high-precision HalfFloatType buffers only for the constellation theme', () => {
+        it('manages high-precision HalfFloatType buffers when theme requests hdrBuffer', () => {
             const spyComposer = vi.mocked(EffectComposer);
 
-            // Re-register the ConstellationTheme and transition to default first to set baseline
             visualizer.themeManager.registerTheme(ConstellationTheme);
             visualizer.setTheme('default');
 
             spyComposer.mockClear();
 
-            // Set to constellation theme (should trigger recreation with HalfFloatType)
+            // Set to constellation theme (hdrBuffer: true -> HalfFloatType)
             visualizer.setTheme('constellation');
             expect(spyComposer).toHaveBeenCalledWith(
                 visualizer.renderer,
@@ -486,7 +491,7 @@ describe('NetworkVisualizer', () => {
 
             spyComposer.mockClear();
 
-            // Set back to default theme (should trigger recreation with UnsignedByteType)
+            // Set back to default theme (hdrBuffer: false -> UnsignedByteType)
             visualizer.setTheme('default');
             expect(spyComposer).toHaveBeenCalledWith(
                 visualizer.renderer,
@@ -534,20 +539,90 @@ describe('NetworkVisualizer', () => {
             ]);
             visualizer.initIncremental(mockGraph);
 
-            // Default theme should not have charcoal sketch pass active
+            // Default theme should not have a custom theme pass active
             visualizer.setTheme('default');
-            expect(visualizer.charcoalSketchPass).toBeNull();
+            expect(visualizer.activeThemePass).toBeNull();
 
             // Set to take-on-me-real theme
             visualizer.setTheme('take-on-me-real');
-            expect(visualizer.charcoalSketchPass).toBeDefined();
-            expect(visualizer.composer.addPass).toHaveBeenCalled();
+            const sketchPass = visualizer.activeThemePass;
+            expect(sketchPass).toBeDefined();
+            expect(visualizer.composer.addPass).toHaveBeenCalledWith(
+                sketchPass,
+            );
 
             // Switch back to default
             visualizer.setTheme('default');
             expect(visualizer.composer.removePass).toHaveBeenCalledWith(
-                visualizer.charcoalSketchPass,
+                sketchPass,
             );
+        });
+
+        it('supports wholly pluggable drop-in themes with custom shaders, 3-stop palettes, and audio-reactive post-processing effects', () => {
+            const updateAudioSpy = vi.fn();
+            const nodeShaderSpy = vi.fn();
+            const customDropInTheme = {
+                name: 'synthwave-custom',
+                edges: {
+                    palette: {
+                        low: 0x110022,
+                        mid: 0x8800ff,
+                        high: 0x00ffff,
+                    },
+                },
+                nodeShader: nodeShaderSpy,
+                postProcessing: {
+                    hdrBuffer: true,
+                    bloom: { intensity: 4.2, threshold: 0.25 },
+                    createEffects: () => [{ updateAudio: updateAudioSpy }],
+                },
+            };
+
+            visualizer.themeManager.registerTheme(customDropInTheme);
+            const mockGraph = createMockGraph([
+                { id: 'C4', data: { degree: 1 } },
+            ]);
+            visualizer.initIncremental(mockGraph);
+            visualizer.setTheme('synthwave-custom');
+
+            expect(visualizer.bloomEffect.intensity).toBeCloseTo(4.2);
+            expect(
+                visualizer.bloomEffect.luminanceMaterial.threshold,
+            ).toBeCloseTo(0.25);
+
+            // Check 3-stop edge palette interpolation at low-mid (0.25) and mid-high (0.75)
+            const cLowMid = visualizer._getEdgeColor(0.25).clone();
+            const expectedLowMid = new THREE.Color(0x110022).lerp(
+                new THREE.Color(0x8800ff),
+                0.5,
+            );
+            expect(cLowMid.r).toBeCloseTo(expectedLowMid.r);
+
+            const cMidHigh = visualizer._getEdgeColor(0.75).clone();
+            const expectedMidHigh = new THREE.Color(0x8800ff).lerp(
+                new THREE.Color(0x00ffff),
+                0.5,
+            );
+            expect(cMidHigh.b).toBeCloseTo(expectedMidHigh.b);
+
+            // Verify customProgramCacheKey and onBeforeCompile delegate to theme.nodeShader
+            const nodeMat = visualizer.nodeInstancedMesh.material;
+            expect(nodeMat.customProgramCacheKey()).toBe('synthwave-custom');
+            const mockShader = {
+                uniforms: {},
+                vertexShader: '#include <common>\n#include <begin_vertex>',
+                fragmentShader:
+                    '#include <common>\n#include <emissivemap_fragment>',
+            };
+            nodeMat.onBeforeCompile(mockShader);
+            expect(nodeShaderSpy).toHaveBeenCalledWith(mockShader);
+
+            // Verify animate() forwards frequencyData to active post-processing effects
+            const freqData = new Uint8Array([100, 200]);
+            visualizer.audioSource = { getFrequencyData: () => freqData };
+            visualizer._isAnimating = true;
+            visualizer.animate(1016);
+            expect(updateAudioSpy).toHaveBeenCalledWith(freqData);
         });
 
         it('handles octave -1 notes with negative semitone indices across themes without throwing', () => {
@@ -694,14 +769,17 @@ describe('NetworkVisualizer', () => {
 
         it('uses subtle dark blue for inactive edges in constellation theme, and forceOriginalColor preserves highlights', () => {
             visualizer.themeManager.registerTheme(ConstellationTheme);
+            const constellationLow = new THREE.Color(
+                ConstellationTheme.edges.palette.low,
+            );
+            const constellationHigh = new THREE.Color(
+                ConstellationTheme.edges.palette.high,
+            );
 
             // Set to default theme first
             visualizer.setTheme('default');
             const defaultEdgeColor = visualizer._getEdgeColor(0.5).clone();
-            // Verify standard theme edge color is not blue
-            expect(defaultEdgeColor.r).not.toBe(
-                visualizer._constellationEdgeLow.r,
-            );
+            expect(defaultEdgeColor.r).not.toBe(constellationLow.r);
 
             // Set to constellation theme
             visualizer.setTheme('constellation');
@@ -710,9 +788,9 @@ describe('NetworkVisualizer', () => {
                 .clone();
 
             // Verify constellation theme edge color is the subtle dark blue
-            const expectedBlue = visualizer._constellationEdgeLow
+            const expectedBlue = constellationLow
                 .clone()
-                .lerp(visualizer._constellationEdgeHigh, 0.5);
+                .lerp(constellationHigh, 0.5);
             expect(constellationEdgeColor.r).toBeCloseTo(expectedBlue.r);
             expect(constellationEdgeColor.g).toBeCloseTo(expectedBlue.g);
             expect(constellationEdgeColor.b).toBeCloseTo(expectedBlue.b);
@@ -729,21 +807,24 @@ describe('NetworkVisualizer', () => {
 
         it('uses soft pastel teal for inactive edges in take-on-me-real theme, and forceOriginalColor preserves highlights', () => {
             visualizer.themeManager.registerTheme(TakeOnMeRealTheme);
+            const takeOnMeLow = new THREE.Color(
+                TakeOnMeRealTheme.edges.palette.low,
+            );
+            const takeOnMeHigh = new THREE.Color(
+                TakeOnMeRealTheme.edges.palette.high,
+            );
 
             // Set to default theme first
             visualizer.setTheme('default');
             const defaultEdgeColor = visualizer._getEdgeColor(0.5).clone();
-            // Verify standard theme edge color is not pastel teal
-            expect(defaultEdgeColor.r).not.toBe(visualizer._takeOnMeEdgeLow.r);
+            expect(defaultEdgeColor.r).not.toBe(takeOnMeLow.r);
 
             // Set to take-on-me-real theme
             visualizer.setTheme('take-on-me-real');
             const takeOnMeEdgeColor = visualizer._getEdgeColor(0.5).clone();
 
             // Verify take-on-me-real theme edge color is the soft pastel teal
-            const expectedTeal = visualizer._takeOnMeEdgeLow
-                .clone()
-                .lerp(visualizer._takeOnMeEdgeHigh, 0.5);
+            const expectedTeal = takeOnMeLow.clone().lerp(takeOnMeHigh, 0.5);
             expect(takeOnMeEdgeColor.r).toBeCloseTo(expectedTeal.r);
             expect(takeOnMeEdgeColor.g).toBeCloseTo(expectedTeal.g);
             expect(takeOnMeEdgeColor.b).toBeCloseTo(expectedTeal.b);
@@ -778,9 +859,9 @@ describe('NetworkVisualizer', () => {
                 visualizer.edgeLineSegments.geometry.attributes.color;
 
             // Check that the buffer color is updated to the constellation blue
-            const expectedBlue = visualizer._constellationEdgeLow
-                .clone()
-                .lerp(visualizer._constellationEdgeHigh, 1.0);
+            const expectedBlue = new THREE.Color(
+                ConstellationTheme.edges.palette.low,
+            ).lerp(new THREE.Color(ConstellationTheme.edges.palette.high), 1.0);
             expect(colorAttr.array[0]).toBeCloseTo(expectedBlue.r);
             expect(colorAttr.array[1]).toBeCloseTo(expectedBlue.g);
             expect(colorAttr.array[2]).toBeCloseTo(expectedBlue.b);

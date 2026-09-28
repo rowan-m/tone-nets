@@ -1,18 +1,27 @@
 import { describe, it, expect, vi } from 'vitest';
+import * as THREE from 'three';
 import {
     DefaultTheme,
     TerminatorTheme,
     RetroTheme,
     ConstellationTheme,
     TakeOnMeRealTheme,
+    BUILT_IN_THEMES,
 } from './Themes.js';
 
 describe('Themes', () => {
-    describe('DefaultTheme', () => {
-        it('should define the default aesthetic properties', () => {
-            // Arrange & Act (Accessing static theme object)
+    it('exports all 5 built-in themes in BUILT_IN_THEMES registry order', () => {
+        expect(BUILT_IN_THEMES).toEqual([
+            DefaultTheme,
+            TerminatorTheme,
+            RetroTheme,
+            ConstellationTheme,
+            TakeOnMeRealTheme,
+        ]);
+    });
 
-            // Assert
+    describe('DefaultTheme', () => {
+        it('defines the default aesthetic properties', () => {
             expect(DefaultTheme.name).toBe('default');
             expect(DefaultTheme.emoji).toBe('🎨');
             expect(DefaultTheme.background).toBe(0x000000);
@@ -27,8 +36,7 @@ describe('Themes', () => {
     });
 
     describe('TerminatorTheme', () => {
-        it('should define the terminator aesthetic properties', () => {
-            // Assert
+        it('defines the terminator aesthetic properties', () => {
             expect(TerminatorTheme.name).toBe('terminator');
             expect(TerminatorTheme.emoji).toBe('💀');
             expect(TerminatorTheme.background).toBe(0x110000);
@@ -41,68 +49,73 @@ describe('Themes', () => {
             });
         });
 
-        describe('getNodeColor', () => {
-            it('should calculate desaturated colors for various pitch classes', () => {
-                // Arrange
-                const testCases = [
-                    { pc: 0, expectedHue: 0 },
-                    { pc: 6, expectedHue: 0.5 },
-                    { pc: 12, expectedHue: 1 }, // Boundary/Extreme case (though usually 0-11)
-                ];
+        it('calculates desaturated colors for various pitch classes', () => {
+            const testCases = [
+                { pc: 0, expectedHue: 0 },
+                { pc: 6, expectedHue: 0.5 },
+                { pc: 12, expectedHue: 1 },
+            ];
 
-                testCases.forEach(({ pc, expectedHue }) => {
-                    // Act
-                    const color = TerminatorTheme.getNodeColor(pc);
-
-                    // Assert
-                    expect(color.hue).toBe(expectedHue);
-                    expect(color.saturation).toBeCloseTo(0.1);
-                    expect(color.lightness).toBeCloseTo(0.8);
-                });
+            testCases.forEach(({ pc, expectedHue }) => {
+                const color = TerminatorTheme.getNodeColor(pc);
+                expect(color.hue).toBe(expectedHue);
+                expect(color.saturation).toBeCloseTo(0.1);
+                expect(color.lightness).toBeCloseTo(0.8);
             });
         });
 
-        describe('Lifecycle Hooks', () => {
-            it('should enable terminator background on activation', () => {
-                // Arrange
-                const mockVisualizer = {
-                    effects: {
-                        enableTerminatorBackground: vi.fn(),
-                    },
-                };
+        it('injects chrome fire reflection shader via nodeShader hook', () => {
+            const mockShader = {
+                vertexShader: '#include <common>\n#include <begin_vertex>',
+                fragmentShader:
+                    '#include <common>\n#include <emissivemap_fragment>',
+            };
 
-                // Act
-                TerminatorTheme.onActivate(mockVisualizer);
+            TerminatorTheme.nodeShader(mockShader);
 
-                // Assert
-                expect(
-                    mockVisualizer.effects.enableTerminatorBackground,
-                ).toHaveBeenCalledWith(true);
-            });
+            expect(mockShader.fragmentShader).toContain('noise_fire');
+            expect(mockShader.fragmentShader).toContain('fireColor');
+        });
 
-            it('should disable terminator background on deactivation', () => {
-                // Arrange
-                const mockVisualizer = {
-                    effects: {
-                        enableTerminatorBackground: vi.fn(),
-                    },
-                };
+        it('creates, updates, and disposes its fire and ember background', () => {
+            const camera = {
+                top: 100,
+                bottom: -100,
+                left: -200,
+                right: 200,
+                zoom: 2,
+            };
+            const bg = TerminatorTheme.createBackground({ camera });
 
-                // Act
-                TerminatorTheme.onDeactivate(mockVisualizer);
+            expect(bg.group).toBeInstanceOf(THREE.Group);
+            expect(bg.quad).toBeDefined();
+            expect(bg.embers).toBeDefined();
 
-                // Assert
-                expect(
-                    mockVisualizer.effects.enableTerminatorBackground,
-                ).toHaveBeenCalledWith(false);
-            });
+            const mockShader = {
+                uniforms: {},
+                vertexShader: '#include <begin_vertex>',
+                fragmentShader: '#include <premultiplied_alpha_fragment>',
+            };
+            bg.embers.points.material.onBeforeCompile(mockShader);
+
+            bg.update(0.25);
+            expect(bg.quad.uniforms.uTime.value).toBeCloseTo(0.25);
+            expect(mockShader.uniforms.uTime.value).toBeCloseTo(0.25);
+            expect(mockShader.uniforms.uSpread.value).toBe(400);
+
+            const quadDispose = vi.spyOn(bg.quad, 'dispose');
+            const embersDispose = vi.spyOn(bg.embers, 'dispose');
+            bg.dispose();
+            expect(quadDispose).toHaveBeenCalledOnce();
+            expect(embersDispose).toHaveBeenCalledOnce();
         });
     });
 
     describe('RetroTheme', () => {
-        it('should define the retro aesthetic properties', () => {
+        it('defines the retro aesthetic and post-processing properties', () => {
             expect(RetroTheme.name).toBe('retro');
             expect(RetroTheme.emoji).toBe('📟');
+            expect(RetroTheme.emojiTint).toBe('#00ff44');
             expect(RetroTheme.background).toBe(0x000500);
             expect(RetroTheme.highlightColor).toBe(0x00ff44);
             expect(RetroTheme.showOutlines).toBe(false);
@@ -110,66 +123,47 @@ describe('Themes', () => {
                 width: 640,
                 height: 480,
             });
+            expect(RetroTheme.geometrySegments).toBe(6);
             expect(RetroTheme.nodeMaterial.wireframe).toBe(true);
+
+            const effects = RetroTheme.postProcessing.createEffects();
+            expect(effects).toHaveLength(1);
+            expect(effects[0].name).toBe('RetroCRTEffect');
         });
 
-        describe('getNodeColor', () => {
-            it('should calculate terminal green shades for various pitch classes', () => {
-                const c0 = RetroTheme.getNodeColor(0);
-                expect(c0.hue).toBeCloseTo(120 / 360);
-                expect(c0.saturation).toBeCloseTo(0.8);
-                expect(c0.lightness).toBeCloseTo(0.3);
+        it('calculates terminal green shades for various pitch classes', () => {
+            const c0 = RetroTheme.getNodeColor(0);
+            expect(c0.hue).toBeCloseTo(120 / 360);
+            expect(c0.saturation).toBeCloseTo(0.8);
+            expect(c0.lightness).toBeCloseTo(0.3);
 
-                const c6 = RetroTheme.getNodeColor(6);
-                expect(c6.hue).toBeCloseTo(120 / 360);
-                expect(c6.saturation).toBeCloseTo(0.8);
-                expect(c6.lightness).toBeCloseTo(0.5);
-            });
+            const c6 = RetroTheme.getNodeColor(6);
+            expect(c6.hue).toBeCloseTo(120 / 360);
+            expect(c6.saturation).toBeCloseTo(0.8);
+            expect(c6.lightness).toBeCloseTo(0.5);
         });
 
-        describe('Lifecycle Hooks', () => {
-            it('should enable retro effects on activation', () => {
-                const mockVisualizer = {
-                    enableRetroEffects: vi.fn(),
-                    effects: {
-                        enableRetroBackground: vi.fn(),
-                    },
-                };
+        it('creates, updates, and disposes its equalizer background', () => {
+            const bg = RetroTheme.createBackground();
+            expect(bg.group).toBeInstanceOf(THREE.Group);
 
-                RetroTheme.onActivate(mockVisualizer);
+            const freqData = new Uint8Array(128).fill(200);
+            bg.update(0.1, freqData);
+            expect(bg.analyzer.freqData.some((v) => v > 0)).toBe(true);
 
-                expect(mockVisualizer.enableRetroEffects).toHaveBeenCalledWith(
-                    true,
-                );
-                expect(
-                    mockVisualizer.effects.enableRetroBackground,
-                ).toHaveBeenCalledWith(true);
-            });
-
-            it('should disable retro effects on deactivation', () => {
-                const mockVisualizer = {
-                    enableRetroEffects: vi.fn(),
-                    effects: {
-                        enableRetroBackground: vi.fn(),
-                    },
-                };
-
-                RetroTheme.onDeactivate(mockVisualizer);
-
-                expect(mockVisualizer.enableRetroEffects).toHaveBeenCalledWith(
-                    false,
-                );
-                expect(
-                    mockVisualizer.effects.enableRetroBackground,
-                ).toHaveBeenCalledWith(false);
-            });
+            const quadDispose = vi.spyOn(bg.quad, 'dispose');
+            const analyzerDispose = vi.spyOn(bg.analyzer, 'dispose');
+            bg.dispose();
+            expect(quadDispose).toHaveBeenCalledOnce();
+            expect(analyzerDispose).toHaveBeenCalledOnce();
         });
     });
 
     describe('ConstellationTheme', () => {
-        it('should define the constellation aesthetic properties', () => {
+        it('defines the constellation aesthetic, HDR bloom, and highlight strategies', () => {
             expect(ConstellationTheme.name).toBe('constellation');
             expect(ConstellationTheme.emoji).toBe('🌌');
+            expect(ConstellationTheme.emojiTint).toBe('#58a6ff');
             expect(ConstellationTheme.background).toBe(0x00020a);
             expect(ConstellationTheme.highlightColor).toBe(0xffd700);
             expect(ConstellationTheme.showOutlines).toBe(false);
@@ -177,135 +171,154 @@ describe('Themes', () => {
                 roughness: 0.3,
                 metalness: 0.2,
                 emissiveIntensity: 1.5,
+                transparent: true,
+            });
+            expect(ConstellationTheme.nodeHighlight).toEqual({
+                useBaseColor: true,
+                intensityMultiplier: 1.5,
+                activeEmissiveIntensity: 1.5,
+            });
+            expect(ConstellationTheme.edges.palette).toEqual({
+                low: 0x0a1630,
+                high: 0x182c50,
+            });
+            expect(ConstellationTheme.edges.highlight).toEqual({
+                useWeightColor: true,
+                intensityMultiplier: 1.5,
+            });
+            expect(ConstellationTheme.postProcessing.hdrBuffer).toBe(true);
+            expect(ConstellationTheme.postProcessing.bloom).toEqual({
+                intensity: 5.5,
+                threshold: 0.15,
             });
         });
 
-        describe('getNodeColor', () => {
-            it('should calculate luminous celestial colors for various pitch classes', () => {
-                const testCases = [
-                    { pc: 0, expectedHue: 0 },
-                    { pc: 6, expectedHue: 0.5 },
-                ];
+        it('calculates luminous celestial colors for various pitch classes', () => {
+            const testCases = [
+                { pc: 0, expectedHue: 0 },
+                { pc: 6, expectedHue: 0.5 },
+            ];
 
-                testCases.forEach(({ pc, expectedHue }) => {
-                    const color = ConstellationTheme.getNodeColor(pc);
-                    expect(color.hue).toBeCloseTo(expectedHue);
-                    expect(color.saturation).toBeCloseTo(0.6);
-                    expect(color.lightness).toBeCloseTo(0.7);
-                });
+            testCases.forEach(({ pc, expectedHue }) => {
+                const color = ConstellationTheme.getNodeColor(pc);
+                expect(color.hue).toBeCloseTo(expectedHue);
+                expect(color.saturation).toBeCloseTo(0.6);
+                expect(color.lightness).toBeCloseTo(0.7);
             });
         });
 
-        describe('Lifecycle Hooks', () => {
-            it('should enable constellation background on activation', () => {
-                const mockVisualizer = {
-                    effects: {
-                        enableConstellationBackground: vi.fn(),
-                        setConstellationMode: vi.fn(),
-                    },
-                };
+        it('injects star corona and diffraction spike shader via nodeShader hook', () => {
+            const mockShader = {
+                vertexShader: '#include <common>\n#include <begin_vertex>',
+                fragmentShader:
+                    '#include <common>\n#include <emissivemap_fragment>',
+            };
 
-                ConstellationTheme.onActivate(mockVisualizer);
+            ConstellationTheme.nodeShader(mockShader);
 
-                expect(
-                    mockVisualizer.effects.enableConstellationBackground,
-                ).toHaveBeenCalledWith(true);
-                expect(
-                    mockVisualizer.effects.setConstellationMode,
-                ).toHaveBeenCalledWith(true);
-            });
+            expect(mockShader.vertexShader).toContain('transformed *= 0.45');
+            expect(mockShader.fragmentShader).toContain('spikeColor');
+        });
 
-            it('should disable constellation background on deactivation', () => {
-                const mockVisualizer = {
-                    effects: {
-                        enableConstellationBackground: vi.fn(),
-                        setConstellationMode: vi.fn(),
-                    },
-                };
+        it('creates, updates with camera/graphCenter tracking, and disposes its celestial background', () => {
+            const camera = {
+                position: new THREE.Vector3(500, -300, 150),
+                quaternion: new THREE.Quaternion().setFromAxisAngle(
+                    new THREE.Vector3(0, 1, 0),
+                    Math.PI / 2,
+                ),
+                zoom: 2.0,
+            };
+            const bg = ConstellationTheme.createBackground({ camera });
 
-                ConstellationTheme.onDeactivate(mockVisualizer);
+            const mockShader = {
+                uniforms: {},
+                vertexShader: '#include <begin_vertex>',
+                fragmentShader: '#include <premultiplied_alpha_fragment>',
+            };
+            bg.stars.points.material.onBeforeCompile(mockShader);
 
-                expect(
-                    mockVisualizer.effects.enableConstellationBackground,
-                ).toHaveBeenCalledWith(false);
-                expect(
-                    mockVisualizer.effects.setConstellationMode,
-                ).toHaveBeenCalledWith(false);
-            });
+            const graphCenter = new THREE.Vector3(100, 200, 300);
+            bg.update(0.2, null, graphCenter, 1200);
+
+            expect(bg.group.position.x).toBe(100);
+            expect(bg.sphere.position.x).toBe(400);
+            expect(bg.sphere.scale.x).toBeCloseTo(0.5);
+            expect(bg.sphere.material.uniforms.uTime.value).toBeCloseTo(0.2);
+            expect(mockShader.uniforms.uSpread.value).toBe(3600);
+
+            // Fallback branch when camera has no position and graphCenter is null
+            bg.camera = { quaternion: new THREE.Quaternion() };
+            bg.update(0.1, null, null, null);
+            expect(bg.group.position.x).toBe(0);
+            expect(bg.sphere.position.x).toBe(0);
+            expect(bg.sphere.scale.x).toBe(1.0);
+
+            const starsDispose = vi.spyOn(bg.stars, 'dispose');
+            bg.dispose();
+            expect(starsDispose).toHaveBeenCalledOnce();
         });
     });
 
     describe('TakeOnMeRealTheme', () => {
-        it('should define the take-on-me-real aesthetic properties', () => {
+        it('defines the take-on-me-real aesthetic, tube edges, bloom, and post-processing', () => {
             expect(TakeOnMeRealTheme.name).toBe('take-on-me-real');
             expect(TakeOnMeRealTheme.emoji).toBe('📼');
             expect(TakeOnMeRealTheme.background).toBe(0xf4f7f6);
             expect(TakeOnMeRealTheme.highlightColor).toBe(0xff3388);
             expect(TakeOnMeRealTheme.showOutlines).toBe(true);
             expect(TakeOnMeRealTheme.edgeTubeRadius).toBeCloseTo(0.4);
-            expect(TakeOnMeRealTheme.nodeMaterial).toEqual({
-                roughness: 0.1,
-                metalness: 0.05,
-                emissiveIntensity: 0.45,
+            expect(TakeOnMeRealTheme.edges.renderMode).toBe('tubes');
+            expect(TakeOnMeRealTheme.edges.tubeRadius).toBeCloseTo(0.4);
+            expect(TakeOnMeRealTheme.edges.palette).toEqual({
+                low: 0xd0e8eb,
+                high: 0x5cb3b1,
             });
+            expect(TakeOnMeRealTheme.postProcessing.bloom).toEqual({
+                intensity: 1.0,
+                threshold: 0.9,
+            });
+
+            const effects = TakeOnMeRealTheme.postProcessing.createEffects();
+            expect(effects).toHaveLength(1);
+            expect(effects[0].name).toBe('CharcoalSketchEffect');
         });
 
-        describe('getNodeColor', () => {
-            it('should calculate 80s pastel colors for various pitch classes', () => {
-                const testCases = [
-                    {
-                        pc: 0,
-                        expectedHue: 340 / 360,
-                        expectedSat: 0.7,
-                        expectedLight: 0.75,
-                    },
-                    {
-                        pc: 1,
-                        expectedHue: 180 / 360,
-                        expectedSat: 0.65,
-                        expectedLight: 0.7,
-                    },
-                ];
+        it('calculates 80s pastel colors for various pitch classes', () => {
+            const c0 = TakeOnMeRealTheme.getNodeColor(0);
+            expect(c0.hue).toBeCloseTo(340 / 360);
+            expect(c0.saturation).toBeCloseTo(0.7);
+            expect(c0.lightness).toBeCloseTo(0.75);
 
-                testCases.forEach(
-                    ({ pc, expectedHue, expectedSat, expectedLight }) => {
-                        const color = TakeOnMeRealTheme.getNodeColor(pc);
-                        expect(color.hue).toBeCloseTo(expectedHue);
-                        expect(color.saturation).toBeCloseTo(expectedSat);
-                        expect(color.lightness).toBeCloseTo(expectedLight);
-                    },
-                );
-            });
+            const c1 = TakeOnMeRealTheme.getNodeColor(1);
+            expect(c1.hue).toBeCloseTo(180 / 360);
+            expect(c1.saturation).toBeCloseTo(0.65);
+            expect(c1.lightness).toBeCloseTo(0.7);
         });
 
-        describe('Lifecycle Hooks', () => {
-            it('should enable studio background on activation', () => {
-                const mockVisualizer = {
-                    effects: {
-                        enableStudioBackground: vi.fn(),
-                    },
-                };
+        it('creates, updates graph bounds and audio-reactive neon glow, and disposes its studio background', () => {
+            const camera = {
+                position: new THREE.Vector3(0, 0, 100),
+                quaternion: new THREE.Quaternion(),
+                top: 100,
+                bottom: -100,
+                zoom: 1.0,
+            };
+            const bg = TakeOnMeRealTheme.createBackground({ camera });
 
-                TakeOnMeRealTheme.onActivate(mockVisualizer);
+            bg.onGraphBoundsChange(new THREE.Vector3(10, 20, 30), 300);
+            expect(bg.group.position.x).toBe(10);
+            expect(bg.grid.position.y).toBeCloseTo(-330);
 
-                expect(
-                    mockVisualizer.effects.enableStudioBackground,
-                ).toHaveBeenCalledWith(true);
-            });
+            const freqData = new Uint8Array(64).fill(128);
+            bg.update(0.2, freqData);
 
-            it('should disable studio background on deactivation', () => {
-                const mockVisualizer = {
-                    effects: {
-                        enableStudioBackground: vi.fn(),
-                    },
-                };
+            expect(bg.quad.uniforms.uTime.value).toBeCloseTo(0.2);
+            expect(bg.quad.uniforms.uNeonGlow.value.r).toBeGreaterThan(0);
 
-                TakeOnMeRealTheme.onDeactivate(mockVisualizer);
-
-                expect(
-                    mockVisualizer.effects.enableStudioBackground,
-                ).toHaveBeenCalledWith(false);
-            });
+            const quadDispose = vi.spyOn(bg.quad, 'dispose');
+            bg.dispose();
+            expect(quadDispose).toHaveBeenCalledOnce();
         });
     });
 });

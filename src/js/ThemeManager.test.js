@@ -53,11 +53,20 @@ describe('ThemeManager', () => {
             expect(registered.emoji).toBe('🚀');
         });
 
-        it('should deeply merge nodeMaterial with defaults', () => {
+        it('should deeply merge nodeMaterial, nodeHighlight, edges, and postProcessing with defaults', () => {
             // Arrange
             const theme = {
                 name: 'material-theme',
                 nodeMaterial: { roughness: 0.95 },
+                nodeHighlight: { useBaseColor: true },
+                edges: {
+                    renderMode: 'tubes',
+                    highlight: { intensityMultiplier: 2.0 },
+                },
+                postProcessing: {
+                    hdrBuffer: true,
+                    bloom: { intensity: 5.5 },
+                },
             };
 
             // Act
@@ -67,6 +76,18 @@ describe('ThemeManager', () => {
             // Assert
             expect(registered.nodeMaterial.roughness).toBeCloseTo(0.95);
             expect(registered.nodeMaterial.metalness).toBeCloseTo(0.2); // Default value
+            expect(registered.nodeHighlight.useBaseColor).toBe(true);
+            expect(registered.nodeHighlight.intensityMultiplier).toBe(1.0);
+            expect(registered.edges.renderMode).toBe('tubes');
+            expect(registered.edges.tubeRadius).toBeCloseTo(0.4);
+            expect(registered.edges.highlight.useWeightColor).toBe(false);
+            expect(registered.edges.highlight.intensityMultiplier).toBe(2.0);
+            expect(registered.postProcessing.hdrBuffer).toBe(true);
+            expect(registered.postProcessing.bloom.intensity).toBeCloseTo(5.5);
+            expect(registered.postProcessing.bloom.threshold).toBeCloseTo(0.15);
+            expect(registered.emojiTint).toBeNull();
+            expect(registered.showOutlines).toBe(true);
+            expect(registered.geometrySegments).toBe(32);
         });
 
         it('should set the first registered theme as the current theme', () => {

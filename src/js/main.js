@@ -347,13 +347,18 @@ const init = async () => {
                     visualizer.startAutoTour();
                 }
 
-                ui.setPlaybackUI(isAutoplayMode);
                 visualizer.setPaused(!isAutoplayMode);
 
                 ui.hideStatus();
 
                 // Trigger playback after the UI has updated and visualizer rendering has started
-                await player.play(arrayBuffer.slice(0), isAutoplayMode);
+                const playPromise = player.play(
+                    arrayBuffer.slice(0),
+                    isAutoplayMode,
+                );
+                ui.setPlaybackUI(isAutoplayMode);
+                await playPromise;
+                ui.setPlaybackUI(player.isPlaying);
             } else {
                 parserWorker.onmessage = (e) => {
                     const { summary, serializedGraph, error } = e.data;
@@ -397,7 +402,6 @@ const init = async () => {
                             ui.els.tourToggle.disabled = false;
                             ui.els.statsToggle.disabled = false;
 
-                            ui.setPlaybackUI(isAutoplayMode);
                             visualizer.setPaused(!isAutoplayMode);
 
                             if (ui.els.tourToggle.checked) {
@@ -409,10 +413,13 @@ const init = async () => {
                             ui.hideStatus();
 
                             // Trigger playback after the UI has updated and visualizer rendering has started
-                            await player.play(
+                            const playPromise = player.play(
                                 arrayBuffer.slice(0),
                                 isAutoplayMode,
                             );
+                            ui.setPlaybackUI(isAutoplayMode);
+                            await playPromise;
+                            ui.setPlaybackUI(player.isPlaying);
                         } catch (err) {
                             ui.showError('Error starting audio playback.', err);
                         }

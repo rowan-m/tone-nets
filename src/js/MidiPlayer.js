@@ -233,9 +233,6 @@ export class MidiPlayer {
                 // Reset tracking and visualization for the loop
                 this.lastNotePerChannel.clear();
                 this.activeNotes.clear();
-                if (this.onStop) {
-                    this.onStop();
-                }
 
                 // Explicitly restart the sequencer if we are still marked as playing and looping is enabled
                 if (this.isPlaying && this.isLooping) {
@@ -249,6 +246,9 @@ export class MidiPlayer {
                     if ('mediaSession' in navigator) {
                         navigator.mediaSession.playbackState = 'none';
                     }
+                }
+                if (this.onStop) {
+                    this.onStop();
                 }
                 this.updateMediaSessionPosition();
             },

@@ -289,12 +289,18 @@ describe('MidiPlayer', () => {
         });
 
         it('should stop playback and reset tracking when song ends if isLooping is false', () => {
+            let isPlayingDuringOnStop = true;
+            player.onStop = vi.fn(() => {
+                isPlayingDuringOnStop = player.isPlaying;
+            });
             player.isPlaying = true;
             player.isLooping = false;
 
             sequencerEvents['songEnded']();
 
             expect(player.isPlaying).toBe(false);
+            expect(player.onStop).toHaveBeenCalled();
+            expect(isPlayingDuringOnStop).toBe(false);
             expect(mockAudioInstance.pause).toHaveBeenCalled();
         });
 

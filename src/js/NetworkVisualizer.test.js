@@ -362,6 +362,38 @@ describe('NetworkVisualizer', () => {
                 expect.objectContaining({ isFake: true }),
             );
         });
+
+        it('orients transition arrow cones to point from source (fromId) toward target (toId)', () => {
+            const mockGraph = createMockGraph(
+                [
+                    { id: 'G2', data: { degree: 1 } },
+                    { id: 'C3', data: { degree: 1 } },
+                ],
+                [{ fromId: 'G2', toId: 'C3', data: { weight: 1 } }],
+            );
+            visualizer.initIncremental(mockGraph);
+            visualizer.layout = {
+                getNodePosition: vi.fn((id) =>
+                    id === 'G2' ? { x: 0, y: 0, z: 0 } : { x: 10, y: 0, z: 0 },
+                ),
+            };
+
+            visualizer.addTransitionIncremental('G2', 'C3');
+
+            const instanceMatrix = new THREE.Matrix4();
+            visualizer.coneInstancedMesh.getMatrixAt(0, instanceMatrix);
+
+            // coneGeo is rotated +PI/2 around X, so its apex is at local +Z and base is at local -Z
+            const apexWorld = new THREE.Vector3(0, 0, 1.75).applyMatrix4(
+                instanceMatrix,
+            );
+            const baseWorld = new THREE.Vector3(0, 0, -1.75).applyMatrix4(
+                instanceMatrix,
+            );
+
+            // Since G2 is at x=0 and C3 is at x=100 (scaled by 10), the cone apex must point toward +X
+            expect(apexWorld.x).toBeGreaterThan(baseWorld.x);
+        });
     });
 
     describe('Themes & Visuals', () => {
@@ -516,6 +548,48 @@ describe('NetworkVisualizer', () => {
             expect(visualizer.composer.removePass).toHaveBeenCalledWith(
                 visualizer.charcoalSketchPass,
             );
+        });
+
+        it('handles octave -1 notes with negative semitone indices across themes without throwing', () => {
+            visualizer.themeManager.registerTheme(TakeOnMeRealTheme);
+
+            const mockGraph = createMockGraph([
+                { id: 'C#-1', data: { degree: 1 } },
+            ]);
+            visualizer.initIncremental(mockGraph);
+
+            expect(() => {
+                visualizer.setTheme('take-on-me-real');
+                visualizer.addTransitionIncremental(null, 'C#-1');
+                visualizer.setTheme('default');
+                visualizer.setTheme('take-on-me-real');
+            }).not.toThrow();
+
+            expect(visualizer.nodes.has('C#-1')).toBe(true);
+        });
+
+        it('skips edgeTubeInstancedMesh updates when tube mesh is hidden and updates when visible', () => {
+            visualizer.themeManager.registerTheme(TakeOnMeRealTheme);
+            const mockGraph = createMockGraph(
+                [
+                    { id: 'C4', data: { degree: 1 } },
+                    { id: 'G4', data: { degree: 1 } },
+                ],
+                [{ fromId: 'C4', toId: 'G4', data: { weight: 1 } }],
+            );
+            visualizer.initIncremental(mockGraph);
+
+            const tubeSpy = vi.spyOn(visualizer, '_updateEdgeTubeSegment');
+
+            // Under default theme, edgeTubeInstancedMesh is hidden
+            visualizer.setTheme('default');
+            tubeSpy.mockClear();
+            visualizer.addTransitionIncremental('C4', 'G4');
+            expect(tubeSpy).not.toHaveBeenCalled();
+
+            // Switching to take-on-me-real makes edgeTubeInstancedMesh visible and updates it
+            visualizer.setTheme('take-on-me-real');
+            expect(tubeSpy).toHaveBeenCalled();
         });
     });
 

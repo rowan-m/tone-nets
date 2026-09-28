@@ -37,6 +37,7 @@ export class VisualEffectsManager {
         this._scratchVec3_1 = new THREE.Vector3();
         this._scratchQuat_1 = new THREE.Quaternion();
         this._scratchQuat_2 = new THREE.Quaternion();
+        this._scratchColor = new THREE.Color();
         this.studioGrid = null;
 
         this.terminatorGroup = new THREE.Group();
@@ -76,6 +77,10 @@ export class VisualEffectsManager {
                 this.emojiPool.release(initialItems[i]);
             }
         }
+    }
+
+    get activeEmojis() {
+        return this.emojiPool.active;
     }
 
     _initTerminatorBackground() {
@@ -364,8 +369,9 @@ export class VisualEffectsManager {
             // Add a beautiful, noticeable ambient baseline of 0.18 (18% always visible)
             // that pulses dynamically up to 100% based on synthesizer treble energy!
             const glowIntensity = 0.18 + trebleEnergy * 0.82;
-            const targetGlow = new THREE.Color().setHSL(hue, 0.92, 0.65);
-            targetGlow.multiplyScalar(glowIntensity);
+            const targetGlow = this._scratchColor
+                .setHSL(hue, 0.92, 0.65)
+                .multiplyScalar(glowIntensity);
 
             // Smoothly lerp to avoid abrupt color flickering
             uniforms.uNeonGlow.value.lerp(targetGlow, 0.12);

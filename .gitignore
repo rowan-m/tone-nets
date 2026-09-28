@@ -1,8 +1,7 @@
 /.antigravitycli/
 /.firebase/
 /.firebaserc
-/.jules/
-/.Jules/
+/.[jJ]ules/
 /coverage/
 /dist/
 /node_modules/

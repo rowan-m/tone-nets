@@ -2,7 +2,6 @@ import { NetworkParser } from './NetworkParser.js';
 import { NetworkVisualizer } from './NetworkVisualizer.js';
 import { MidiPlayer } from './MidiPlayer.js';
 import { UIManager } from './UIManager.js';
-import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
 import createGraph from 'ngraph.graph';
 import { Utils } from './Utils.js';
@@ -22,9 +21,11 @@ const parserWorker = new Worker(
     { type: 'module' },
 );
 
-const init = async () => {
+export const init = async () => {
     let isIncrementalMode = true;
     let isAutoplayMode = true;
+    let currentMidiBuffer = null;
+    let currentFileName = null;
 
     const visualizer = new NetworkVisualizer('canvas-container');
 
@@ -77,7 +78,9 @@ const init = async () => {
             togglePlayPause();
         },
         onRestart: () => {
-            player.restart();
+            if (currentMidiBuffer && currentFileName) {
+                processMidi(currentMidiBuffer.slice(0), currentFileName);
+            }
         },
         onThemeCycle: () => {
             const nextThemeName = visualizer.cycleTheme();
@@ -287,7 +290,12 @@ const init = async () => {
             'Looping:',
             player.isLooping,
         );
+        currentMidiBuffer = arrayBuffer.slice(0);
+        currentFileName = fileName;
+        const shouldTour = ui.els.tourToggle.checked;
+
         ui.showStatus('Parsing MIDI and building network...');
+        player.stop();
         ui.els.playBtn.disabled = true;
         ui.els.pauseBtn.disabled = true;
         ui.els.restartBtn.disabled = true;
@@ -322,7 +330,6 @@ const init = async () => {
                 ui.els.welcomeMsg.classList.add('hidden');
 
                 // Initialize audio early so AudioContext starts running and stabilizing
-                await Tone.start();
                 await player.initialize();
 
                 // Set up UI and start visualizer rendering loop before starting audio playback
@@ -334,17 +341,24 @@ const init = async () => {
                 ui.els.statsToggle.checked = false;
                 ui.els.infoPanel.classList.add('hidden');
 
-                if (ui.els.tourToggle.checked) {
+                if (shouldTour) {
                     visualizer.startAutoTour();
+                } else {
+                    visualizer.stopAutoTour();
                 }
 
-                ui.setPlaybackUI(isAutoplayMode);
                 visualizer.setPaused(!isAutoplayMode);
 
                 ui.hideStatus();
 
                 // Trigger playback after the UI has updated and visualizer rendering has started
-                await player.play(arrayBuffer.slice(0), isAutoplayMode);
+                const playPromise = player.play(
+                    arrayBuffer.slice(0),
+                    isAutoplayMode,
+                );
+                ui.setPlaybackUI(isAutoplayMode);
+                await playPromise;
+                ui.setPlaybackUI(player.isPlaying);
             } else {
                 parserWorker.onmessage = (e) => {
                     const { summary, serializedGraph, error } = e.data;
@@ -379,7 +393,6 @@ const init = async () => {
                             ui.els.welcomeMsg.classList.add('hidden');
 
                             // Initialize audio early so AudioContext starts running and stabilizing
-                            await Tone.start();
                             await player.initialize();
 
                             // Set up UI and start visualizer rendering loop before starting audio playback
@@ -389,10 +402,9 @@ const init = async () => {
                             ui.els.tourToggle.disabled = false;
                             ui.els.statsToggle.disabled = false;
 
-                            ui.setPlaybackUI(isAutoplayMode);
                             visualizer.setPaused(!isAutoplayMode);
 
-                            if (ui.els.tourToggle.checked) {
+                            if (shouldTour) {
                                 visualizer.startAutoTour();
                             } else {
                                 visualizer.stopAutoTour();
@@ -401,10 +413,13 @@ const init = async () => {
                             ui.hideStatus();
 
                             // Trigger playback after the UI has updated and visualizer rendering has started
-                            await player.play(
+                            const playPromise = player.play(
                                 arrayBuffer.slice(0),
                                 isAutoplayMode,
                             );
+                            ui.setPlaybackUI(isAutoplayMode);
+                            await playPromise;
+                            ui.setPlaybackUI(player.isPlaying);
                         } catch (err) {
                             ui.showError('Error starting audio playback.', err);
                         }

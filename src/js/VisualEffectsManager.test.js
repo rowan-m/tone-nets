@@ -128,6 +128,16 @@ describe('VisualEffectsManager', () => {
             // The oldest ('1️⃣') should have been released, so '2️⃣' is now at index 0
             expect(effectsManager.emojiPool.active[0]).toBe(second);
         });
+
+        it('should expose activeEmojis getter returning the active emoji pool list', () => {
+            expect(effectsManager.activeEmojis).toBe(
+                effectsManager.emojiPool.active,
+            );
+            expect(effectsManager.activeEmojis).toHaveLength(0);
+
+            effectsManager.showInstrumentEmoji(new THREE.Vector3(), '🎹');
+            expect(effectsManager.activeEmojis).toHaveLength(1);
+        });
     });
 
     describe('Animation and Updates', () => {
@@ -341,6 +351,47 @@ describe('VisualEffectsManager', () => {
                 '#include <begin_vertex>',
             );
             expect(mockShader.fragmentShader).toContain('vTwinkle');
+        });
+
+        it('should update studio background grid and neon glow when visible', () => {
+            effectsManager.enableStudioBackground(true);
+            expect(effectsManager.studioGroup.visible).toBe(true);
+
+            effectsManager.updateStudioPosition(
+                new THREE.Vector3(10, 20, 30),
+                300,
+            );
+            expect(effectsManager.studioGroup.position.x).toBe(10);
+            expect(effectsManager.studioGrid.position.y).toBeCloseTo(-330);
+
+            const freqData = new Uint8Array(64).fill(128);
+            effectsManager.update(0.2, freqData);
+
+            expect(
+                effectsManager.studioSphere.material.uniforms.uTime.value,
+            ).toBeCloseTo(0.2);
+            expect(
+                effectsManager.studioSphere.material.uniforms.uNeonGlow.value.r,
+            ).toBeGreaterThan(0);
+
+            effectsManager.enableStudioBackground(false);
+            expect(effectsManager.studioGroup.visible).toBe(false);
+        });
+
+        it('should update retro equalizer frequency data when visible', () => {
+            effectsManager.enableRetroBackground(true);
+            expect(effectsManager.retroGroup.visible).toBe(true);
+
+            const freqData = new Uint8Array(128).fill(200);
+            effectsManager.update(0.1, freqData);
+            expect(effectsManager.retroFreqData.some((v) => v > 0)).toBe(true);
+
+            // Decay branch when frequency drops to 0
+            const zeroFreq = new Uint8Array(128).fill(0);
+            effectsManager.update(0.1, zeroFreq);
+
+            effectsManager.enableRetroBackground(false);
+            expect(effectsManager.retroGroup.visible).toBe(false);
         });
     });
 

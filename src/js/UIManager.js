@@ -7,6 +7,7 @@ import { Utils } from './Utils.js';
 export class UIManager {
     constructor(callbacks) {
         this.callbacks = callbacks;
+        this._isErrorModal = false;
         this.els = this._lookupElements();
         this._setupListeners();
     }
@@ -34,6 +35,8 @@ export class UIManager {
             appTitle: document.getElementById('app-title'),
             statusModal: document.getElementById('status-modal'),
             statusModalText: document.getElementById('status-modal-text'),
+            statusModalSpinner: document.getElementById('status-modal-spinner'),
+            statusModalClose: document.getElementById('status-modal-close'),
             appEl: document.getElementById('app'),
             hideUiBtn: document.getElementById('hide-ui'),
             showUiBtn: document.getElementById('show-ui'),
@@ -69,9 +72,16 @@ export class UIManager {
         if (!this.els.statusModal.open) {
             this.els.statusModal.showModal();
         }
-        this.els.statusModal.addEventListener('cancel', (e) =>
-            e.preventDefault(),
-        );
+        this.els.statusModal.addEventListener('cancel', (e) => {
+            if (!this._isErrorModal) {
+                e.preventDefault();
+            } else {
+                this.hideStatus();
+            }
+        });
+        this.els.statusModalClose.addEventListener('click', () => {
+            this.hideStatus();
+        });
 
         this.els.incrementalToggle.addEventListener('change', (e) => {
             this.callbacks.onIncrementalToggle(e.target.checked);
@@ -141,44 +151,58 @@ export class UIManager {
         this._setupMediaSessionHandlers();
     }
 
+    _handleEscapeKey() {
+        if (!this.els.infoPanel.classList.contains('hidden')) {
+            this.els.infoPanel.classList.add('hidden');
+            this.els.statsToggle.checked = false;
+            this.els.statsToggle.setAttribute('aria-expanded', 'false');
+            this.els.statsToggle.focus();
+        }
+    }
+
+    _triggerPlayPauseShortcut(e) {
+        e.preventDefault();
+        if (!this.els.playBtn.disabled) {
+            if (this.callbacks.isPlaying()) {
+                this.els.pauseBtn.click();
+            } else {
+                this.els.playBtn.click();
+            }
+        }
+    }
+
+    _handleKeyDown(e) {
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+        if (e.key === 'Escape') {
+            this._handleEscapeKey();
+            return;
+        }
+
+        const activeTag =
+            document.activeElement && document.activeElement.tagName;
+        if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') {
+            return;
+        }
+
+        const key = e.key.toLowerCase();
+        if (key === 'h') {
+            this.toggleUi();
+        } else if (
+            key === 'p' ||
+            (e.key === ' ' && activeTag !== 'BUTTON' && activeTag !== 'A')
+        ) {
+            this._triggerPlayPauseShortcut(e);
+        } else if (key === 'r') {
+            e.preventDefault();
+            if (!this.els.restartBtn.disabled) {
+                this.els.restartBtn.click();
+            }
+        }
+    }
+
     _setupGlobalKeyboardListeners() {
-        document.addEventListener('keydown', (e) => {
-            if (
-                e.key === 'Escape' &&
-                !this.els.infoPanel.classList.contains('hidden')
-            ) {
-                this.els.infoPanel.classList.add('hidden');
-                this.els.statsToggle.checked = false;
-                this.els.statsToggle.setAttribute('aria-expanded', 'false');
-                this.els.statsToggle.focus();
-            }
-
-            if (e.key.toLowerCase() === 'h') {
-                if (document.activeElement.tagName === 'INPUT') {
-                    return;
-                }
-                this.toggleUi();
-            }
-
-            if (e.key.toLowerCase() === 'p') {
-                if (
-                    document.activeElement.tagName === 'INPUT' ||
-                    document.activeElement.tagName === 'TEXTAREA'
-                ) {
-                    return;
-                }
-
-                e.preventDefault();
-
-                if (!this.els.playBtn.disabled) {
-                    if (this.callbacks.isPlaying()) {
-                        this.els.pauseBtn.click();
-                    } else {
-                        this.els.playBtn.click();
-                    }
-                }
-            }
-        });
+        document.addEventListener('keydown', (e) => this._handleKeyDown(e));
 
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('example-midi')) {
@@ -264,6 +288,9 @@ export class UIManager {
     }
 
     showStatus(text) {
+        this._isErrorModal = false;
+        this.els.statusModalSpinner.classList.remove('hidden');
+        this.els.statusModalClose.classList.add('hidden');
         this.els.statusModalText.textContent = text;
         if (!this.els.statusModal.open) {
             this.els.statusModal.showModal();
@@ -271,6 +298,7 @@ export class UIManager {
     }
 
     hideStatus() {
+        this._isErrorModal = false;
         if (this.els.statusModal.open) {
             this.els.statusModal.close();
             this.els.statusModal.classList.remove('pre-loading');
@@ -280,6 +308,10 @@ export class UIManager {
     showError(message, err) {
         console.error(message, err);
         this.showStatus(`${message} See console.`);
+        this._isErrorModal = true;
+        this.els.statusModalSpinner.classList.add('hidden');
+        this.els.statusModalClose.classList.remove('hidden');
+        this.els.statusModalClose.focus();
     }
 
     updateMetrics(summary, fileName, isIncrementalMode) {

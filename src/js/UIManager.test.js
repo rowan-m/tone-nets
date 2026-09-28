@@ -178,7 +178,7 @@ describe('UIManager', () => {
             expect(mockEvent.preventDefault).toHaveBeenCalled();
         });
 
-        it('should show error and log to console', () => {
+        it('should show error, log to console, and allow dismissing the modal', () => {
             // Arrange
             const consoleSpy = vi
                 .spyOn(console, 'error')
@@ -192,6 +192,27 @@ describe('UIManager', () => {
             expect(mockElements['status-modal-text'].textContent).toContain(
                 'Oops',
             );
+            expect(
+                mockElements['status-modal-spinner'].classList.add,
+            ).toHaveBeenCalledWith('hidden');
+            expect(
+                mockElements['status-modal-close'].classList.remove,
+            ).toHaveBeenCalledWith('hidden');
+            expect(mockElements['status-modal-close'].focus).toHaveBeenCalled();
+
+            // Dismiss via button click
+            mockElements['status-modal'].open = true;
+            mockElements['status-modal-close'].click();
+            expect(mockElements['status-modal'].close).toHaveBeenCalled();
+
+            // Show error again and dismiss via cancel event
+            uiManager.showError('Oops 2', new Error('test 2'));
+            mockElements['status-modal'].open = true;
+            const cancelEvent = { preventDefault: vi.fn(), type: 'cancel' };
+            mockElements['status-modal'].dispatchEvent(cancelEvent);
+            expect(cancelEvent.preventDefault).not.toHaveBeenCalled();
+            expect(mockElements['status-modal'].open).toBe(false);
+
             consoleSpy.mockRestore();
         });
     });
@@ -559,7 +580,7 @@ describe('UIManager', () => {
             expect(mockElements['stats-toggle'].focus).toHaveBeenCalled();
         });
 
-        it('should handle keyboard shortcuts for play/pause', () => {
+        it('should handle keyboard shortcuts for play/pause with P and Space', () => {
             // Arrange
             const keydownHandler = document.addEventListener.mock.calls.find(
                 (c) => c[0] === 'keydown',
@@ -567,15 +588,46 @@ describe('UIManager', () => {
             mockElements['play-btn'].disabled = false;
             mockCallbacks.isPlaying.mockReturnValue(false);
 
-            // Act
+            // Act - P key
             keydownHandler({
                 key: 'p',
                 preventDefault: vi.fn(),
-                toLowerCase: () => 'p',
             });
 
             // Assert
-            expect(mockElements['play-btn'].click).toHaveBeenCalled();
+            expect(mockElements['play-btn'].click).toHaveBeenCalledTimes(1);
+
+            // Act - Space key when playing
+            mockCallbacks.isPlaying.mockReturnValue(true);
+            keydownHandler({
+                key: ' ',
+                preventDefault: vi.fn(),
+            });
+            expect(mockElements['pause-btn'].click).toHaveBeenCalledTimes(1);
+        });
+
+        it('should handle R keyboard shortcut for restart and ignore modifier shortcuts', () => {
+            const keydownHandler = document.addEventListener.mock.calls.find(
+                (c) => c[0] === 'keydown',
+            )[1];
+            mockElements['restart-btn'].disabled = false;
+
+            // Ignore Ctrl+R
+            keydownHandler({
+                key: 'r',
+                ctrlKey: true,
+                preventDefault: vi.fn(),
+            });
+            expect(mockElements['restart-btn'].click).not.toHaveBeenCalled();
+
+            // Trigger restart on plain R
+            const preventDefault = vi.fn();
+            keydownHandler({
+                key: 'r',
+                preventDefault,
+            });
+            expect(preventDefault).toHaveBeenCalled();
+            expect(mockElements['restart-btn'].click).toHaveBeenCalledTimes(1);
         });
 
         it('should not trigger shortcuts when typing in inputs', () => {

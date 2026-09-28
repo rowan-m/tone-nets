@@ -1,4 +1,3 @@
-import * as Tone from 'tone';
 import { WorkletSynthesizer, Sequencer } from 'spessasynth_lib';
 import processorUrl from 'spessasynth_lib/dist/spessasynth_processor.min.js?url';
 import { Utils } from './Utils.js';
@@ -10,6 +9,7 @@ export class MidiPlayer {
         this.sf2Buffer = null;
         this.isPlaying = false;
         this.masterGain = null;
+        this.audioContext = null;
         this.channelInstruments = Array.from({ length: 16 }, () => 0);
         this.lastNotePerChannel = new Map();
         this.activeNotes = new Map();
@@ -25,6 +25,7 @@ export class MidiPlayer {
         this.onStop = null;
         this._initPromise = null;
         this.analyser = null;
+        this._frequencyData = null;
     }
 
     async loadSoundfont(url = '/creative-emu10k1-8mbgmsfx.sf2') {
@@ -46,19 +47,20 @@ export class MidiPlayer {
                     await this.loadSoundfont();
                 }
 
-                // Only create the synth once the user has interacted
-                if (Tone.context.state !== 'running') {
-                    await Tone.start();
+                // Only create and resume the native AudioContext once the user has interacted
+                if (!this.audioContext) {
+                    const AudioContextClass =
+                        globalThis.AudioContext ||
+                        globalThis.webkitAudioContext;
+                    this.audioContext = new AudioContextClass();
+                }
+
+                if (this.audioContext.state === 'suspended') {
+                    await this.audioContext.resume();
                 }
 
                 if (!this.synth) {
-                    // Use Tone's underlying native AudioContext so all scheduled times align perfectly
-                    const rawCtx =
-                        Tone.context.rawContext._nativeContext ||
-                        Tone.context.rawContext;
-                    if (rawCtx.state === 'suspended') {
-                        await rawCtx.resume();
-                    }
+                    const rawCtx = this.audioContext;
 
                     // Register the AudioWorklet processor
                     await rawCtx.audioWorklet.addModule(processorUrl);
@@ -70,6 +72,9 @@ export class MidiPlayer {
                     // Create Analyser for visualization
                     this.analyser = rawCtx.createAnalyser();
                     this.analyser.fftSize = 2048; // 1024 bins, much better resolution for log mapping
+                    this._frequencyData = new Uint8Array(
+                        this.analyser.frequencyBinCount,
+                    );
                     this.masterGain.connect(this.analyser);
 
                     // Wait for the clock to actually start moving and stabilize.
@@ -531,8 +536,15 @@ export class MidiPlayer {
 
     getFrequencyData() {
         if (!this.analyser) return null;
-        const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-        this.analyser.getByteFrequencyData(dataArray);
-        return dataArray;
+        if (
+            !this._frequencyData ||
+            this._frequencyData.length !== this.analyser.frequencyBinCount
+        ) {
+            this._frequencyData = new Uint8Array(
+                this.analyser.frequencyBinCount,
+            );
+        }
+        this.analyser.getByteFrequencyData(this._frequencyData);
+        return this._frequencyData;
     }
 }

@@ -13,7 +13,7 @@
 
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://tone-nets.web.app/" />
-        <meta property="og:title" content="Tone Nets | 3D MIDI vizualiser" />
+        <meta property="og:title" content="Tone Nets | 3D MIDI visualizer" />
         <meta
             property="og:description"
             content="Explore the musical structure of MIDI files. Upload your own now!"
@@ -81,8 +81,8 @@
                         id="play-btn"
                         class="btn hidden paused-style"
                         disabled
-                        title="Play (Space)"
-                        aria-keyshortcuts="Space"
+                        title="Play (P / Space)"
+                        aria-keyshortcuts="p Space"
                     >
                         <span aria-hidden="true">▶️</span> Play
                     </button>
@@ -90,8 +90,8 @@
                         id="pause-btn"
                         class="btn"
                         disabled
-                        title="Pause (Space)"
-                        aria-keyshortcuts="Space"
+                        title="Pause (P / Space)"
+                        aria-keyshortcuts="p Space"
                     >
                         <span aria-hidden="true">⏸️</span> Pause
                     </button>
@@ -99,7 +99,8 @@
                         id="restart-btn"
                         class="btn"
                         disabled
-                        title="Restart Playback"
+                        title="Restart Playback (R)"
+                        aria-keyshortcuts="r"
                     >
                         <span aria-hidden="true">⏮️</span> Restart
                     </button>
@@ -173,7 +174,11 @@
             <main id="canvas-container">
                 <!-- Three.js canvas will be injected here -->
                 <dialog id="status-modal" class="pre-loading">
-                    <div class="spinner" aria-hidden="true"></div>
+                    <div
+                        id="status-modal-spinner"
+                        class="spinner"
+                        aria-hidden="true"
+                    ></div>
                     <p
                         id="status-modal-text"
                         aria-live="polite"
@@ -181,6 +186,13 @@
                     >
                         Loading SoundFont (7.5MB)... Please wait.
                     </p>
+                    <button
+                        id="status-modal-close"
+                        class="btn hidden"
+                        type="button"
+                    >
+                        Dismiss
+                    </button>
                 </dialog>
                 <div id="drag-overlay" class="centered-overlay">
                     <div class="drag-message">
@@ -225,10 +237,14 @@
                                 <a
                                     href="https://www.vgmusic.com/"
                                     target="_blank"
+                                    rel="noopener noreferrer"
                                     >Video Game Music Archive</a
                                 >
                                 and
-                                <a href="https://bitmidi.com/" target="_blank"
+                                <a
+                                    href="https://bitmidi.com/"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                     >BitMIDI</a
                                 >.
                             </p>

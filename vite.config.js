@@ -7,14 +7,13 @@ export default defineConfig({
             output: {
                 manualChunks(id) {
                     if (id.includes('node_modules')) {
-                        if (
-                            id.includes('three') ||
-                            id.includes('postprocessing')
-                        ) {
+                        if (/node_modules\/(three|postprocessing)\//.test(id)) {
                             return 'vendor-three';
                         }
-                        if (id.includes('tone') || id.includes('@tonejs')) {
-                            return 'vendor-tone';
+                        if (
+                            /node_modules\/(@tonejs|spessasynth_lib)\//.test(id)
+                        ) {
+                            return 'vendor-audio';
                         }
                         return 'vendor-core';
                     }

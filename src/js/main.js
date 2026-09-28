@@ -2,7 +2,6 @@ import { NetworkParser } from './NetworkParser.js';
 import { NetworkVisualizer } from './NetworkVisualizer.js';
 import { MidiPlayer } from './MidiPlayer.js';
 import { UIManager } from './UIManager.js';
-import * as Tone from 'tone';
 import { Midi } from '@tonejs/midi';
 import createGraph from 'ngraph.graph';
 import { Utils } from './Utils.js';
@@ -25,6 +24,8 @@ const parserWorker = new Worker(
 const init = async () => {
     let isIncrementalMode = true;
     let isAutoplayMode = true;
+    let currentMidiBuffer = null;
+    let currentFileName = '';
 
     const visualizer = new NetworkVisualizer('canvas-container');
 
@@ -59,6 +60,9 @@ const init = async () => {
     const callbacks = {
         onIncrementalToggle: (checked) => {
             isIncrementalMode = checked;
+            if (currentMidiBuffer) {
+                processMidi(currentMidiBuffer.slice(0), currentFileName);
+            }
         },
         onAutoplayToggle: (checked) => {
             isAutoplayMode = checked;
@@ -77,6 +81,17 @@ const init = async () => {
             togglePlayPause();
         },
         onRestart: () => {
+            if (isIncrementalMode && visualizer.graph) {
+                const wasPlaying = player.isPlaying;
+                const wasTouring = ui.els.tourToggle.checked;
+                visualizer.initIncremental(createGraph());
+                if (!wasTouring) {
+                    visualizer.stopAutoTour();
+                }
+                visualizer.setPaused(!wasPlaying);
+                ui.els.vCountEl.textContent = 0;
+                ui.els.eCountEl.textContent = 0;
+            }
             player.restart();
         },
         onThemeCycle: () => {
@@ -277,6 +292,8 @@ const init = async () => {
     };
 
     const processMidi = async (arrayBuffer, fileName) => {
+        currentMidiBuffer = arrayBuffer.slice(0);
+        currentFileName = fileName;
         console.log(
             'Processing MIDI:',
             fileName,
@@ -322,7 +339,6 @@ const init = async () => {
                 ui.els.welcomeMsg.classList.add('hidden');
 
                 // Initialize audio early so AudioContext starts running and stabilizing
-                await Tone.start();
                 await player.initialize();
 
                 // Set up UI and start visualizer rendering loop before starting audio playback
@@ -379,7 +395,6 @@ const init = async () => {
                             ui.els.welcomeMsg.classList.add('hidden');
 
                             // Initialize audio early so AudioContext starts running and stabilizing
-                            await Tone.start();
                             await player.initialize();
 
                             // Set up UI and start visualizer rendering loop before starting audio playback

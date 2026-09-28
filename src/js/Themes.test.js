@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
     DefaultTheme,
     TerminatorTheme,
+    RetroTheme,
     ConstellationTheme,
     TakeOnMeRealTheme,
 } from './Themes.js';
@@ -100,7 +101,6 @@ describe('Themes', () => {
 
     describe('RetroTheme', () => {
         it('should define the retro aesthetic properties', () => {
-            const { RetroTheme } = require('./Themes.js');
             expect(RetroTheme.name).toBe('retro');
             expect(RetroTheme.emoji).toBe('📟');
             expect(RetroTheme.background).toBe(0x000500);
@@ -113,9 +113,22 @@ describe('Themes', () => {
             expect(RetroTheme.nodeMaterial.wireframe).toBe(true);
         });
 
+        describe('getNodeColor', () => {
+            it('should calculate terminal green shades for various pitch classes', () => {
+                const c0 = RetroTheme.getNodeColor(0);
+                expect(c0.hue).toBeCloseTo(120 / 360);
+                expect(c0.saturation).toBeCloseTo(0.8);
+                expect(c0.lightness).toBeCloseTo(0.3);
+
+                const c6 = RetroTheme.getNodeColor(6);
+                expect(c6.hue).toBeCloseTo(120 / 360);
+                expect(c6.saturation).toBeCloseTo(0.8);
+                expect(c6.lightness).toBeCloseTo(0.5);
+            });
+        });
+
         describe('Lifecycle Hooks', () => {
             it('should enable retro effects on activation', () => {
-                const { RetroTheme } = require('./Themes.js');
                 const mockVisualizer = {
                     enableRetroEffects: vi.fn(),
                     effects: {
@@ -134,7 +147,6 @@ describe('Themes', () => {
             });
 
             it('should disable retro effects on deactivation', () => {
-                const { RetroTheme } = require('./Themes.js');
                 const mockVisualizer = {
                     enableRetroEffects: vi.fn(),
                     effects: {

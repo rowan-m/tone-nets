@@ -517,6 +517,48 @@ describe('NetworkVisualizer', () => {
                 visualizer.charcoalSketchPass,
             );
         });
+
+        it('handles octave -1 notes with negative semitone indices across themes without throwing', () => {
+            visualizer.themeManager.registerTheme(TakeOnMeRealTheme);
+
+            const mockGraph = createMockGraph([
+                { id: 'C#-1', data: { degree: 1 } },
+            ]);
+            visualizer.initIncremental(mockGraph);
+
+            expect(() => {
+                visualizer.setTheme('take-on-me-real');
+                visualizer.addTransitionIncremental(null, 'C#-1');
+                visualizer.setTheme('default');
+                visualizer.setTheme('take-on-me-real');
+            }).not.toThrow();
+
+            expect(visualizer.nodes.has('C#-1')).toBe(true);
+        });
+
+        it('skips edgeTubeInstancedMesh updates when tube mesh is hidden and updates when visible', () => {
+            visualizer.themeManager.registerTheme(TakeOnMeRealTheme);
+            const mockGraph = createMockGraph(
+                [
+                    { id: 'C4', data: { degree: 1 } },
+                    { id: 'G4', data: { degree: 1 } },
+                ],
+                [{ fromId: 'C4', toId: 'G4', data: { weight: 1 } }],
+            );
+            visualizer.initIncremental(mockGraph);
+
+            const tubeSpy = vi.spyOn(visualizer, '_updateEdgeTubeSegment');
+
+            // Under default theme, edgeTubeInstancedMesh is hidden
+            visualizer.setTheme('default');
+            tubeSpy.mockClear();
+            visualizer.addTransitionIncremental('C4', 'G4');
+            expect(tubeSpy).not.toHaveBeenCalled();
+
+            // Switching to take-on-me-real makes edgeTubeInstancedMesh visible and updates it
+            visualizer.setTheme('take-on-me-real');
+            expect(tubeSpy).toHaveBeenCalled();
+        });
     });
 
     describe('Playback Highlights', () => {

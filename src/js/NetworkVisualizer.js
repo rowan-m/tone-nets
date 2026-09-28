@@ -359,6 +359,7 @@ export class NetworkVisualizer {
         this._scratchSphere = new THREE.Sphere();
         this._scratchCurve = new THREE.QuadraticBezierCurve3();
         this._scratchQuat_1 = new THREE.Quaternion();
+        this._scratchEuler = new THREE.Euler();
 
         // Shared materials for hover/highlight states
         this.hoverEdgeMaterial = new THREE.LineBasicMaterial({
@@ -1144,7 +1145,8 @@ export class NetworkVisualizer {
             }
             this.edgeTubeInstancedMesh.userData.type = 'edge-tube-batch';
             this.edgeTubeInstancedMesh.frustumCulled = false;
-            this.edgeTubeInstancedMesh.visible = false;
+            this.edgeTubeInstancedMesh.visible =
+                this.currentThemeName === 'take-on-me-real';
             this.edgeTubeInstancedMesh.geometry.boundingSphere =
                 new THREE.Sphere(new THREE.Vector3(), 100000);
             this.graphGroup.add(this.edgeTubeInstancedMesh);
@@ -1369,7 +1371,7 @@ export class NetworkVisualizer {
         const degree = (node.data && node.data.degree) || 1;
         const normDegree = Math.min(1, degree / maxDegree);
 
-        const pitchClass = Utils.noteToSemitone(node.id) % 12;
+        const pitchClass = ((Utils.noteToSemitone(node.id) % 12) + 12) % 12;
         const currentTheme = this.themeManager.getCurrentTheme();
 
         let hue, saturation, lightness;
@@ -1742,24 +1744,34 @@ export class NetworkVisualizer {
             alphaAttr.array[baseIdx + i * 2] = edgeOpacity;
             alphaAttr.array[baseIdx + i * 2 + 1] = edgeOpacity;
 
-            this._updateEdgeTubeSegment(
-                edgeIndex,
-                i,
-                p1x,
-                p1y,
-                p1z,
-                p2x,
-                p2y,
-                p2z,
-                edgeColor,
-            );
+            if (
+                this.edgeTubeInstancedMesh &&
+                this.edgeTubeInstancedMesh.visible
+            ) {
+                this._updateEdgeTubeSegment(
+                    edgeIndex,
+                    i,
+                    p1x,
+                    p1y,
+                    p1z,
+                    p2x,
+                    p2y,
+                    p2z,
+                    edgeColor,
+                );
+            }
         }
 
         if (needsUpdateAttribute) {
             posAttr.needsUpdate = true;
             colorAttr.needsUpdate = true;
             alphaAttr.needsUpdate = true;
-            this._updateMeshNeedsUpdate(this.edgeTubeInstancedMesh);
+            if (
+                this.edgeTubeInstancedMesh &&
+                this.edgeTubeInstancedMesh.visible
+            ) {
+                this._updateMeshNeedsUpdate(this.edgeTubeInstancedMesh);
+            }
         }
 
         // Update cone
@@ -2245,7 +2257,12 @@ export class NetworkVisualizer {
 
         if (this.edges.length > 0) {
             this._updateMeshNeedsUpdate(this.coneInstancedMesh);
-            this._updateMeshNeedsUpdate(this.edgeTubeInstancedMesh);
+            if (
+                this.edgeTubeInstancedMesh &&
+                this.edgeTubeInstancedMesh.visible
+            ) {
+                this._updateMeshNeedsUpdate(this.edgeTubeInstancedMesh);
+            }
         }
     }
 
@@ -2528,8 +2545,8 @@ export class NetworkVisualizer {
 
             this.tourCurrentVelocity.lerp(this.tourTargetVelocity, delta * 0.5);
 
-            const frameRotation = new THREE.Quaternion().setFromEuler(
-                new THREE.Euler(
+            const frameRotation = this._scratchQuat_1.setFromEuler(
+                this._scratchEuler.set(
                     this.tourCurrentVelocity.x * delta,
                     this.tourCurrentVelocity.y * delta,
                     this.tourCurrentVelocity.z * delta,
@@ -2540,9 +2557,9 @@ export class NetworkVisualizer {
             this.tourRotation.multiply(frameRotation);
 
             const radius = this.graphRadius * 3;
-            const offset = new THREE.Vector3(0, 0, radius).applyQuaternion(
-                this.tourRotation,
-            );
+            const offset = this._scratchVec3_3
+                .set(0, 0, radius)
+                .applyQuaternion(this.tourRotation);
 
             this._scratchVec3_1.copy(this.graphCenter).add(offset);
             this.currentTourTarget.lerp(this.graphCenter, delta * 2.0);
@@ -2550,9 +2567,9 @@ export class NetworkVisualizer {
 
             this.camera.position.lerp(this._scratchVec3_1, delta * 1.5);
 
-            const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(
-                this.tourRotation,
-            );
+            const upVector = this._scratchVec3_4
+                .set(0, 1, 0)
+                .applyQuaternion(this.tourRotation);
             this.camera.up.copy(upVector);
 
             this.camera.lookAt(this.currentTourTarget);
@@ -2807,7 +2824,8 @@ export class NetworkVisualizer {
         const currentTheme = this.themeManager.getCurrentTheme();
         for (let i = 0; i < this.nodeList.length; i++) {
             const nodeData = this.nodeList[i];
-            const pitchClass = Utils.noteToSemitone(nodeData.id) % 12;
+            const pitchClass =
+                ((Utils.noteToSemitone(nodeData.id) % 12) + 12) % 12;
             let hue, saturation, lightness;
 
             if (currentTheme && currentTheme.getNodeColor) {
@@ -2949,6 +2967,13 @@ export class NetworkVisualizer {
         this.highlightConeMaterial.color.setHex(this.highlightColor);
 
         this._updateResolution();
+
+        const targetSegments = theme.geometrySegments || 32;
+        if (targetSegments !== this._currentGeometrySegments) {
+            this._reinitGeometries(targetSegments);
+        }
+
+        this._updateThemeEdgesVisibility(themeName, theme);
         this._updateThemeNodeColors(themeName);
 
         // Reset and update highlights for all currently active/playing nodes under the new theme
@@ -2957,11 +2982,6 @@ export class NetworkVisualizer {
         }
 
         this._updateEdgePositions();
-
-        const targetSegments = theme.geometrySegments || 32;
-        if (targetSegments !== this._currentGeometrySegments) {
-            this._reinitGeometries(targetSegments);
-        }
 
         if (this.outlineInstancedMesh) {
             this.outlineInstancedMesh.visible = theme.showOutlines !== false;
@@ -2976,7 +2996,6 @@ export class NetworkVisualizer {
 
         this._updateThemeBloom(themeName);
         this._updateThemeCones(theme);
-        this._updateThemeEdgesVisibility(themeName, theme);
 
         if (themeName === 'take-on-me-real') {
             if (!this.charcoalSketchPass) {

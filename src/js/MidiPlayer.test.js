@@ -97,58 +97,51 @@ vi.mock('spessasynth_lib', () => {
     return { WorkletSynthesizer, Sequencer };
 });
 
-vi.mock('tone', () => {
-    const mockAudioWorklet = {
-        addModule: vi.fn().mockResolvedValue(),
-    };
+const mockAudioWorklet = {
+    addModule: vi.fn().mockResolvedValue(),
+};
 
-    const mockDestination = {};
+const mockDestination = {};
 
-    const mockGainNode = {
-        connect: vi.fn(),
-        gain: {
-            setTargetAtTime: vi.fn(),
-            cancelScheduledValues: vi.fn(),
-            setValueAtTime: vi.fn(),
-        },
-    };
+const mockGainNode = {
+    connect: vi.fn(),
+    gain: {
+        value: 0,
+        setTargetAtTime: vi.fn(),
+        cancelScheduledValues: vi.fn(),
+        setValueAtTime: vi.fn(),
+    },
+};
 
-    const mockAnalyserNode = {
-        connect: vi.fn(),
-        getByteFrequencyData: vi.fn((array) => {
-            for (let i = 0; i < array.length; i++) array[i] = 128;
-        }),
-        frequencyBinCount: 128,
-        fftSize: 256,
-    };
+const mockAnalyserNode = {
+    connect: vi.fn(),
+    getByteFrequencyData: vi.fn((array) => {
+        for (let i = 0; i < array.length; i++) array[i] = 128;
+    }),
+    frequencyBinCount: 128,
+    fftSize: 256,
+};
 
-    let mockTime = 0;
-    const mockRawContext = {
-        state: 'running',
-        get currentTime() {
-            return mockTime++;
-        },
-        resume: vi.fn().mockResolvedValue(),
-        audioWorklet: mockAudioWorklet,
-        createGain: vi.fn().mockReturnValue(mockGainNode),
-        createAnalyser: vi.fn().mockReturnValue(mockAnalyserNode),
-        destination: mockDestination,
-        createMediaStreamDestination: vi.fn().mockReturnValue({
-            stream: {},
-        }),
-    };
+let mockTime = 0;
+const mockRawContext = {
+    state: 'running',
+    get currentTime() {
+        return mockTime++;
+    },
+    resume: vi.fn().mockResolvedValue(),
+    audioWorklet: mockAudioWorklet,
+    createGain: vi.fn().mockReturnValue(mockGainNode),
+    createAnalyser: vi.fn().mockReturnValue(mockAnalyserNode),
+    destination: mockDestination,
+    createMediaStreamDestination: vi.fn().mockReturnValue({
+        stream: {},
+    }),
+};
 
-    mockGainNode.context = mockRawContext;
+mockGainNode.context = mockRawContext;
 
-    return {
-        context: {
-            state: 'suspended',
-            currentTime: 0,
-            start: vi.fn().mockResolvedValue(),
-            rawContext: mockRawContext,
-        },
-        start: vi.fn().mockResolvedValue(),
-    };
+global.AudioContext = vi.fn().mockImplementation(function () {
+    return mockRawContext;
 });
 
 describe('MidiPlayer', () => {
@@ -169,6 +162,7 @@ describe('MidiPlayer', () => {
             expect(player.sf2Buffer).toBeDefined();
             expect(player.synth).toBeDefined();
             expect(player.sequencer).toBeDefined();
+            expect(player.audioContext).toBe(mockRawContext);
         });
 
         it('should throw error if soundfont fails to load', async () => {
@@ -182,11 +176,10 @@ describe('MidiPlayer', () => {
         });
 
         it('should resume audio context if it starts suspended', async () => {
-            const { context } = await import('tone');
-            context.rawContext.state = 'suspended';
+            mockRawContext.state = 'suspended';
             await player.initialize();
-            expect(context.rawContext.resume).toHaveBeenCalled();
-            context.rawContext.state = 'running';
+            expect(mockRawContext.resume).toHaveBeenCalled();
+            mockRawContext.state = 'running';
         });
 
         it('should apply mobile optimizations and background audio routing on mobile devices', async () => {
@@ -475,12 +468,17 @@ describe('MidiPlayer', () => {
             expect(player.channelInstruments[1]).toBe(12);
         });
 
-        it('should return frequency data from the analyser', async () => {
+        it('should return frequency data from the analyser and reuse the same buffer', async () => {
+            expect(player.getFrequencyData()).toBeNull();
+
             await player.initialize();
-            const data = player.getFrequencyData();
-            expect(data).toBeInstanceOf(Uint8Array);
-            expect(data).toHaveLength(128);
-            expect(data[0]).toBe(128);
+            const data1 = player.getFrequencyData();
+            expect(data1).toBeInstanceOf(Uint8Array);
+            expect(data1).toHaveLength(128);
+            expect(data1[0]).toBe(128);
+
+            const data2 = player.getFrequencyData();
+            expect(data2).toBe(data1);
         });
     });
 });

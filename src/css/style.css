@@ -522,6 +522,10 @@ hr {
     }
 }
 
+#status-modal-close {
+    margin: 1.5rem auto 0;
+}
+
 .hidden {
     display: none;
 }

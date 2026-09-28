@@ -24,8 +24,6 @@ const parserWorker = new Worker(
 const init = async () => {
     let isIncrementalMode = true;
     let isAutoplayMode = true;
-    let currentMidiBuffer = null;
-    let currentFileName = '';
 
     const visualizer = new NetworkVisualizer('canvas-container');
 
@@ -60,9 +58,6 @@ const init = async () => {
     const callbacks = {
         onIncrementalToggle: (checked) => {
             isIncrementalMode = checked;
-            if (currentMidiBuffer) {
-                processMidi(currentMidiBuffer.slice(0), currentFileName);
-            }
         },
         onAutoplayToggle: (checked) => {
             isAutoplayMode = checked;
@@ -292,8 +287,6 @@ const init = async () => {
     };
 
     const processMidi = async (arrayBuffer, fileName) => {
-        currentMidiBuffer = arrayBuffer.slice(0);
-        currentFileName = fileName;
         console.log(
             'Processing MIDI:',
             fileName,

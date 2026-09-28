@@ -21,9 +21,11 @@ const parserWorker = new Worker(
     { type: 'module' },
 );
 
-const init = async () => {
+export const init = async () => {
     let isIncrementalMode = true;
     let isAutoplayMode = true;
+    let currentMidiBuffer = null;
+    let currentFileName = null;
 
     const visualizer = new NetworkVisualizer('canvas-container');
 
@@ -76,18 +78,9 @@ const init = async () => {
             togglePlayPause();
         },
         onRestart: () => {
-            if (isIncrementalMode && visualizer.graph) {
-                const wasPlaying = player.isPlaying;
-                const wasTouring = ui.els.tourToggle.checked;
-                visualizer.initIncremental(createGraph());
-                if (!wasTouring) {
-                    visualizer.stopAutoTour();
-                }
-                visualizer.setPaused(!wasPlaying);
-                ui.els.vCountEl.textContent = 0;
-                ui.els.eCountEl.textContent = 0;
+            if (currentMidiBuffer && currentFileName) {
+                processMidi(currentMidiBuffer.slice(0), currentFileName);
             }
-            player.restart();
         },
         onThemeCycle: () => {
             const nextThemeName = visualizer.cycleTheme();
@@ -297,7 +290,12 @@ const init = async () => {
             'Looping:',
             player.isLooping,
         );
+        currentMidiBuffer = arrayBuffer.slice(0);
+        currentFileName = fileName;
+        const shouldTour = ui.els.tourToggle.checked;
+
         ui.showStatus('Parsing MIDI and building network...');
+        player.stop();
         ui.els.playBtn.disabled = true;
         ui.els.pauseBtn.disabled = true;
         ui.els.restartBtn.disabled = true;
@@ -343,8 +341,10 @@ const init = async () => {
                 ui.els.statsToggle.checked = false;
                 ui.els.infoPanel.classList.add('hidden');
 
-                if (ui.els.tourToggle.checked) {
+                if (shouldTour) {
                     visualizer.startAutoTour();
+                } else {
+                    visualizer.stopAutoTour();
                 }
 
                 visualizer.setPaused(!isAutoplayMode);
@@ -404,7 +404,7 @@ const init = async () => {
 
                             visualizer.setPaused(!isAutoplayMode);
 
-                            if (ui.els.tourToggle.checked) {
+                            if (shouldTour) {
                                 visualizer.startAutoTour();
                             } else {
                                 visualizer.stopAutoTour();

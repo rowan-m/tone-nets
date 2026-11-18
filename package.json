@@ -19,22 +19,22 @@
     "devDependencies": {
         "@eslint/css": "^2.0.1",
         "@eslint/js": "^10.0.1",
-        "@vitest/coverage-v8": "^5.1.0",
-        "eslint": "^10.14.0",
+        "@vitest/coverage-v8": "^5.1.1",
+        "eslint": "^10.15.0",
         "eslint-plugin-no-unsanitized": "^4.1.5",
         "eslint-plugin-security": "^4.2.1",
         "eslint-plugin-sonarjs": "^4.2.2",
         "globals": "^17.14.0",
-        "prettier": "^3.9.10",
-        "vite": "^8.3.7",
-        "vitest": "^5.1.0"
+        "prettier": "^3.10.1",
+        "vite": "^8.3.8",
+        "vitest": "^5.1.1"
     },
     "dependencies": {
         "@tonejs/midi": "^2.0.28",
         "ngraph.forcelayout": "^3.3.1",
         "ngraph.graph": "^20.1.2",
         "postprocessing": "^6.39.6",
-        "spessasynth_lib": "^4.4.7",
+        "spessasynth_lib": "^4.4.8",
         "three": "^0.187.0"
     }
 }
